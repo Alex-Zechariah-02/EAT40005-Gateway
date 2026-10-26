@@ -1,0 +1,19 @@
+import { defineConfig } from '@playwright/test'
+
+// The browser tests run one real deployment in order, so they run serially
+// in one worker. They use the installed Chrome, not a downloaded browser.
+export default defineConfig({
+  testDir: 'e2e',
+  workers: 1,
+  fullyParallel: false,
+  timeout: 180_000,
+  expect: { timeout: 15_000 },
+  reporter: [['list']],
+  use: {
+    channel: 'chrome',
+    headless: true,
+    viewport: { width: 1280, height: 860 },
+    trace: 'off',
+    screenshot: 'off',
+  },
+})

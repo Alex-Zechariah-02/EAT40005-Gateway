@@ -1,0 +1,61 @@
+import {
+  Stack,
+  FileText,
+  IdentificationCard,
+  Files,
+  HourglassMedium,
+  Timer,
+  ClockCounterClockwise,
+  FlowArrow,
+  Funnel,
+  Path,
+  Lock,
+  Key,
+  ShieldCheck,
+  Gauge,
+  ClipboardText,
+  ArrowSquareOut,
+  SquaresFour,
+  Pulse,
+  MagnifyingGlass,
+  Plugs,
+  GitDiff,
+  UserMinus,
+  Code,
+  UsersThree,
+  UserCircle,
+} from '@phosphor-icons/react'
+
+const icons = {
+  layers: Stack,
+  overview: SquaresFour,
+  traffic: Pulse,
+  lookup: MagnifyingGlass,
+  apis: Plugs,
+  policy: FileText,
+  subjects: IdentificationCard,
+  accounts: UserMinus,
+  candidates: GitDiff,
+  provisional: HourglassMedium,
+  overrides: Timer,
+  history: ClockCounterClockwise,
+  code: Code,
+  team: UsersThree,
+  account: UserCircle,
+  staged: Files,
+  flow: FlowArrow,
+  form: Funnel,
+  route: Path,
+  access: Lock,
+  token: Key,
+  permit: ShieldCheck,
+  rate: Gauge,
+  body: ClipboardText,
+  forward: ArrowSquareOut,
+}
+export type IconName = keyof typeof icons
+
+export function Icon({ name }: { name: IconName }) {
+  const Component = icons[name]
+  return <Component className="icon" size={20} weight="regular" aria-hidden="true" focusable="false" />
+}

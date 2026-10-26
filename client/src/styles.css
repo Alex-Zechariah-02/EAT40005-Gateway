@@ -1,0 +1,184 @@
+@import "tailwindcss";
+
+/* Semantic colour
+   tokens only; components never use literal colours. Dark mode keeps every
+   hue and flips lightness; brand and accent fills carry dark text in dark
+   mode because a light green cannot carry white. */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-soft: var(--brand-soft);
+  --color-on-brand: var(--on-brand);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-on-accent: var(--on-accent);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-photo-edge: var(--photo-edge);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  --shadow-card: var(--sh-card);
+  --shadow-raised: var(--sh-raised);
+  --shadow-press: var(--sh-press);
+  --ease-out-quint: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg: oklch(98.7% 0.005 160);
+  --surface: oklch(100% 0 0);
+  --sunken: oklch(96.2% 0.009 160);
+  --ink: oklch(23% 0.022 165);
+  --ink-2: oklch(41% 0.02 165);
+  --ink-3: oklch(52% 0.017 165);
+  --line: oklch(91.5% 0.009 160);
+  --line-strong: oklch(84% 0.012 160);
+  --brand: oklch(50% 0.125 157);
+  --brand-strong: oklch(42% 0.11 157);
+  --brand-soft: oklch(95.4% 0.032 157);
+  --on-brand: oklch(99% 0.01 157);
+  --accent: oklch(87% 0.15 93);
+  --accent-soft: oklch(96.5% 0.05 95);
+  --on-accent: oklch(23% 0.022 165);
+  --ok: oklch(50% 0.125 157);
+  --ok-soft: oklch(95.4% 0.032 157);
+  --warn: oklch(52% 0.12 65);
+  --warn-soft: oklch(96% 0.04 80);
+  --bad: oklch(52% 0.19 27);
+  --bad-soft: oklch(96% 0.025 27);
+  --photo-edge: oklch(0% 0 0 / 0.1);
+  /* Chart series use distinct hues, lightness and contrast. */
+  --chart-1: #007845;
+  --chart-2: #3d5fd6;
+  --sh-card: 0 0 0 1px oklch(25% 0.02 165 / 0.07), 0 1px 2px -1px oklch(25% 0.02 165 / 0.06), 0 2px 4px oklch(25% 0.02 165 / 0.03);
+  --sh-raised: 0 0 0 1px oklch(25% 0.02 165 / 0.06), 0 2px 4px oklch(25% 0.02 165 / 0.04), 0 12px 32px oklch(25% 0.02 165 / 0.1);
+  --sh-press: 0 2px 6px oklch(25% 0.05 157 / 0.25);
+  color-scheme: light;
+}
+
+/* The same dark values twice: once for the system setting (no stored choice),
+   once for an explicit choice, so neither needs a script before first paint. */
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --bg: oklch(16.5% 0.012 165);
+    --surface: oklch(20.5% 0.014 165);
+    --sunken: oklch(14% 0.01 165);
+    --ink: oklch(95% 0.008 160);
+    --ink-2: oklch(80% 0.014 160);
+    --ink-3: oklch(68% 0.014 160);
+    --line: oklch(28.5% 0.014 165);
+    --line-strong: oklch(38% 0.016 165);
+    --brand: oklch(74% 0.135 157);
+    --brand-strong: oklch(80% 0.12 157);
+    --brand-soft: oklch(27% 0.045 157);
+    --on-brand: oklch(17% 0.03 160);
+    --accent: oklch(77% 0.115 91);
+    --accent-soft: oklch(29% 0.05 90);
+    --on-accent: oklch(20% 0.035 90);
+    --ok: oklch(76% 0.13 157);
+    --ok-soft: oklch(27% 0.045 157);
+    --warn: oklch(82% 0.12 78);
+    --warn-soft: oklch(29% 0.05 75);
+    --bad: oklch(73% 0.15 25);
+    --bad-soft: oklch(29% 0.06 25);
+    --photo-edge: oklch(100% 0 0 / 0.1);
+    --chart-1: #2c9a60;
+    --chart-2: #6f8cf0;
+    --sh-card: 0 0 0 1px oklch(100% 0 0 / 0.07);
+    --sh-raised: 0 0 0 1px oklch(100% 0 0 / 0.08), 0 12px 32px oklch(0% 0 0 / 0.45);
+    --sh-press: 0 2px 8px oklch(0% 0 0 / 0.5);
+    color-scheme: dark;
+  }
+}
+:root.dark {
+  --bg: oklch(16.5% 0.012 165);
+  --surface: oklch(20.5% 0.014 165);
+  --sunken: oklch(14% 0.01 165);
+  --ink: oklch(95% 0.008 160);
+  --ink-2: oklch(80% 0.014 160);
+  --ink-3: oklch(68% 0.014 160);
+  --line: oklch(28.5% 0.014 165);
+  --line-strong: oklch(38% 0.016 165);
+  --brand: oklch(74% 0.135 157);
+  --brand-strong: oklch(80% 0.12 157);
+  --brand-soft: oklch(27% 0.045 157);
+  --on-brand: oklch(17% 0.03 160);
+  --accent: oklch(77% 0.115 91);
+  --accent-soft: oklch(29% 0.05 90);
+  --on-accent: oklch(20% 0.035 90);
+  --ok: oklch(76% 0.13 157);
+  --ok-soft: oklch(27% 0.045 157);
+  --warn: oklch(82% 0.12 78);
+  --warn-soft: oklch(29% 0.05 75);
+  --bad: oklch(73% 0.15 25);
+  --bad-soft: oklch(29% 0.06 25);
+  --photo-edge: oklch(100% 0 0 / 0.1);
+  --chart-1: #2c9a60;
+  --chart-2: #6f8cf0;
+  --sh-card: 0 0 0 1px oklch(100% 0 0 / 0.07);
+  --sh-raised: 0 0 0 1px oklch(100% 0 0 / 0.08), 0 12px 32px oklch(0% 0 0 / 0.45);
+  --sh-press: 0 2px 8px oklch(0% 0 0 / 0.5);
+  color-scheme: dark;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    background: var(--bg);
+  }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  h1, h2, h3 { text-wrap: balance; }
+  p { text-wrap: pretty; }
+  ::selection { background: var(--brand-soft); color: var(--ink); }
+  /* State changes ease instead of snapping; a component's own transition
+     utilities replace this where it needs others. */
+  a, button, summary {
+    transition-property: color, background-color, box-shadow;
+    transition-duration: 150ms;
+    transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 6px; }
+  img { display: block; }
+  /* Photos keep a hairline edge on any surface; in dark mode they are dimmed
+     slightly so white studio backgrounds do not glare. */
+  img.photo { outline: 1px solid var(--photo-edge); outline-offset: -1px; }
+  .dark img.photo { filter: brightness(0.92); }
+  @media (prefers-color-scheme: dark) { :root:not(.light) img.photo { filter: brightness(0.92); } }
+  input, textarea, select, button { font: inherit; color: inherit; }
+  ::placeholder { color: var(--ink-3); opacity: 1; }
+  input[type='number'] { -moz-appearance: textfield; }
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}

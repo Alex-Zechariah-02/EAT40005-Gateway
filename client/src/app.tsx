@@ -1,0 +1,113 @@
+import { lazy, Suspense, type ReactNode } from 'react'
+import { Compass, LockKey } from '@phosphor-icons/react'
+import { match, useLocation } from './lib/router'
+import { hasRole, roleNames, useSession } from './lib/session'
+import type { Role } from './lib/types'
+import { Shell } from './shell'
+import { ButtonLink } from './ui/button'
+import { Empty, Skeleton } from './ui/notice'
+import { Home } from './pages/home'
+import { SectionPage } from './pages/section'
+import { StorePage } from './pages/store'
+import { ItemPage } from './pages/item'
+import { BasketPage } from './pages/basket'
+import { SignInPage } from './pages/signin'
+
+// Pages used by one role load on demand, so a customer never downloads the
+// merchant, rider, support or operations screens.
+const CheckoutPage = lazy(() => import('./pages/checkout').then((m) => ({ default: m.CheckoutPage })))
+const OrdersPage = lazy(() => import('./pages/orders').then((m) => ({ default: m.OrdersPage })))
+const OrderPage = lazy(() => import('./pages/order').then((m) => ({ default: m.OrderPage })))
+const HelpPage = lazy(() => import('./pages/help').then((m) => ({ default: m.HelpPage })))
+const TicketPage = lazy(() => import('./pages/ticket').then((m) => ({ default: m.TicketPage })))
+const MerchantPage = lazy(() => import('./pages/merchant').then((m) => ({ default: m.MerchantPage })))
+const RiderPage = lazy(() => import('./pages/rider').then((m) => ({ default: m.RiderPage })))
+const SupportPage = lazy(() => import('./pages/support').then((m) => ({ default: m.SupportPage })))
+const OpsPage = lazy(() => import('./pages/ops').then((m) => ({ default: m.OpsPage })))
+const LabPage = lazy(() => import('./pages/lab').then((m) => ({ default: m.LabPage })))
+
+export function App() {
+  const { path } = useLocation()
+  return (
+    <Shell>
+      <Suspense fallback={<PageLoading />}>
+        <Route path={path} />
+      </Suspense>
+    </Shell>
+  )
+}
+
+function Route({ path }: { path: string }) {
+  let found: Record<string, string> | null
+  if (path === '/') return <Home />
+  if (path === '/food' || path === '/mart') return <SectionPage section={path === '/food' ? 'food' : 'mart'} />
+  if ((found = match('/store/:id', path))) return <StorePage key={found.id} id={found.id} />
+  if ((found = match('/item/:id', path))) return <ItemPage key={found.id} id={found.id} />
+  if (path === '/cart') return <BasketPage />
+  if (path === '/signin') return <SignInPage />
+  if (path === '/checkout') return <Gate role="CUSTOMER"><CheckoutPage /></Gate>
+  if (path === '/my-orders') return <Gate role="CUSTOMER"><OrdersPage /></Gate>
+  if ((found = match('/my-orders/:id', path))) return <Gate role="CUSTOMER"><OrderPage key={found.id} id={found.id} /></Gate>
+  if (path === '/help') return <Gate role="CUSTOMER"><HelpPage /></Gate>
+  if ((found = match('/help/:id', path))) return <Gate role="CUSTOMER"><TicketPage key={found.id} id={found.id} /></Gate>
+  if (path === '/merchant') return <Gate role="MERCHANT"><MerchantPage /></Gate>
+  if (path === '/rider') return <Gate role="RIDER"><RiderPage /></Gate>
+  if (path === '/support') return <Gate role="SUPPORT"><SupportPage /></Gate>
+  if (path === '/ops') return <Gate role="OPERATIONS"><OpsPage /></Gate>
+  // The security lab is open to anyone, signed in or not: it shows what the
+  // gateway refuses, as whoever is signed in on this tab.
+  if (path === '/lab') return <LabPage />
+  return <NotFound />
+}
+
+// Gate only chooses what to show: the gateway still decides every request.
+function Gate({ role, children }: { role: Role; children: ReactNode }) {
+  const { session } = useSession()
+  const { path, params } = useLocation()
+  const here = path + (params.size ? `?${params}` : '')
+  if (!session) {
+    return (
+      <Empty
+        className="mt-10"
+        icon={<LockKey size={26} weight="bold" />}
+        title="Sign in to continue"
+        body={`This page shows your own ${role === 'CUSTOMER' ? 'orders and details' : 'work'}, so Fetch needs to know who you are.`}
+        action={<ButtonLink to={`/signin?next=${encodeURIComponent(here)}`}>Sign in</ButtonLink>}
+      />
+    )
+  }
+  if (!hasRole(session.user, role)) {
+    return (
+      <Empty
+        className="mt-10"
+        icon={<LockKey size={26} weight="bold" />}
+        title={`This page is for ${roleNames[role].toLowerCase()} accounts`}
+        body={`You’re signed in as ${session.user.name} (${session.user.roles.map((r) => roleNames[r]).join(', ')}).`}
+        action={<ButtonLink to={session.user.home}>Go to your home</ButtonLink>}
+      />
+    )
+  }
+  return children
+}
+
+function PageLoading() {
+  return (
+    <div className="mt-8 flex flex-col gap-4" aria-busy="true">
+      <span className="sr-only" role="status">Loading the page</span>
+      <Skeleton className="h-10 w-72" />
+      <Skeleton className="h-48 w-full" />
+    </div>
+  )
+}
+
+function NotFound() {
+  return (
+    <Empty
+      className="mt-10"
+      icon={<Compass size={26} weight="bold" />}
+      title="This page isn’t on Fetch"
+      body="The link may be old or mistyped."
+      action={<ButtonLink to="/">Go to the home page</ButtonLink>}
+    />
+  )
+}
