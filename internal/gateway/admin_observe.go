@@ -47,31 +47,22 @@ func (c *Controller) handleEvents(w http.ResponseWriter, r *http.Request, who ca
 			return
 		}
 	}
+	// One match beyond the page says whether a next page exists.
+	matches := c.observations.recent(func(event *observedRequest) bool {
+		return (after == 0 || event.sequence < after) &&
+			(ref == "" || event.RequestID == ref) &&
+			(subject == "" || (event.Subject != nil && *event.Subject == subject)) &&
+			(operation == "" || (event.Operation != nil && *event.Operation == operation)) &&
+			(decision == "" || event.Decision == decision)
+	}, limit+1)
 	items := []requestEvent{}
 	next := ""
-	var last uint64
-	for _, event := range c.observations.snapshot() {
-		if after != 0 && event.sequence >= after {
-			continue
-		}
-		if ref != "" && event.RequestID != ref {
-			continue
-		}
-		if subject != "" && (event.Subject == nil || *event.Subject != subject) {
-			continue
-		}
-		if operation != "" && (event.Operation == nil || *event.Operation != operation) {
-			continue
-		}
-		if decision != "" && event.Decision != decision {
-			continue
-		}
-		if len(items) == limit {
-			next = strconv.FormatUint(last, 10)
+	for i, event := range matches {
+		if i == limit {
+			next = strconv.FormatUint(matches[limit-1].sequence, 10)
 			break
 		}
 		items = append(items, event.requestEvent)
-		last = event.sequence
 	}
 	writeJSON(w, http.StatusOK, list{Items: items, Next: next})
 }
@@ -185,11 +176,11 @@ func (c *Controller) handleTraffic(w http.ResponseWriter, r *http.Request, who c
 	reasons := map[string]int{}
 	seconds := map[int64]*second{}
 	total, allowed, refused := 0, 0, 0
-	for _, entry := range c.observations.snapshot() {
+	inWindow := c.observations.recent(func(event *observedRequest) bool {
+		return !event.Time.Before(start) && !event.Time.After(now)
+	}, 0)
+	for _, entry := range inWindow {
 		event := entry.requestEvent
-		if event.Time.Before(start) || event.Time.After(now) {
-			continue
-		}
 		total++
 		api := "unknown"
 		if event.API != nil {

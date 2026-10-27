@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"modernc.org/sqlite"
@@ -1368,8 +1369,54 @@ func (s *store) revisions(ctx context.Context, after int64, limit int) ([]revisi
 const historyColumns = `rowid, id, kind, actor, target, expected, outcome, reason, result_revision, result_candidate,
 	committed_at, published_at, coalesce(published_by, ''), audited_at`
 
-func (s *store) history(ctx context.Context, after int64, limit int) ([]historyEntry, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+historyColumns+` FROM transition WHERE rowid > ? ORDER BY rowid LIMIT ?`, after, limit)
+// historyFilter selects and orders a history listing. Empty members select
+// everything.
+type historyFilter struct {
+	newestFirst bool
+	kinds       []string
+	outcome     string
+	actor       string
+}
+
+// history lists up to limit transitions after the cursor in the filter's
+// order. Transitions are never deleted and each new one gets a larger rowid,
+// so a newest-first listing that pages from its first answer never skips or
+// repeats an entry; entries recorded later appear only in a new listing.
+func (s *store) history(ctx context.Context, filter historyFilter, after int64, limit int) ([]historyEntry, error) {
+	conditions := []string{}
+	args := []any{}
+	switch {
+	case !filter.newestFirst:
+		conditions = append(conditions, "rowid > ?")
+		args = append(args, after)
+	case after > 0:
+		conditions = append(conditions, "rowid < ?")
+		args = append(args, after)
+	}
+	if len(filter.kinds) > 0 {
+		conditions = append(conditions, "kind IN (?"+strings.Repeat(", ?", len(filter.kinds)-1)+")")
+		for _, kind := range filter.kinds {
+			args = append(args, kind)
+		}
+	}
+	if filter.outcome != "" {
+		conditions = append(conditions, "outcome = ?")
+		args = append(args, filter.outcome)
+	}
+	if filter.actor != "" {
+		conditions = append(conditions, "actor = ?")
+		args = append(args, filter.actor)
+	}
+	query := `SELECT ` + historyColumns + ` FROM transition`
+	if len(conditions) > 0 {
+		query += ` WHERE ` + strings.Join(conditions, ` AND `)
+	}
+	if filter.newestFirst {
+		query += ` ORDER BY rowid DESC LIMIT ?`
+	} else {
+		query += ` ORDER BY rowid LIMIT ?`
+	}
+	rows, err := s.db.QueryContext(ctx, query, append(args, limit)...)
 	if err != nil {
 		return nil, err
 	}

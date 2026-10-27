@@ -13,9 +13,11 @@ import (
 	"net"
 	"net/http"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const (
@@ -305,13 +307,14 @@ func adminTransition(who caller, key, kind, target string, expected sql.NullInt6
 }
 
 // page reads the list parameters: limit (1 to 100) and an optional cursor.
-// Any other parameter is refused.
-func page(w http.ResponseWriter, r *http.Request) (string, int, bool) {
+// Any other parameter is refused, except those named in extra, which the
+// caller reads and checks; every parameter may appear only once.
+func page(w http.ResponseWriter, r *http.Request, extra ...string) (string, int, bool) {
 	query := r.URL.Query()
 	limit := defaultPageSize
 	valid := true
 	for name, values := range query {
-		valid = valid && len(values) == 1 && (name == "limit" || name == "after")
+		valid = valid && len(values) == 1 && (name == "limit" || name == "after" || slices.Contains(extra, name))
 	}
 	if text := query.Get("limit"); valid && text != "" {
 		n, err := strconv.Atoi(text)
@@ -580,8 +583,14 @@ func (c *Controller) handleStatus(w http.ResponseWriter, r *http.Request, who ca
 		}
 	}
 	// The stored base, which differs from the served generation only while
-	// the gateway is unavailable.
-	if a, err := c.store.load(r.Context()); err == nil && a.mode == modeNormal {
+	// the gateway is unavailable. A failed read is reported as such, so the
+	// missing revisions are never read as "none".
+	a, err := c.store.load(r.Context())
+	switch {
+	case err != nil:
+		c.logger.Error("reading authority for status", "error", err)
+		status["stored_authority"] = "unreadable"
+	case a.mode == modeNormal:
 		status["confirmed"] = a.confirmed
 		if a.provisional != 0 {
 			status["provisional"] = a.provisional
@@ -1046,8 +1055,12 @@ func (c *Controller) handleRevokeOverride(w http.ResponseWriter, r *http.Request
 	writeJSON(w, status, outcome)
 }
 
+// handleHistory lists recorded transitions, oldest first unless order=desc,
+// optionally only those of the comma-separated kinds, the outcome or the
+// actor given. Filters apply before the page limit, and the cursor is the
+// last entry's seq in the chosen order.
 func (c *Controller) handleHistory(w http.ResponseWriter, r *http.Request, who caller) {
-	after, limit, ok := page(w, r)
+	after, limit, ok := page(w, r, "order", "kind", "outcome", "actor")
 	if !ok {
 		return
 	}
@@ -1055,7 +1068,12 @@ func (c *Controller) handleHistory(w http.ResponseWriter, r *http.Request, who c
 	if !ok {
 		return
 	}
-	items, err := c.store.history(r.Context(), cursor, limit)
+	filter, ok := historyFilterOf(r)
+	if !ok {
+		adminError(w, http.StatusBadRequest, "bad_request", "page")
+		return
+	}
+	items, err := c.store.history(r.Context(), filter, cursor, limit)
 	if err != nil {
 		adminError(w, http.StatusServiceUnavailable, "unavailable", "")
 		return
@@ -1065,6 +1083,60 @@ func (c *Controller) handleHistory(w http.ResponseWriter, r *http.Request, who c
 		result.Next = strconv.FormatInt(items[len(items)-1].Seq, 10)
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+// maxHistoryKinds bounds the kinds one history listing may select.
+const maxHistoryKinds = 16
+
+// historyFilterOf reads the history order and filters, which page has
+// admitted as single parameters. A parameter that is present must be valid.
+func historyFilterOf(r *http.Request) (historyFilter, bool) {
+	query := r.URL.Query()
+	var filter historyFilter
+	if query.Has("order") {
+		switch query.Get("order") {
+		case "asc":
+		case "desc":
+			filter.newestFirst = true
+		default:
+			return filter, false
+		}
+	}
+	if query.Has("kind") {
+		filter.kinds = strings.Split(query.Get("kind"), ",")
+		invalid := func(kind string) bool { return !historyKind(kind) }
+		if len(filter.kinds) > maxHistoryKinds || slices.ContainsFunc(filter.kinds, invalid) {
+			return filter, false
+		}
+	}
+	if query.Has("outcome") {
+		filter.outcome = query.Get("outcome")
+		if filter.outcome != "committed" && filter.outcome != "rejected" {
+			return filter, false
+		}
+	}
+	if query.Has("actor") {
+		filter.actor = query.Get("actor")
+		if filter.actor == "" || len(filter.actor) > maxIDLength || !utf8.ValidString(filter.actor) {
+			return filter, false
+		}
+	}
+	return filter, true
+}
+
+// historyKind reports whether kind is shaped like a recorded transition
+// kind, such as "cpa.confirm". An unknown but well-formed kind matches no
+// entry.
+func historyKind(kind string) bool {
+	if kind == "" || len(kind) > maxIDLength {
+		return false
+	}
+	for _, r := range kind {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '.' && r != '_' {
+			return false
+		}
+	}
+	return true
 }
 
 func (c *Controller) handleHistoryEntry(w http.ResponseWriter, r *http.Request, who caller) {

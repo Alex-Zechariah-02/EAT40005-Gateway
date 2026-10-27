@@ -138,6 +138,28 @@ func (o *observations) record(event Event) {
 	}
 }
 
+// recent returns, newest first, the retained requests that keep accepts,
+// stopping once it has limit of them (0: no limit). Only returned requests
+// are copied, so a reader that wants a short window or a few matches does
+// not copy the whole ring while holding the lock the request path records
+// under. keep runs under that lock and must not block.
+func (o *observations) recent(keep func(*observedRequest) bool, limit int) []observedRequest {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	var result []observedRequest
+	for i := range o.count {
+		request := &o.ring[(o.next-1-uint64(i))%recentEventLimit]
+		if !keep(request) {
+			continue
+		}
+		result = append(result, *request)
+		if len(result) == limit {
+			break
+		}
+	}
+	return result
+}
+
 func (o *observations) snapshot() []observedRequest {
 	o.mu.Lock()
 	defer o.mu.Unlock()
