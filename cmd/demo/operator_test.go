@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -9,6 +10,41 @@ import (
 	"sync/atomic"
 	"testing"
 )
+
+func TestOrderFloodUsesASeparateCustomerAccount(t *testing.T) {
+	signedIn := make(chan string, 1)
+	var orders atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/accounts/login" {
+			var body struct{ Email string }
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Error(err)
+			}
+			signedIn <- body.Email
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"token":"controlled-token","expires_at":"2099-01-01T00:00:00Z"}`))
+			return
+		}
+		if r.URL.Path != "/orders" || r.Method != "POST" || r.Header.Get("Authorization") != "Bearer controlled-token" {
+			t.Errorf("unexpected flood request: %s %s", r.Method, r.URL.Path)
+		}
+		orders.Add(1)
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+	previous := dataListen
+	dataListen = strings.TrimPrefix(server.URL, "http://")
+	defer func() { dataListen = previous }()
+	if err := attack([]string{"-dir", operatorTestState(t), "-scenario", "flood-orders", "-count", "12"}); err != nil {
+		t.Fatal(err)
+	}
+	if email := <-signedIn; email != "daniel@fetch.test" {
+		t.Errorf("flood signs in as %q; want Daniel, separate from Aisyah", email)
+	}
+	if orders.Load() != 12 {
+		t.Errorf("flood sent %d orders, want 12", orders.Load())
+	}
+}
 
 func TestOperatorBoundaryRefusals(t *testing.T) {
 	for _, args := range [][]string{

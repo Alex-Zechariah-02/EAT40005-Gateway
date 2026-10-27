@@ -26,6 +26,14 @@ const storageKey = 'fetch.session'
 const refreshAhead = 90_000
 const retryAfter = 15_000
 
+export const roleNames: Record<Role, string> = {
+  CUSTOMER: 'Customer',
+  MERCHANT: 'Merchant',
+  RIDER: 'Rider',
+  SUPPORT: 'Support agent',
+  OPERATIONS: 'Operations',
+}
+
 let state: State = { session: readStored(), generation: 0, notice: null }
 const listeners = new Set<() => void>()
 const identityListeners = new Set<() => void>()
@@ -36,8 +44,16 @@ function readStored(): Session | null {
   try {
     const raw = sessionStorage.getItem(storageKey)
     if (!raw) return null
-    const value = JSON.parse(raw) as Partial<Session>
-    if (typeof value.token !== 'string' || typeof value.expiresAt !== 'number' || !value.user) return null
+    const value = JSON.parse(raw) as Partial<Session> | null
+    const user = value?.user
+    if (
+      !value || typeof value.token !== 'string' || !value.token ||
+      typeof value.expiresAt !== 'number' || !Number.isFinite(value.expiresAt) || !user ||
+      typeof user.id !== 'string' || !user.id || typeof user.name !== 'string' || typeof user.email !== 'string' ||
+      !Array.isArray(user.roles) || !user.roles.every((role) => typeof role === 'string' && Object.hasOwn(roleNames, role)) ||
+      (user.merchant !== null && typeof user.merchant !== 'string') ||
+      !['/', '/merchant', '/rider', '/support', '/ops'].includes(user.home)
+    ) return null
     if (value.expiresAt <= Date.now()) {
       sessionStorage.removeItem(storageKey)
       return null
@@ -159,12 +175,4 @@ export function currentGeneration(): number {
 
 export function hasRole(user: User | null | undefined, role: Role): boolean {
   return !!user?.roles.includes(role)
-}
-
-export const roleNames: Record<Role, string> = {
-  CUSTOMER: 'Customer',
-  MERCHANT: 'Merchant',
-  RIDER: 'Rider',
-  SUPPORT: 'Support agent',
-  OPERATIONS: 'Operations',
 }

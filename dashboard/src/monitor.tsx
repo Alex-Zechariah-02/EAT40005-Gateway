@@ -623,6 +623,7 @@ export function LiveTraffic({ admin }: ViewProps) {
   const [paused, setPaused] = useState(false)
   const [held, setHeld] = useState(0)
   const [dropped, setDropped] = useState(0)
+  const [reconnected, setReconnected] = useState(false)
   const [stream, setStream] = useState<'connecting' | 'live' | 'closed'>('connecting')
   const [only, setOnly] = useState<'all' | 'changes' | 'refused'>('all')
   const pausedRef = useRef(paused)
@@ -633,7 +634,12 @@ export function LiveTraffic({ admin }: ViewProps) {
 
   useEffect(() => {
     const source = new EventSource('/admin/events/stream')
-    source.onopen = () => setStream('live')
+    let opened = false
+    source.onopen = () => {
+      if (opened) setReconnected(true)
+      opened = true
+      setStream('live')
+    }
     source.onerror = () => setStream(source.readyState === EventSource.CLOSED ? 'closed' : 'connecting')
     source.addEventListener('request', (message) => {
       const event = JSON.parse((message as MessageEvent<string>).data) as RequestEvent
@@ -706,6 +712,9 @@ export function LiveTraffic({ admin }: ViewProps) {
             </button>
           </div>
         </div>
+        {reconnected ? (
+          <p className="notice tone-pending card-notice">The stream reconnected; events may have been missed. Request lookup can search the gateway's recent events.</p>
+        ) : null}
         {dropped > 0 ? (
           <p className="notice tone-pending card-notice">This view fell behind and missed {dropped} events. The gateway's security log still has every request.</p>
         ) : null}

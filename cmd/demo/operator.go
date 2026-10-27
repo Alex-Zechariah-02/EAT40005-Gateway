@@ -74,7 +74,9 @@ func attack(args []string) error {
 	defer client.CloseIdleConnections()
 	token := ""
 	if *scenario == "flood-orders" {
-		token, _, err = loginWithClient(client, "http://"+dataListen, "aisyah@fetch.test")
+		// This limit is per account: a different source address alone would
+		// still consume Aisyah's checkout budget.
+		token, _, err = loginWithClient(client, "http://"+dataListen, "daniel@fetch.test")
 		if err != nil {
 			return err
 		}

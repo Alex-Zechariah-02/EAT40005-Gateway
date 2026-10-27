@@ -29,8 +29,19 @@ function read(): Basket | null {
   try {
     const raw = sessionStorage.getItem(storageKey)
     if (!raw) return null
-    const value = JSON.parse(raw) as Basket
-    return value?.merchant && Array.isArray(value.lines) && value.lines.length ? value : null
+    const value = JSON.parse(raw) as Basket | null
+    if (
+      !value?.merchant ||
+      typeof value.merchant.id !== 'string' || !value.merchant.id ||
+      typeof value.merchant.name !== 'string' ||
+      !Array.isArray(value.lines) || !value.lines.length || value.lines.length > maxLines ||
+      !value.lines.every((line) => line &&
+        typeof line.item === 'string' && line.item.length > 0 && typeof line.name === 'string' &&
+        Number.isSafeInteger(line.price_sen) && line.price_sen >= 0 &&
+        Number.isInteger(line.quantity) && line.quantity >= 1 && line.quantity <= maxQuantity) ||
+      new Set(value.lines.map((line) => line.item)).size !== value.lines.length
+    ) return null
+    return value
   } catch {
     return null
   }

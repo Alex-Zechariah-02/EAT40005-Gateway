@@ -250,6 +250,31 @@ test.describe.serial('Fetch app on the gateway data plane', () => {
     record('no-secrets', { scanned: files(applicationDist).length, found })
   })
 
+  test('malformed saved basket, address and session data cannot break the tab', async () => {
+    const cases = [
+      { key: 'fetch.basket', value: { merchant: { id: 'MER-001', name: 'Shop' }, lines: [null] } },
+      { key: 'fetch.address', value: { line1: 'Saved street', postcode: 59100, city: {}, state: 'Selangor' } },
+      { key: 'fetch.session', value: { token: 'invalid-saved-token', expiresAt: Date.now() + 600_000, user: {} } },
+    ]
+    for (const saved of cases) {
+      const page = await context.newPage()
+      const errors: string[] = []
+      page.on('pageerror', (error) => errors.push(error.message))
+      try {
+        await page.addInitScript(({ key, value }) => sessionStorage.setItem(key, JSON.stringify(value)), saved)
+        await page.goto(siteURL + '/cart', { waitUntil: 'networkidle' })
+        await expect.soft(page.getByRole('main'), saved.key).toBeVisible()
+        await expect.soft(page.getByRole('link', { name: 'Sign in', exact: true }).first(), saved.key).toBeVisible()
+        if (saved.key === 'fetch.address') await expect.soft(page.getByRole('button', { name: 'Add a delivery address' })).toBeVisible()
+        expect.soft(errors, saved.key).toEqual([])
+      } finally {
+        await page.close()
+      }
+    }
+    for (const count of Object.values(await demo.counts())) expect(count).toBe(0)
+    record('malformed-saved-data', { keys: cases.map((saved) => saved.key) })
+  })
+
   test('the reachable pages pass the accessibility rules at desktop, tablet and phone widths, and work by keyboard', async () => {
     const results: Record<string, number> = {}
     for (const width of [1440, 768, 375]) {

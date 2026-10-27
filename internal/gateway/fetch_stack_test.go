@@ -245,22 +245,45 @@ func TestFetchStackScenarios(t *testing.T) {
 	}
 
 	t.Log("real source-bound flood commands")
+	floodCustomer := login("daniel@fetch.test")
+	ordersBeforeFlood := receiptCount(1)
 	for _, scenario := range []struct{ name, source, count string }{{"flood-orders", "127.0.0.51", "12"}, {"flood-search", "127.0.0.50", "65"}, {"flood-login", "127.0.0.52", "12"}} {
 		result := cli(false, "attack", "-dir", dir, "-scenario", scenario.name, "-from", scenario.source, "-count", scenario.count)
 		if !strings.Contains(result, "429:") || !strings.Contains(result, "from="+scenario.source) {
 			t.Fatalf("flood did not demonstrate quota: %s", result)
 		}
 	}
+	var floodReceipts struct {
+		Receipts []services.Receipt `json:"receipts"`
+	}
+	if err := json.Unmarshal(control(1, "/receipts"), &floodReceipts); err != nil {
+		t.Fatal(err)
+	}
+	flooded := floodReceipts.Receipts[ordersBeforeFlood:]
+	if len(flooded) != 10 {
+		t.Fatalf("order flood reached Orders %d times, want 10", len(flooded))
+	}
+	for _, receipt := range flooded {
+		if receipt.Subject != "cust-002" || receipt.Status != 201 {
+			t.Fatalf("order flood receipt: subject=%s status=%d", receipt.Subject, receipt.Status)
+		}
+	}
+	refused(1, "POST", "/orders", checkout, floodCustomer, 429)
+	call("POST", "/orders", checkout, customer, 201)
+	if receiptCount(1) != ordersBeforeFlood+11 {
+		t.Fatal("separate customer checkout did not reach Orders exactly once")
+	}
 
 	t.Log("containment applies, then expires")
 	e.mustOverride(root, operationContainment("orders.create", 1), policyETag(revision), "fetch-stack-contain")
 	refused(1, "POST", "/orders", checkout, customer, 403)
+	refused(1, "POST", "/orders", checkout, floodCustomer, 403)
 	waitFor(t, time.Now().Add(5*time.Second), "containment expiry", func() bool {
 		code, _ := e.get("/orders/wallet", "Authorization", "Bearer "+customer)
 		return code == 200 && len(e.activeOverrides(root).GenerationOverrides) == 0
 	})
 	// The old exhausted quota carries over; expiry removes only containment.
-	refused(1, "POST", "/orders", checkout, customer, 429)
+	refused(1, "POST", "/orders", checkout, floodCustomer, 429)
 
 	t.Log("add a Support operation through complete policy activation")
 	without := loadPolicy("baseline.json")

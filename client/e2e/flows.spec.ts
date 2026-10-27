@@ -419,6 +419,14 @@ test.describe.serial('Fetch roles on the real services', () => {
   test('the session lives in this tab only: a new tab is signed out, nothing but the theme is in localStorage, signing out clears the person', async ({ browser }) => {
     const priya = await person(browser, 'priya@fetch.test')
     await addToBasket(priya, siteURL, 'MER-001', 'Teh Tarik')
+    // Establish this test's saved-address precondition even in an isolated run.
+    const addAddress = priya.getByRole('button', { name: 'Add a delivery address' })
+    if (await addAddress.isVisible()) {
+      await addAddress.click()
+      await priya.getByLabel('Street address').fill('12 Jalan Telawi 3')
+      await priya.getByLabel('Postcode').fill('59100')
+      await priya.getByRole('button', { name: 'Save address' }).click()
+    }
     await priya.getByRole('button', { name: /^Account: Priya/ }).click()
     await priya.getByRole('menuitemradio', { name: 'Dark' }).click()
     await priya.keyboard.press('Escape')
@@ -440,15 +448,34 @@ test.describe.serial('Fetch roles on the real services', () => {
 
     // Changing person cancels what is pending: a slow read is aborted when
     // Priya signs out, and nothing of hers stays in the tab.
+    const diagnostics: { event: string; at: number; error?: string }[] = []
+    const startedAt = Date.now()
+    let releaseRead: () => void = () => {}
+    const held = new Promise<void>((resolve) => { releaseRead = resolve })
+    const pending = priya.waitForRequest((request) => new URL(request.url()).pathname === '/orders/mine')
     await priya.route('**/orders/mine*', async (route) => {
-      await new Promise((done) => setTimeout(done, 4000))
-      await route.continue().catch(() => undefined)
+      diagnostics.push({ event: 'read held', at: Date.now() - startedAt })
+      await held
+      await route.continue().catch((error: unknown) => {
+        diagnostics.push({ event: 'continue after cancellation', at: Date.now() - startedAt, error: String(error) })
+      })
     })
-    await priya.goto(siteURL + '/my-orders')
-    const aborted = priya.waitForEvent('requestfailed', (request) => new URL(request.url()).pathname === '/orders/mine')
-    await priya.getByRole('button', { name: /^Account: Priya/ }).click()
-    await priya.getByRole('menuitem', { name: 'Sign out' }).click()
-    expect((await aborted).failure()?.errorText).toMatch(/abort/i)
+    try {
+      await priya.goto(siteURL + '/my-orders')
+      await pending
+      const aborted = priya.waitForEvent('requestfailed', (request) => new URL(request.url()).pathname === '/orders/mine')
+      await priya.getByRole('button', { name: /^Account: Priya/ }).click()
+      await priya.getByRole('menuitem', { name: 'Sign out' }).click()
+      diagnostics.push({ event: 'signed out', at: Date.now() - startedAt })
+      releaseRead()
+      const failure = (await aborted).failure()?.errorText
+      diagnostics.push({ event: 'request failed', at: Date.now() - startedAt, error: failure })
+      expect(failure).toMatch(/abort/i)
+    } finally {
+      releaseRead()
+      record('sign-out-abort-diagnostics', { diagnostics })
+      await priya.unroute('**/orders/mine*')
+    }
     await expect(priya.getByRole('link', { name: 'Sign in' })).toBeVisible()
     expect((await storage(priya)).session).toEqual([])
     await expect(priya.getByText('Priya')).toHaveCount(0)

@@ -801,7 +801,9 @@ test.describe.serial('dashboard', () => {
   })
 
   test('a temporary exception lets CUSTOMER read sales until the gateway expires it', async () => {
-    expect((await sales('cust-001')).status).toBe(403)
+    const beforeGrant = await sales('cust-001')
+    expect(beforeGrant.status).toBe(403)
+    expect(beforeGrant.receipts).toHaveLength(0)
     const id = await createOverride(admin, { action: 'Exception: let a role call an operation', operation: 'reports.sales', role: 'CUSTOMER', seconds: 4 })
     const allowed = await sales('cust-001')
     admitted(allowed)
@@ -938,7 +940,9 @@ test.describe.serial('dashboard', () => {
     // A trial and its rollback leave the block in place.
     await propose(admin, { role: 'CUSTOMER', operation: 'reports.summary' })
     await activate(admin, 600)
-    expect((await adjust('ops-01', -1)).status).toBe(403)
+    const duringTrial = await adjust('ops-01', -1)
+    expect(duringTrial.status).toBe(403)
+    expect(duringTrial.receipts).toHaveLength(0)
     await resolve(admin, 'rollback')
     const rolledBack = await adjust('ops-01', -1)
     expect(rolledBack.status).toBe(403)
@@ -1022,7 +1026,9 @@ test.describe.serial('dashboard', () => {
     // While paused a new request is counted, not shown; Resume adds it.
     await stream.getByRole('button', { name: 'Pause' }).click()
     await expect(stream.getByRole('status')).toHaveText('Paused')
-    expect((await sales('cust-001')).status).toBe(403)
+    const refusedRead = await sales('cust-001')
+    expect(refusedRead.status).toBe(403)
+    expect(refusedRead.receipts).toHaveLength(0)
     const [refusedEvent] = (await adminCall('GET', '/admin/events?subject=cust-001&limit=1')).body.items
     await expect(stream.getByRole('button', { name: 'Resume (1 new)' })).toBeVisible()
     await expect(row(refusedEvent.request_id)).toHaveCount(0)
@@ -1033,7 +1039,9 @@ test.describe.serial('dashboard', () => {
     await expect(row(refusedEvent.request_id)).toBeVisible()
     // Changes only hides reads: an attempted stock change stays, both sales
     // reads go.
-    expect((await adjust('cust-001', 1)).status).toBe(403)
+    const refusedWrite = await adjust('cust-001', 1)
+    expect(refusedWrite.status).toBe(403)
+    expect(refusedWrite.receipts).toHaveLength(0)
     const [changeEvent] = (await adminCall('GET', '/admin/events?subject=cust-001&limit=1')).body.items
     await stream.getByRole('button', { name: 'Changes only' }).click()
     await expect(stream.getByRole('button', { name: 'Changes only' })).toHaveAttribute('aria-pressed', 'true')
@@ -1452,7 +1460,9 @@ test.describe.serial('dashboard', () => {
     expect(await status()).toMatchObject({ state: 'normal', confirmed, overrides: [] })
     await expect(strip(admin)).toContainText('None active')
     expect((await adminCall('GET', `/admin/overrides/${expiring}`)).body.status).toBe('expired')
-    expect((await sales('cust-001')).status).toBe(403)
+    const expiredGrant = await sales('cust-001')
+    expect(expiredGrant.status).toBe(403)
+    expect(expiredGrant.receipts).toHaveLength(0)
     expect((await sales('ops-01')).status).toBe(200)
 
     const viewerSecret = await demo.enrol('viewer', 'read')
@@ -1706,4 +1716,54 @@ test.describe.serial('dashboard', () => {
     record('secret-scan', { secretsChecked: secrets.length, builtFiles: built.length, requests: adminRequests.length, consoleMessages, scriptDialogs })
     expect(scriptDialogs).toBe(0)
   })
+})
+
+test('a live stream reconnect discloses the gap and still receives later requests', async ({ browser }) => {
+  const deployment = new Demo(build(), webRoot())
+  const secret = deployment.setup()
+  const context = await browser.newContext()
+  let resume: () => void = () => {}
+  try {
+    await deployment.start()
+    const page = await context.newPage()
+    await page.goto(adminURL + '/')
+    await enrol(page, 'admin', secret, password)
+    await signIn(page, 'admin', password)
+    let connections = 0
+    let retryStarted: () => void = () => {}
+    const retrying = new Promise<void>((resolve) => { retryStarted = resolve })
+    const released = new Promise<void>((resolve) => { resume = resolve })
+    // A transport-only EOF triggers native EventSource auto-reconnect. No
+    // request event is fabricated; the retry goes to the real protected stream.
+    await page.route('**/admin/events/stream', async (route) => {
+      connections++
+      if (connections === 1) {
+        await route.fulfill({ status: 200, contentType: 'text/event-stream', body: 'retry: 100\n: controlled EOF\n\n' })
+      } else {
+        retryStarted()
+        await released
+        await route.continue()
+      }
+    })
+    await go(page, 'Live traffic')
+    const stream = page.getByRole('region', { name: /^Requests as they happen/ })
+    await expect(page.getByText(/events may have been missed/i)).toHaveCount(0)
+    await retrying
+    // This independent request occurs while the reconnect is held. No policy exists:
+    // this request is recorded, refused and absent from every service receipt.
+    const missed = await raw('GET', siteURL + '/orders')
+    expect(missed.status).toBe(503)
+    for (const count of Object.values(await deployment.counts())) expect(count).toBe(0)
+    resume()
+    await expect(stream.getByRole('status')).toHaveText('Live', { timeout: 20_000 })
+    const later = await raw('GET', siteURL + '/orders')
+    const laterRef = String(later.headers['x-request-id'])
+    await expect(stream.getByRole('row').filter({ hasText: laterRef.slice(0, 8) })).toBeVisible()
+    await expect(page.getByText(/events may have been missed/i)).toBeVisible()
+    record('stream-reconnect-gap', { connections, missed: missed.headers['x-request-id'], later: laterRef })
+  } finally {
+    resume()
+    await context.close()
+    await deployment.stop()
+  }
 })

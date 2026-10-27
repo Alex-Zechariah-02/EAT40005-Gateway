@@ -617,34 +617,40 @@ func TestRoleSwapsUnderLoad(t *testing.T) {
 	// Whether bob may read /a/* under each generation.
 	permitted := map[string]bool{e.status().Generation: true}
 
-	stop := make(chan struct{})
+	const workers = 8
+	const swaps = 100
+	requests := make(chan struct{}, workers)
+	completed := make(chan struct{}, workers)
 	var unexpected atomic.Int64
 	var wg sync.WaitGroup
-	for range 8 {
+	for range workers {
 		wg.Go(func() {
 			client := &http.Client{Timeout: 10 * time.Second}
-			for {
-				select {
-				case <-stop:
-					return
-				default:
-				}
+			for range requests {
 				req, _ := http.NewRequest(http.MethodGet, "http://"+e.dataAddr+"/a/x", nil)
 				req.Header.Set("Authorization", "Bearer "+bobToken)
 				resp, err := client.Do(req)
 				if err != nil {
+					e.t.Logf("role-swap request failed: %v", err)
 					unexpected.Add(1)
+					completed <- struct{}{}
 					continue
 				}
+				_, readErr := io.Copy(io.Discard, resp.Body)
 				resp.Body.Close()
-				if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusForbidden {
+				if readErr != nil || (resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusForbidden) {
+					e.t.Logf("role-swap response: status=%d read=%v", resp.StatusCode, readErr)
 					unexpected.Add(1)
 				}
+				completed <- struct{}{}
 			}
 		})
 	}
+	defer func() {
+		close(requests)
+		wg.Wait()
+	}()
 
-	const swaps = 100
 	for i := range swaps {
 		bobRoles := []string{"READER"}
 		if i%2 == 0 {
@@ -654,14 +660,21 @@ func TestRoleSwapsUnderLoad(t *testing.T) {
 		if bobRoles == nil {
 			policy = withoutRole(policy, "READER")
 		}
+		// Keep eight real requests racing every publication, with an exact
+		// bound. An unbounded refusal loop exhausts Windows client ports
+		// because the gateway deliberately closes refused connections.
+		for range workers {
+			requests <- struct{}{}
+		}
 		outcome, code := e.publish(Change{ID: fmt.Sprintf("swap-%d", i), Expected: int64(i + 1), Policy: mustJSON(policy)})
 		if code != http.StatusOK {
 			t.Fatalf("swap %d: %d %+v", i, code, outcome)
 		}
 		permitted[outcome.Generation] = bobRoles != nil
+		for range workers {
+			<-completed
+		}
 	}
-	close(stop)
-	wg.Wait()
 	if unexpected.Load() != 0 {
 		t.Fatalf("%d requests failed or got an unexpected status", unexpected.Load())
 	}
@@ -673,7 +686,9 @@ func TestRoleSwapsUnderLoad(t *testing.T) {
 		}
 		forwarded++
 	}
-	events := e.eventsWhen(func(events []map[string]any) bool { return countKind(events, "request.forwarded") >= forwarded })
+	events := e.eventsWhen(func(events []map[string]any) bool {
+		return countKind(events, "request.forwarded")+countKind(events, "request.rejected") >= workers*swaps
+	})
 	refused := 0
 	for _, ev := range events {
 		if ev["kind"] != "request.rejected" {
@@ -688,6 +703,9 @@ func TestRoleSwapsUnderLoad(t *testing.T) {
 	t.Logf("%d swaps: %d requests reached the upstream, %d refused, each under the right generation", swaps, forwarded, refused)
 	if forwarded == 0 || refused == 0 {
 		t.Fatal("the load did not exercise both outcomes")
+	}
+	if forwarded+refused != workers*swaps {
+		t.Fatalf("%d receipts plus %d refusals, want %d decisions", forwarded, refused, workers*swaps)
 	}
 }
 

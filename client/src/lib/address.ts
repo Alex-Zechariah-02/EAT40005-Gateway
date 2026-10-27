@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { onIdentityChange } from './session'
-import type { Address } from './types'
+import { states, type Address } from './types'
 
 // The delivery address for this tab, chosen in the header or at checkout and
 // held in this tab's sessionStorage. It belongs to one person: a change of
@@ -14,7 +14,9 @@ function read(): Address | null {
   try {
     const raw = sessionStorage.getItem(storageKey)
     const value = raw ? (JSON.parse(raw) as Address) : null
-    return value && typeof value.line1 === 'string' ? value : null
+    if (!value || !(['line1', 'line2', 'postcode', 'city', 'state'] as const).every((field) => typeof value[field] === 'string')) return null
+    if (Object.keys(addressErrors(value)).length || !(states as readonly string[]).includes(value.state)) return null
+    return value
   } catch {
     return null
   }

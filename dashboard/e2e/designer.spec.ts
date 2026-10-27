@@ -46,8 +46,8 @@ async function currentPolicy(): Promise<Revision & { document: Policy }> {
   return reply.body
 }
 
-async function candidates(): Promise<Candidate[]> {
-  const reply = await api('GET', '/admin/candidates?limit=100')
+async function candidates(session = context): Promise<Candidate[]> {
+  const reply = await api('GET', '/admin/candidates?limit=100', undefined, {}, session)
   expect(reply.status).toBe(200)
   return reply.body.items
 }
@@ -245,6 +245,7 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
     expect(stored.status).toBe(200)
     expect(stored.body.document).toEqual(expected)
     expect((await raw('GET', stock, { Authorization: `Bearer ${token}` })).status).toBe(403)
+    expect((await demo.receipts('inventory')).length).toBe(before.length)
     await page.getByRole('button', { name: 'Preview its impact and put it on trial', exact: true }).click()
     await expect(page.getByRole('heading', { name: `Change ${candidate}`, exact: true })).toBeVisible()
     await activate(page, 300)
@@ -560,6 +561,7 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
     await readerPage.getByRole('tab', { name: 'JSON', exact: true }).click()
     expect(await readerPage.getByLabel('Complete policy document (JSON)').isEditable()).toBe(false)
     const confirmed = await api('GET', '/admin/policy', undefined, {}, reader)
+    const candidateCount = (await candidates(reader)).length
     const refused = await api(
       'POST',
       '/admin/candidates',
@@ -569,6 +571,7 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
     )
     expect(refused.status).toBe(403)
     expect(refused.body.error).toBe('forbidden')
+    expect(await candidates(reader)).toHaveLength(candidateCount)
     await capture('designer-read-only-json', readerPage)
     await reader.close()
     record('designer-read-only', { status: refused.status, editingControls: 0 })
