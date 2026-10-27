@@ -49,7 +49,7 @@ const (
 	schemaHeaders
 )
 
-var schemaTypes = []string{"object", "string", "integer", "number", "boolean", "null"}
+var schemaTypes = []string{"object", "array", "string", "integer", "number", "boolean", "null"}
 
 // compileSchema accepts a JSON Schema 2020-12 document only if every keyword
 // in it belongs to the supported subset, then compiles it with the library.
@@ -64,7 +64,7 @@ func compileSchema(raw json.RawMessage, kind schemaKind, field string) (*jsonsch
 		return nil, nil, invalid("SCHEMA_INVALID", "%s", field)
 	}
 	root, ok := document.(map[string]any)
-	if !ok || root["type"] != "object" {
+	if !ok || (root["type"] != "object" && (kind == schemaHeaders || root["type"] != "array")) {
 		return nil, nil, invalid("INVALID_VALUE", "%s.type", field)
 	}
 	if err := checkSchema(root, field); err != nil {
@@ -127,6 +127,8 @@ func checkSchema(schema map[string]any, field string) error {
 			applies = types["string"]
 		case "minimum", "maximum":
 			applies = types["integer"] || types["number"]
+		case "items", "minItems", "maxItems":
+			applies = types["array"]
 		default:
 			return invalid("UNSUPPORTED_FEATURE", "%s.%s", field, keyword)
 		}
@@ -140,6 +142,11 @@ func checkSchema(schema map[string]any, field string) error {
 			return err
 		}
 	}
+	if types["array"] {
+		if err := checkArrayKeywords(schema, field); err != nil {
+			return err
+		}
+	}
 	if err := checkEnum(schema, field); err != nil {
 		return err
 	}
@@ -147,6 +154,41 @@ func checkSchema(schema map[string]any, field string) error {
 		return err
 	}
 	return checkRange(schema, field)
+}
+
+func checkArrayKeywords(schema map[string]any, field string) error {
+	value, present := schema["items"]
+	if !present {
+		return invalid("INVALID_VALUE", "%s.items", field)
+	}
+	items, ok := value.(map[string]any)
+	if !ok {
+		return invalid("UNSUPPORTED_FEATURE", "%s.items", field)
+	}
+	if err := checkSchema(items, field+".items"); err != nil {
+		return err
+	}
+	lower, upper := int64(0), int64(maxJSONValues)
+	for _, keyword := range []string{"minItems", "maxItems"} {
+		value, present := schema[keyword]
+		if !present {
+			continue
+		}
+		number, _ := value.(json.Number)
+		n, err := strconv.ParseInt(string(number), 10, 64)
+		if err != nil || n < 0 || n > maxJSONValues {
+			return invalid("INVALID_VALUE", "%s.%s", field, keyword)
+		}
+		if keyword == "minItems" {
+			lower = n
+		} else {
+			upper = n
+		}
+	}
+	if lower > upper {
+		return invalid("INVALID_VALUE", "%s.minItems", field)
+	}
+	return nil
 }
 
 // checkTypes accepts a supported type name or a non-empty array of distinct

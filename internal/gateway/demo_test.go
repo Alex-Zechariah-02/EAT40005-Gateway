@@ -10,7 +10,18 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/demoports"
 )
+
+func demoTestAddress(t *testing.T, base string) string {
+	t.Helper()
+	address, err := demoports.Offset(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return address
+}
 
 func demoCommand(t *testing.T, args ...string) (string, int) {
 	t.Helper()
@@ -115,7 +126,7 @@ func TestNativeDemoCommands(t *testing.T) {
 			t.Fatal("demo token failed")
 		}
 		token := strings.SplitN(tokenOutput, "\n", 2)[0]
-		e := &env{t: t, dataAddr: "127.0.0.2:9480", admin: "127.0.0.1:9440"}
+		e := &env{t: t, dataAddr: demoTestAddress(t, "127.0.0.2:9480"), admin: demoTestAddress(t, "127.0.0.1:9440")}
 		if code, _ := e.get("/orders", "Authorization", "Bearer "+token); code != http.StatusServiceUnavailable {
 			t.Fatalf("bootstrap data plane returned %d", code)
 		}
@@ -135,6 +146,7 @@ func TestNativeDemoCommands(t *testing.T) {
 			t.Fatal("demo did not reap its children")
 		}
 		for _, addr := range []string{"127.0.0.1:9440", "127.0.0.2:9480", "127.0.0.1:9501", "127.0.0.1:9502", "127.0.0.1:9503", "127.0.0.1:9601", "127.0.0.1:9602", "127.0.0.1:9603"} {
+			addr = demoTestAddress(t, addr)
 			if dialable(addr) {
 				t.Fatalf("demo round %d leaked listener %s", round, addr)
 			}
@@ -172,6 +184,7 @@ func TestNativeDemoCommands(t *testing.T) {
 	}
 	input.Close()
 	for _, addr := range []string{"127.0.0.1:9440", "127.0.0.2:9480", "127.0.0.1:9501", "127.0.0.1:9502", "127.0.0.1:9503", "127.0.0.1:9601", "127.0.0.1:9602", "127.0.0.1:9603"} {
+		addr = demoTestAddress(t, addr)
 		if dialable(addr) {
 			t.Fatalf("crashed demo leaked listener %s", addr)
 		}
@@ -180,6 +193,7 @@ func TestNativeDemoCommands(t *testing.T) {
 		t.Fatal("partial demo startup did not report a failure")
 	}
 	for _, addr := range []string{"127.0.0.1:9501", "127.0.0.1:9502", "127.0.0.1:9503", "127.0.0.1:9601", "127.0.0.1:9602", "127.0.0.1:9603"} {
+		addr = demoTestAddress(t, addr)
 		if dialable(addr) {
 			t.Fatalf("partial startup leaked fixture listener %s", addr)
 		}

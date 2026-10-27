@@ -74,8 +74,8 @@ func TestSchemaCompilation(t *testing.T) {
 		{"definitions", `{"$defs":{},"type":"object","additionalProperties":true}`, "UNSUPPORTED_FEATURE", field + ".$defs"},
 		{"pattern", `{"type":"object","additionalProperties":true,"properties":{"a":{"type":"string","pattern":"^a+$"}}}`, "UNSUPPORTED_FEATURE", field + ".properties.a.pattern"},
 		{"format", `{"type":"object","additionalProperties":true,"properties":{"a":{"type":"string","format":"email"}}}`, "UNSUPPORTED_FEATURE", field + ".properties.a.format"},
-		{"array type", `{"type":"object","additionalProperties":true,"properties":{"a":{"type":"array"}}}`, "UNSUPPORTED_FEATURE", field + ".properties.a.type"},
-		{"items", `{"type":"object","additionalProperties":true,"items":{}}`, "UNSUPPORTED_FEATURE", field + ".items"},
+		{"array without item schema", `{"type":"object","additionalProperties":true,"properties":{"a":{"type":"array"}}}`, "INVALID_VALUE", field + ".properties.a.items"},
+		{"array keyword on an object", `{"type":"object","additionalProperties":true,"items":{}}`, "INVALID_VALUE", field + ".items"},
 		{"combinator", `{"type":"object","additionalProperties":true,"anyOf":[]}`, "UNSUPPORTED_FEATURE", field + ".anyOf"},
 		{"condition", `{"type":"object","additionalProperties":true,"if":{}}`, "UNSUPPORTED_FEATURE", field + ".if"},
 		{"const", `{"type":"object","additionalProperties":true,"properties":{"a":{"type":"string","const":"x"}}}`, "UNSUPPORTED_FEATURE", field + ".properties.a.const"},
@@ -158,7 +158,7 @@ func TestSchemaCompilation(t *testing.T) {
 	// case-sensitive and kept as written, while member names outside a schema
 	// keep the lower-case rule.
 	document := func(schema string) string {
-		return `{"schema_version":3,"profile":"core","upstreams":[{"id":"u","dial":"127.0.0.1:1"}],"apis":[{"id":"a","upstream":"u"}],` +
+		return `{"schema_version":4,"profile":"core","upstreams":[{"id":"u","dial":"127.0.0.1:1"}],"apis":[{"id":"a","upstream":"u"}],` +
 			`"operations":[{"id":"x","api":"a","method":"POST","target":"/x","access":"allow","auth":"none","body":{"max_bytes":100,"schema":` + schema + `}}]}`
 	}
 	documents := []struct {

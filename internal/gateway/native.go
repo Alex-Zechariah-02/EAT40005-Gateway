@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 )
 
 // The native gateway: the controller, its enforcement handler and the native
@@ -166,7 +167,8 @@ func runNative(configPath string, logger *slog.Logger) int {
 type nativeGateway struct {
 	controller *Controller
 	data       *http.Server
-	// served receives the data-plane server's Serve result.
+	metrics    *http.Server
+	// served receives the data-plane and metrics servers' Serve results.
 	served chan error
 	stop   func() error
 }
@@ -202,8 +204,14 @@ func startNative(cfg nativeConfig, logger *slog.Logger) (*nativeGateway, error) 
 	if err != nil {
 		return release(fmt.Errorf("data listener: %w", err))
 	}
+	metricsListener, err := net.Listen("tcp", cfg.metricsListen)
+	if err != nil {
+		listener.Close()
+		return release(fmt.Errorf("metrics listener: %w", err))
+	}
 	if err := c.Start(); err != nil {
 		listener.Close()
+		metricsListener.Close()
 		return release(fmt.Errorf("admin listener: %w", err))
 	}
 
@@ -226,10 +234,18 @@ func startNative(cfg nativeConfig, logger *slog.Logger) (*nativeGateway, error) 
 			DisableGeneralOptionsHandler: true,
 			ErrorLog:                     slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
 		},
-		served: make(chan error, 1),
+		metrics: &http.Server{
+			Handler:           http.HandlerFunc(c.handleMetrics),
+			ReadHeaderTimeout: 5 * time.Second,
+			WriteTimeout:      5 * time.Second,
+			IdleTimeout:       30 * time.Second,
+			MaxHeaderBytes:    defaultHeaderBytes,
+		},
+		served: make(chan error, 2),
 	}
 	g.stop = sync.OnceValue(g.shutdown)
 	go func() { g.served <- g.data.Serve(listener) }()
+	go func() { g.served <- g.metrics.Serve(metricsListener) }()
 
 	// Listening does not mean protected requests are admitted: the deployment
 	// may be in bootstrap or recovery, without usable authority, or without
@@ -254,6 +270,9 @@ func (g *nativeGateway) shutdown() error {
 	ctx, cancel := context.WithTimeout(context.Background(), adminShutdownWait)
 	defer cancel()
 	var errs []error
+	if err := g.metrics.Shutdown(ctx); err != nil {
+		errs = append(errs, fmt.Errorf("metrics listener shutdown: %w", err), g.metrics.Close())
+	}
 	if err := g.data.Shutdown(ctx); err != nil {
 		// Requests still running are cut off; their clients see their
 		// connections close.
@@ -276,14 +295,16 @@ func dataPlane(enforcement http.Handler, website fs.FS) http.Handler {
 			enforcement.ServeHTTP(w, r)
 			return
 		}
+		stripUntrustedHeaders(r.Header)
+		w.Header().Set("X-Request-Id", newRequestID())
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Cache-Control", "no-store")
 		serveFrontendFile(w, r, website, name, contentType)
 	})
 }
 
-// websiteFile names the website file a request asks for: the page at
-// /demo/, or a file of the flat assets directory at /demo/assets/<name>. The
+// websiteFile names the Fetch page at an approved client route, or a file
+// of the flat assets directory at /assets/<name>. The
 // request target is compared as received, before any decoding, and an asset
 // name may hold only letters, digits, '.', '-' and '_', so no target reaches
 // any other file. Every other request is not the website's.
@@ -292,15 +313,41 @@ func websiteFile(r *http.Request) (name, contentType string, ok bool) {
 		return "", "", false
 	}
 	target, _, _ := strings.Cut(r.RequestURI, "?")
-	if target == "/demo/" {
+	if isWebsitePage(target) {
 		return "index.html", "text/html; charset=utf-8", true
 	}
-	asset, found := strings.CutPrefix(target, "/demo/assets/")
-	contentType = assetTypes[path.Ext(asset)]
+	asset, found := strings.CutPrefix(target, "/assets/")
+	switch path.Ext(asset) {
+	case ".js":
+		contentType = "text/javascript"
+	case ".css":
+		contentType = "text/css"
+	case ".svg":
+		contentType = "image/svg+xml"
+	case ".webp":
+		contentType = "image/webp"
+	}
 	if !found || contentType == "" || !isAssetName(asset) {
 		return "", "", false
 	}
 	return "assets/" + asset, contentType, true
+}
+
+func isWebsitePage(target string) bool {
+	switch target {
+	case "/", "/food", "/mart", "/cart", "/checkout", "/my-orders", "/help", "/signin",
+		"/merchant", "/rider", "/support", "/ops", "/lab":
+		return true
+	}
+	if !isCanonical(target) {
+		return false
+	}
+	for _, prefix := range []string{"/store/", "/item/", "/my-orders/", "/help/"} {
+		if id, found := strings.CutPrefix(target, prefix); found && id != "" && !strings.Contains(id, "/") {
+			return true
+		}
+	}
+	return false
 }
 
 func isAssetName(name string) bool {

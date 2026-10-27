@@ -41,11 +41,13 @@ func operatorPaths(configPath string, cfg Config, command string, flags map[stri
 		{"configuration", configPath},
 		{"database", cfg.Database},
 		{"audit log", cfg.AuditLog},
-		{"JWT public key", cfg.JWT.PublicKeyFile},
 		{"deployment lock", cfg.Database + ".lock"},
 		{"database WAL", cfg.Database + "-wal"},
 		{"database SHM", cfg.Database + "-shm"},
 		{"database journal", cfg.Database + "-journal"},
+	}
+	for _, key := range cfg.JWT.Keys {
+		protected = append(protected, struct{ name, path string }{"JWT public key", key.PublicKeyFile})
 	}
 	for i, file := range protected {
 		if err := regularPath(file.path); err != nil {

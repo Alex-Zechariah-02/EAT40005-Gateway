@@ -40,7 +40,7 @@ func writeAudit(file *os.File, data []byte) error {
 	outcome := bytes.Contains(data, []byte(`"kind":"request.forwarded"`))
 	published := false
 	for _, kind := range []string{"transition.published", "cpa.activated", "cpa.confirmed", "cpa.rolled_back", "cpa.timed_out",
-		"tpo.created", "tpo.revoked", "tpo.expired"} {
+		"tpo.created", "tpo.revoked", "tpo.expired", "account.block", "account.unblock", "keys.reload"} {
 		published = published || bytes.Contains(data, []byte(`"kind":"`+kind+`"`))
 	}
 	switch {

@@ -1323,7 +1323,7 @@ func TestNativeForwardingReleasesStalledExchanges(t *testing.T) {
 // requests that follow do reach it.
 func TestNativeForwardingRefusalsReachNoUpstream(t *testing.T) {
 	e := newEnv(t)
-	p := e.protectedPolicy(alice, bob)
+	p := e.protectedPolicy()
 	p.Operations = append(p.Operations,
 		Operation{ID: "strict", API: "a", Method: "POST", Target: "/a/strict", Access: "allow", Auth: "required",
 			Body: jsonBody(1024, `{"type":"object","additionalProperties":true,"required":["n"],"properties":{"n":{"type":"integer"}}}`)},
@@ -1348,8 +1348,8 @@ func TestNativeForwardingRefusalsReachNoUpstream(t *testing.T) {
 		{"no token", "GET", "/a/x", "", "", nil, 401, "JWT"},
 		{"altered signature", "GET", "/a/x", "", "", []string{"Authorization", "Bearer " + segments[0] + "." + segments[1] + ".AAAA" + segments[2][4:]}, 401, "JWT"},
 		{"subject without a permit", "POST", "/a/item", "application/json", `{"n":1}`, bearer(t, "bob"), 403, "RBAC"},
-		{"role claimed in the token", "POST", "/a/item", "application/json", `{"n":1}`,
-			[]string{"Authorization", "Bearer " + issuer.token(t, changed(validClaims("bob"), map[string]any{"roles": []string{"WRITER"}}))}, 403, "RBAC"},
+		{"unknown role claimed in the verified token", "POST", "/a/item", "application/json", `{"n":1}`,
+			[]string{"Authorization", "Bearer " + issuer.token(t, changed(validClaims("bob"), map[string]any{"roles": []string{"ADMIN"}}))}, 403, "RBAC"},
 		{"media type", "POST", "/a/strict", "text/plain", `{"n":1}`, []string{"Authorization", "Bearer " + token}, 415, "BODY"},
 		{"malformed JSON", "POST", "/a/strict", "application/json", `{"n":`, []string{"Authorization", "Bearer " + token}, 400, "BODY"},
 		{"body schema", "POST", "/a/strict", "application/json", `{"n":"one"}`, []string{"Authorization", "Bearer " + token}, 400, "VALIDATION"},

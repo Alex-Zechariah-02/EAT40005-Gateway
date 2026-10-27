@@ -50,7 +50,7 @@ func (e *env) controllerConfig() Config {
 		Database:    e.database,
 		AuditLog:    e.auditLog,
 		AdminListen: e.admin,
-		JWT:         TrustConfig{Issuer: testIssuerName, Audience: testAudience, PublicKeyFile: e.publicKey},
+		JWT:         testTrust(testIssuerName, testAudience, e.publicKey),
 	}
 }
 
@@ -132,7 +132,7 @@ func assertReleased(t *testing.T, c *Controller, cfg Config) {
 // everything, once, however often it is called.
 func TestControllerOwnedByApplication(t *testing.T) {
 	e := newEnv(t)
-	policy := e.protectedPolicy(alice, bob)
+	policy := e.protectedPolicy()
 	seed(t, e.database, policy, seedOptions{})
 	writers, servers := goroutines(auditWriter), goroutines(adminServer)
 
@@ -219,8 +219,8 @@ func TestControllerRefusesInvalidConfiguration(t *testing.T) {
 		{"host name admin listener", func(e *env, cfg *Config) { cfg.AdminListen = "localhost:" + port(e.admin) }, "loopback"},
 		{"admin listener without a port", func(e *env, cfg *Config) { cfg.AdminListen = "127.0.0.1:0" }, "loopback"},
 		{"no trust configuration", func(e *env, cfg *Config) { cfg.JWT = TrustConfig{} }, "jwt: issuer and audience"},
-		{"missing key file", func(e *env, cfg *Config) { cfg.JWT.PublicKeyFile = filepath.Join(e.dir, "absent.pem") }, "jwt: opening public key"},
-		{"private key given as the key", func(e *env, cfg *Config) { cfg.JWT.PublicKeyFile = privateKey }, "exactly one PEM PUBLIC KEY block"},
+		{"missing key file", func(e *env, cfg *Config) { cfg.JWT.Keys[0].PublicKeyFile = filepath.Join(e.dir, "absent.pem") }, "jwt: opening public key"},
+		{"private key given as the key", func(e *env, cfg *Config) { cfg.JWT.Keys[0].PublicKeyFile = privateKey }, "exactly one PEM PUBLIC KEY block"},
 		{"audit file size below the bound", func(e *env, cfg *Config) { cfg.AuditMaxBytes = 1024 }, "audit_max_bytes must be"},
 		{"negative audit file size", func(e *env, cfg *Config) { cfg.AuditMaxBytes = -1 }, "audit_max_bytes must be"},
 		{"one audit file", func(e *env, cfg *Config) { cfg.AuditMaxFiles = 1 }, "audit_max_files must be"},
@@ -696,7 +696,7 @@ func TestBeginStopEndsAdmission(t *testing.T) {
 // confirmed authority.
 func TestOwnedControllerRunsPolicyLifecycles(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	c, _ := e.own(e.controllerConfig())
 	if err := c.Start(); err != nil {
 		t.Fatal(err)

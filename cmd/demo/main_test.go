@@ -26,7 +26,7 @@ type decoded struct {
 		Role      string `json:"role"`
 		Operation string `json:"operation"`
 	} `json:"permits"`
-	Subjects []fixture.Subject `json:"subjects"`
+	SchemaVersion int `json:"schema_version"`
 }
 
 func decode(t *testing.T, policy map[string]any) decoded {
@@ -72,14 +72,11 @@ func TestBaselineMatchesCatalogue(t *testing.T) {
 		}
 	}
 
-	if len(p.Subjects) != len(c.Subjects) {
-		t.Fatalf("%d subjects, catalogue has %d", len(p.Subjects), len(c.Subjects))
+	if p.SchemaVersion != 4 {
+		t.Errorf("schema version %d", p.SchemaVersion)
 	}
-	for i, want := range c.Subjects {
-		got := p.Subjects[i]
-		if got.ID != want.ID || got.Status != want.Status || !slices.Equal(slices.Sorted(slices.Values(got.Roles)), slices.Sorted(slices.Values(want.Roles))) {
-			t.Errorf("subject %d: %+v, catalogue %+v", i, got, want)
-		}
+	if _, exists := baselinePolicy()["subjects"]; exists {
+		t.Fatal("v4 contains policy membership")
 	}
 
 	for i, f := range fixtures {
@@ -94,8 +91,8 @@ func TestBaselineMatchesCatalogue(t *testing.T) {
 func TestDenyAllDeniesEverything(t *testing.T) {
 	baseline := baselinePolicy()
 	p := decode(t, denyAll(baseline))
-	if len(p.Permits) != 0 || len(p.Subjects) != 0 {
-		t.Errorf("permits %v, subjects %v", p.Permits, p.Subjects)
+	if _, exists := denyAll(baseline)["subjects"]; exists || len(p.Permits) != 0 {
+		t.Errorf("deny-all grants or contains removed membership: %+v", p)
 	}
 	for _, op := range p.Operations {
 		if op.Access != "deny" {

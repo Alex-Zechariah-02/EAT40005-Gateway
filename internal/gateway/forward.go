@@ -121,6 +121,8 @@ func (p *upstreamProxy) forward(w http.ResponseWriter, r *http.Request) error {
 			if res.StatusCode == http.StatusSwitchingProtocols {
 				return errProtocolSwitched
 			}
+			// Only the gateway assigns the response's correlation reference.
+			res.Header.Del("X-Request-Id")
 			res.Header.Add("Via", via(res.ProtoMajor, res.ProtoMinor))
 			res.Body = newIdleBody(res.Body, p.readIdle, func() { cancel(errResponseStalled) })
 			return nil

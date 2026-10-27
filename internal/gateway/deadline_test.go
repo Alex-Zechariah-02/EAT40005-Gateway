@@ -94,7 +94,7 @@ func TestDeadlinePredicate(t *testing.T) {
 // explicit rollback changes nothing.
 func TestTimeoutWithoutTraffic(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 	baseGeneration := e.status().Generation
@@ -118,7 +118,7 @@ func TestTimeoutWithoutTraffic(t *testing.T) {
 		t.Fatalf("confirmation: %d %s", code, body)
 	}
 	// Rolled back before its deadline: the timer must not act again.
-	_, withdrawn := e.provisionalFrom(harness, e.protectedPolicy(alice, bob), kept.Provisional, 2, "quiet-timeout-03")
+	_, withdrawn := e.provisionalFrom(harness, e.protectedPolicy(), kept.Provisional, 2, "quiet-timeout-03")
 	if code, _, body := e.resolve(harness, "rollback", withdrawn.Provisional, policyETag(kept.Provisional), "quiet-timeout-03-rollback"); code != http.StatusOK {
 		t.Fatalf("rollback: %d %s", code, body)
 	}
@@ -162,7 +162,7 @@ func TestTimeoutWithoutTraffic(t *testing.T) {
 // than an hour later.
 func TestDeadlineSetWhileClockAhead(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	offset := filepath.Join(t.TempDir(), "wall-offset")
 	setOffset := func(d time.Duration) {
 		if err := os.WriteFile(offset, []byte(strconv.FormatInt(d.Milliseconds(), 10)), 0o600); err != nil {
@@ -188,7 +188,7 @@ func TestDeadlineSetWhileClockAhead(t *testing.T) {
 // controller roll back, once, however many requests see the expiry at once.
 func TestExpiredProvisionalAdmitsNothing(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.fault, "GATEWAY_FAULT=no-deadline-timer")
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 
@@ -287,7 +287,7 @@ func TestExpiredProvisionalAdmitsNothing(t *testing.T) {
 // is the only arbiter.
 func TestDecisionAtDeadline(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.fault, "GATEWAY_FAULT=no-deadline-timer")
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 
@@ -334,7 +334,7 @@ func TestDecisionAtDeadline(t *testing.T) {
 // it admits its first request.
 func TestRestartAroundDeadline(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 

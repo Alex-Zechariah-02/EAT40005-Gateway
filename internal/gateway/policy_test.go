@@ -43,13 +43,6 @@ func threeAPIPolicy() Policy {
 			{Role: "STAFF", Operation: "orders.list"},
 			{Role: "CUSTOMER", Operation: "orders.create"},
 		},
-		Subjects: []Subject{
-			{ID: "cust-001", Status: "active", Roles: []string{"CUSTOMER"}},
-			{ID: "staff-01", Status: "active", Roles: []string{"STAFF"}},
-			{ID: "both@example.test", Status: "active", Roles: []string{"STAFF", "CUSTOMER"}},
-			{ID: "nobody-01", Status: "active", Roles: nil},
-			{ID: "former-01", Status: "disabled", Roles: []string{"STAFF"}},
-		},
 	}
 }
 
@@ -98,17 +91,17 @@ func TestValidPolicyCompilesDeterministically(t *testing.T) {
 	// The generation shares nothing mutable with the policy it came from.
 	p.Operations[0].Access = "deny"
 	p.Upstreams[0].Dial = "127.0.0.1:1"
-	p.Subjects[1].Roles[0] = "CUSTOMER"
-	p.Subjects[4].Status = "active"
+	p.Roles[1].ID = "OTHER"
+	p.Permits[0].Role = "CUSTOMER"
 	_, r := first.match("/orders", "GET")
 	if r == nil || !r.permitted || r.dial != "127.0.0.1:9101" || r.api != "orders" || r.upstream != "orders" {
 		t.Fatalf("generation changed with its source policy: %+v", r)
 	}
-	if _, reason := first.authorise("staff-01", r); reason != "" {
-		t.Fatalf("membership changed with its source policy: %s", reason)
+	if _, _, reason := first.authorise([]string{"STAFF"}, r); reason != "" {
+		t.Fatalf("permit changed with its source policy: %s", reason)
 	}
-	if _, reason := first.authorise("former-01", r); reason != "disabled_subject" {
-		t.Fatalf("subject status changed with its source policy: %s", reason)
+	if _, ignored, reason := first.authorise([]string{"OTHER"}, r); reason != "no_permit" || !slices.Equal(ignored, []string{"OTHER"}) {
+		t.Fatalf("declared roles changed with source: %s %v", reason, ignored)
 	}
 
 	// A different revision is a different generation.
@@ -120,13 +113,13 @@ func TestValidPolicyCompilesDeterministically(t *testing.T) {
 
 func TestMalformedPolicyDocumentsAreRejected(t *testing.T) {
 	valid, _ := json.Marshal(threeAPIPolicy())
-	head := `{"schema_version":3,"profile":"core"`
+	head := `{"schema_version":4,"profile":"core"`
 	cases := []struct {
 		name     string
 		document string
 		code     string
 	}{
-		{"malformed JSON", `{"schema_version":3,`, "SCHEMA_INVALID"},
+		{"malformed JSON", `{"schema_version":4,`, "SCHEMA_INVALID"},
 		{"truncated document", string(valid[:len(valid)/2]), "SCHEMA_INVALID"},
 		{"trailing data", string(valid) + "}", "SCHEMA_INVALID"},
 		{"not an object", `[1]`, "SCHEMA_INVALID"},
@@ -140,16 +133,17 @@ func TestMalformedPolicyDocumentsAreRejected(t *testing.T) {
 		{"unknown nested field", head + `,"operations":[{"id":"x","api":"a","method":"GET","target":"/x","access":"allow","auth":"none","rbac":"off"}]}`, "UNKNOWN_FIELD"},
 		{"subject with an inherited role field", head + `,"subjects":[{"id":"a","status":"active","roles":[],"inherits":"ADMIN"}]}`, "UNKNOWN_FIELD"},
 		{"wrong type", head + `,"upstreams":{}}`, "SCHEMA_INVALID"},
-		{"wrong subject roles type", head + `,"subjects":[{"id":"a","status":"active","roles":"STAFF"}]}`, "SCHEMA_INVALID"},
+		{"removed subjects even with wrong roles type", head + `,"subjects":[{"id":"a","status":"active","roles":"STAFF"}]}`, "UNKNOWN_FIELD"},
 		{"wrong scalar type", `{"schema_version":"2"}`, "SCHEMA_INVALID"},
 		{"missing schema version", `{"profile":"core"}`, "SCHEMA_VERSION_UNSUPPORTED"},
 		{"earlier schema version", `{"schema_version":1,"profile":"routing-only"}`, "SCHEMA_VERSION_UNSUPPORTED"},
 		{"previous schema version", `{"schema_version":2,"profile":"jwt-rbac"}`, "SCHEMA_VERSION_UNSUPPORTED"},
-		{"later schema version", `{"schema_version":4,"profile":"core"}`, "SCHEMA_VERSION_UNSUPPORTED"},
-		{"missing profile", `{"schema_version":3}`, "INVALID_VALUE"},
-		{"routing-only profile", `{"schema_version":3,"profile":"routing-only"}`, "UNSUPPORTED_FEATURE"},
-		{"previous profile", `{"schema_version":3,"profile":"jwt-rbac"}`, "UNSUPPORTED_FEATURE"},
-		{"profile claiming full enforcement", `{"schema_version":3,"profile":"protected"}`, "UNSUPPORTED_FEATURE"},
+		{"retired schema version", `{"schema_version":3,"profile":"core"}`, "SCHEMA_VERSION_UNSUPPORTED"},
+		{"later schema version", `{"schema_version":5,"profile":"core"}`, "SCHEMA_VERSION_UNSUPPORTED"},
+		{"missing profile", `{"schema_version":4}`, "INVALID_VALUE"},
+		{"routing-only profile", `{"schema_version":4,"profile":"routing-only"}`, "UNSUPPORTED_FEATURE"},
+		{"previous profile", `{"schema_version":4,"profile":"jwt-rbac"}`, "UNSUPPORTED_FEATURE"},
+		{"profile claiming full enforcement", `{"schema_version":4,"profile":"protected"}`, "UNSUPPORTED_FEATURE"},
 		{"missing access", head + `,"upstreams":[{"id":"u","dial":"127.0.0.1:1"}],"apis":[{"id":"a","upstream":"u"}],"operations":[{"id":"x","api":"a","method":"GET","target":"/x","auth":"none"}]}`, "INVALID_VALUE"},
 		{"missing auth", head + `,"upstreams":[{"id":"u","dial":"127.0.0.1:1"}],"apis":[{"id":"a","upstream":"u"}],"operations":[{"id":"x","api":"a","method":"GET","target":"/x","access":"allow"}]}`, "INVALID_VALUE"},
 		{"oversize document", head + `,"roles":[` + strings.Repeat(`{"id":"r"},`, 7000) + `{"id":"r"}]}`, "LIMIT_EXCEEDED"},
@@ -178,12 +172,12 @@ func TestPolicyCountAndLengthLimits(t *testing.T) {
 		}
 		return strings.Join(items, ",")
 	}
-	head := `{"schema_version":3,"profile":"core"`
+	head := `{"schema_version":4,"profile":"core"`
 	cases := []struct {
 		name     string
 		document string
 	}{
-		{"too many subjects", head + `,"subjects":[` + repeat(maxSubjects+1, func(i int) string {
+		{"removed subjects at former count bound", head + `,"subjects":[` + repeat(1025, func(i int) string {
 			return fmt.Sprintf(`{"id":"s%d","status":"active","roles":[]}`, i)
 		}) + `]}`},
 		{"too many upstreams", head + `,"upstreams":[` + repeat(maxUpstreams+1, func(i int) string {
@@ -195,8 +189,12 @@ func TestPolicyCountAndLengthLimits(t *testing.T) {
 		}) + `]}`},
 	}
 	for _, tc := range cases {
-		if got := errorCode(compileJSON(t, tc.document)); got != "LIMIT_EXCEEDED" {
-			t.Errorf("%s: %q, want LIMIT_EXCEEDED", tc.name, got)
+		want := "LIMIT_EXCEEDED"
+		if tc.name == "removed subjects at former count bound" {
+			want = "UNKNOWN_FIELD"
+		}
+		if got := errorCode(compileJSON(t, tc.document)); got != want {
+			t.Errorf("%s: %q, want %s", tc.name, got, want)
 		}
 	}
 
@@ -252,17 +250,6 @@ func TestInvalidReferencesAndConflictsAreRejected(t *testing.T) {
 		{"unknown access value", func(p *Policy) { p.Operations[0].Access = "permit" }, "INVALID_VALUE", "operations[0].access"},
 		{"unknown auth value", func(p *Policy) { p.Operations[0].Auth = "optional" }, "INVALID_VALUE", "operations[0].auth"},
 		{"zero body limit", func(p *Policy) { p.Operations[2].Body.MaxBytes = 0 }, "INVALID_VALUE", "operations[2].body.max_bytes"},
-		{"subject with an unknown role", func(p *Policy) { p.Subjects[0].Roles = []string{"ADMIN"} }, "UNKNOWN_REFERENCE", "subjects[0].roles[0]"},
-		{"subject with a role in another case", func(p *Policy) { p.Subjects[0].Roles = []string{"customer"} }, "UNKNOWN_REFERENCE", "subjects[0].roles[0]"},
-		{"subject holding a role twice", func(p *Policy) { p.Subjects[2].Roles = []string{"STAFF", "STAFF"} }, "DUPLICATE_ID", "subjects[2].roles[1]"},
-		{"duplicate subject", func(p *Policy) { p.Subjects[1].ID = "cust-001" }, "DUPLICATE_ID", "subjects[1].id"},
-		{"unknown subject status", func(p *Policy) { p.Subjects[0].Status = "suspended" }, "INVALID_VALUE", "subjects[0].status"},
-		{"missing subject status", func(p *Policy) { p.Subjects[3].Status = "" }, "INVALID_VALUE", "subjects[3].status"},
-		{"empty subject", func(p *Policy) { p.Subjects[0].ID = "" }, "INVALID_VALUE", "subjects[0].id"},
-		{"subject with a space", func(p *Policy) { p.Subjects[0].ID = "cust 001" }, "INVALID_VALUE", "subjects[0].id"},
-		{"subject with a control character", func(p *Policy) { p.Subjects[0].ID = "cust\n001" }, "INVALID_VALUE", "subjects[0].id"},
-		{"subject outside ASCII", func(p *Policy) { p.Subjects[0].ID = "café" }, "INVALID_VALUE", "subjects[0].id"},
-		{"overlong subject", func(p *Policy) { p.Subjects[0].ID = strings.Repeat("s", maxSubjectLength+1) }, "INVALID_VALUE", "subjects[0].id"},
 	}
 	for _, tc := range cases {
 		p := threeAPIPolicy()
@@ -271,6 +258,28 @@ func TestInvalidReferencesAndConflictsAreRejected(t *testing.T) {
 		policyErr, ok := errors.AsType[*PolicyError](err)
 		if !ok || policyErr.Code != tc.code || policyErr.Field != tc.field {
 			t.Errorf("%s: %v, want %s at %s", tc.name, err, tc.code, tc.field)
+		}
+	}
+}
+
+// The former membership attack vectors now fail at the removed policy field;
+// sub and roles themselves are validated at the verified-token boundary.
+func TestPolicySubjectsRejected(t *testing.T) {
+	for _, subject := range []Subject{
+		{ID: "s", Status: "active", Roles: []string{"ADMIN"}},
+		{ID: "s", Status: "active", Roles: []string{"customer"}},
+		{ID: "s", Status: "active", Roles: []string{"STAFF", "STAFF"}},
+		{ID: "cust-001", Status: "active"},
+		{ID: "s", Status: "suspended"},
+		{ID: "s"},
+		{Status: "active"},
+		{ID: "cust 001", Status: "active"},
+		{ID: "cust\n001", Status: "active"},
+		{ID: "café", Status: "active"},
+		{ID: strings.Repeat("s", maxSubjectLength+1), Status: "active"},
+	} {
+		if _, err := DecodePolicy(withSubject(threeAPIPolicy(), subject)); errorCode(err) != "UNKNOWN_FIELD" {
+			t.Errorf("legacy membership %+v: %v", subject, err)
 		}
 	}
 }
@@ -385,9 +394,9 @@ func TestDenyAllPolicyCompiles(t *testing.T) {
 	// Without permits no subject is allowed anything, whatever its roles.
 	for _, op := range p.Operations {
 		_, r := g.match(strings.Replace(op.Target, "*", "x", 1), op.Method)
-		for _, s := range p.Subjects {
-			if roles, reason := g.authorise(s.ID, r); reason == "" {
-				t.Errorf("%s allowed %s with roles %v under deny-all", s.ID, op.ID, roles)
+		for _, subject := range []string{"cust-001", "staff-01", "both@example.test", "nobody-01", "former-01"} {
+			if roles, _, reason := g.authorise(testRoles(subject), r); reason == "" {
+				t.Errorf("%s allowed %s with roles %v under deny-all", subject, op.ID, roles)
 			}
 		}
 	}
@@ -420,10 +429,10 @@ func TestRoleEvaluation(t *testing.T) {
 		{"both@example.test", "POST", "/orders", "", []string{"CUSTOMER", "STAFF"}},
 		{"both@example.test", "GET", "/orders/1", "no_permit", nil},
 		{"nobody-01", "GET", "/orders", "no_permit", nil},
-		{"former-01", "GET", "/orders", "disabled_subject", nil},
-		{"ghost-01", "GET", "/orders", "unknown_subject", nil},
-		{"STAFF", "GET", "/orders", "unknown_subject", nil},
-		{"Staff-01", "GET", "/orders", "unknown_subject", nil},
+		{"former-01", "GET", "/orders", "", []string{"STAFF"}}, // blocking is independent of policy role evaluation
+		{"ghost-01", "GET", "/orders", "no_permit", nil},
+		{"STAFF", "GET", "/orders", "no_permit", nil},
+		{"Staff-01", "GET", "/orders", "no_permit", nil},
 		// An operation with no permit at all, and a denied one.
 		{"staff-01", "GET", "/inventory/items/1", "no_permit", nil},
 		{"staff-01", "GET", "/reports/summary", "no_permit", nil},
@@ -433,7 +442,10 @@ func TestRoleEvaluation(t *testing.T) {
 		if r == nil {
 			t.Fatalf("%s %s matched nothing", tc.method, tc.path)
 		}
-		roles, reason := g.authorise(tc.subject, r)
+		roles, _, reason := g.authorise(testRoles(tc.subject), r)
+		if reason != "" {
+			roles = nil
+		} // these cases compare grants, not retained audit roles
 		if reason != tc.reason || !slices.Equal(roles, tc.roles) {
 			t.Errorf("%s %s %s: roles %v reason %q, want %v %q", tc.subject, tc.method, tc.path, roles, reason, tc.roles, tc.reason)
 		}
@@ -445,9 +457,9 @@ func TestRoleEvaluation(t *testing.T) {
 func FuzzDecodeAndCompile(f *testing.F) {
 	valid, _ := json.Marshal(threeAPIPolicy())
 	f.Add(valid)
-	f.Add([]byte(`{"schema_version":3,"profile":"core"}`))
-	f.Add([]byte(`{"schema_version":3,"profile":"core","profile":"x"}`))
-	f.Add([]byte(`{"schema_version":3,"profile":"core","roles":[{"id":"R"}],"subjects":[{"id":"s","status":"active","roles":["R","R"]}]}`))
+	f.Add([]byte(`{"schema_version":4,"profile":"core"}`))
+	f.Add([]byte(`{"schema_version":4,"profile":"core","profile":"x"}`))
+	f.Add([]byte(`{"schema_version":4,"profile":"core","roles":[{"id":"R"}],"subjects":[{"id":"s","status":"active","roles":["R","R"]}]}`))
 	f.Add([]byte(`[[[[[[[[[[]]]]]]]]]]`))
 	f.Fuzz(func(t *testing.T, document []byte) {
 		p, err := DecodePolicy(document)

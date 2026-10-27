@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -138,7 +139,7 @@ func TestNewHandlerRefusesIncompleteSetup(t *testing.T) {
 // upstream is contacted.
 func TestEnforcementHandlerAdmits(t *testing.T) {
 	e := newEnv(t)
-	c, _, f := e.serveEnforcement(e.protectedPolicy(alice, bob), 0)
+	c, _, f := e.serveEnforcement(e.protectedPolicy(), 0)
 	g := c.Current()
 	admittedFirst := false
 	f.setRespond(func(w http.ResponseWriter, r *http.Request) error {
@@ -197,7 +198,7 @@ func TestEnforcementHandlerAdmits(t *testing.T) {
 // stage passed, and the refusal it cannot record is counted as lost.
 func TestEnforcementAuditFailureBlocksForwarding(t *testing.T) {
 	e := newEnv(t)
-	c, _, f := e.serveEnforcement(e.protectedPolicy(alice, bob), 0)
+	c, _, f := e.serveEnforcement(e.protectedPolicy(), 0)
 	if code, _ := e.get("/a/x", "Authorization", "Bearer "+issuer.tokenFor(t, "alice")); code != http.StatusOK {
 		t.Fatalf("before the failure: %d", code)
 	}
@@ -231,7 +232,7 @@ func TestEnforcementAuditFailureBlocksForwarding(t *testing.T) {
 // and request identifier, recorded with its reason, and never handed on.
 func TestEnforcementRefusals(t *testing.T) {
 	e := newEnv(t)
-	p := e.protectedPolicy(alice, bob, Subject{ID: "carol", Status: "disabled", Roles: []string{"WRITER"}})
+	p := e.protectedPolicy()
 	p.Operations = append(p.Operations,
 		Operation{ID: "strict", API: "a", Method: "POST", Target: "/a/strict", Access: "allow", Auth: "required",
 			Body: jsonBody(1024, `{"type":"object","additionalProperties":true,"required":["n"],"properties":{"n":{"type":"integer"}}}`)},
@@ -239,7 +240,9 @@ func TestEnforcementRefusals(t *testing.T) {
 			Headers: json.RawMessage(`{"type":"object","additionalProperties":true,"required":["X-Probe"],"properties":{"X-Probe":{"type":"string","enum":["on"]}}}`)},
 	)
 	p.Permits = append(p.Permits, Permit{Role: "WRITER", Operation: "strict"})
-	_, _, f := e.serveEnforcement(p, 0)
+	controller, _, f := e.serveEnforcement(p, 0)
+	blocked := blockedAccounts{"carol": {Subject: "carol", Reason: "test containment"}}
+	controller.blocked.Store(&blocked)
 
 	bearer := func(subject string) string { return "Bearer " + issuer.tokenFor(t, subject) }
 	claims := func(changes map[string]any) string {
@@ -285,14 +288,14 @@ func TestEnforcementRefusals(t *testing.T) {
 		{name: "unsigned token", method: "GET", path: "/a/x", header: []string{"Authorization", "Bearer " + encodeSegment(`{"alg":"none"}`) + "." + segments[1] + "."},
 			status: 401, code: "unauthenticated", stage: "JWT", reason: "malformed_credential"},
 		{name: "unknown subject", method: "GET", path: "/a/x", header: []string{"Authorization", bearer("mallory")},
-			status: 403, code: "forbidden", stage: "RBAC", reason: "unknown_subject"},
+			status: 403, code: "forbidden", stage: "RBAC", reason: "no_permit"},
 		{name: "subject without a permit", method: "POST", path: "/a/item", ctype: "application/json", body: `{"n":1}`, header: []string{"Authorization", bearer("bob")},
 			status: 403, code: "forbidden", stage: "RBAC", reason: "no_permit"},
-		{name: "role claimed in the token", method: "POST", path: "/a/item", ctype: "application/json", body: `{"n":1}`,
-			header: []string{"Authorization", "Bearer " + issuer.token(t, changed(validClaims("bob"), map[string]any{"roles": []string{"WRITER"}}))},
+		{name: "unknown role claimed in the verified token", method: "POST", path: "/a/item", ctype: "application/json", body: `{"n":1}`,
+			header: []string{"Authorization", "Bearer " + issuer.token(t, changed(validClaims("bob"), map[string]any{"roles": []string{"ADMIN"}}))},
 			status: 403, code: "forbidden", stage: "RBAC", reason: "no_permit"},
 		{name: "disabled subject", method: "GET", path: "/a/x", header: []string{"Authorization", bearer("carol")},
-			status: 403, code: "forbidden", stage: "RBAC", reason: "disabled_subject"},
+			status: 403, code: "account_blocked", stage: "RBAC", reason: "account_blocked"},
 		{name: "body where none is declared", method: "GET", path: "/a/x", body: "x", header: []string{"Authorization", bearer("alice")},
 			status: 400, code: "bad_request", stage: "BODY", reason: "unexpected_body"},
 		{name: "media type", method: "POST", path: "/a/item", ctype: "text/plain", body: `{"n":1}`, header: []string{"Authorization", bearer("alice")},
@@ -422,7 +425,7 @@ func TestEnforcementBodyCeiling(t *testing.T) {
 // counters, so a new generation forgives nothing.
 func TestEnforcementRateLimit(t *testing.T) {
 	e := newEnv(t)
-	p := e.protectedPolicy(alice, bob)
+	p := e.protectedPolicy()
 	p.Operations[0].Rate = rate(2, 60)
 	c, _, f := e.serveEnforcement(p, 0)
 	get := func(subject string) (int, string) {
@@ -447,7 +450,7 @@ func TestEnforcementRateLimit(t *testing.T) {
 	}
 
 	next := p
-	next.Subjects = append([]Subject{}, alice, bob, Subject{ID: "dave", Status: "active", Roles: []string{"READER"}})
+	next.Roles = append(slices.Clone(p.Roles), Role{ID: "OTHER"})
 	if outcome, status := c.Publish(context.Background(), "test", Change{ID: "rate-continuity", Expected: 1, Policy: mustJSON(next)}); status != http.StatusOK {
 		t.Fatalf("publication: %d %+v", status, outcome)
 	}

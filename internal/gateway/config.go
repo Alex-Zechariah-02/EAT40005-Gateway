@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/demoports"
 )
 
 // The native gateway reads all of its settings from one strict JSON file. The
@@ -22,7 +24,7 @@ const (
 	// reads.
 	nativeConfigVersion = 1
 	maxConfigBytes      = 64 << 10
-	maxConfigDepth      = 4
+	maxConfigDepth      = 6
 )
 
 // Bounds of the native settings. Data-plane and upstream timeouts default to
@@ -63,6 +65,7 @@ type gatewaySettings struct {
 	Database             string      `json:"database"`
 	AuditLog             string      `json:"audit_log"`
 	AdminListen          string      `json:"admin_listen"`
+	MetricsListen        *string     `json:"metrics_listen"`
 	AdminIdleTimeout     *string     `json:"admin_idle_timeout"`
 	AdminSessionLifetime *string     `json:"admin_session_lifetime"`
 	AuditTimeout         *string     `json:"audit_timeout"`
@@ -95,6 +98,7 @@ type upstreamSettings struct {
 type nativeConfig struct {
 	controller        Config
 	listen            string
+	metricsListen     string
 	maxBodyBytes      int64
 	headerLimit       int
 	readHeaderTimeout time.Duration
@@ -102,7 +106,7 @@ type nativeConfig struct {
 	writeTimeout      time.Duration
 	idleTimeout       time.Duration
 	upstream          upstreamTimeouts
-	// website holds the built Client website served under /demo/; nil when
+	// website holds the built Fetch website served at /; nil when
 	// none is configured.
 	website fs.FS
 }
@@ -127,7 +131,12 @@ func loadNativeConfig(path string) (nativeConfig, error) {
 	if err != nil {
 		return nativeConfig{}, err
 	}
-	return settings.check()
+	cfg, err := settings.check()
+	if err != nil {
+		return nativeConfig{}, err
+	}
+	cfg.controller.settingsFile, err = filepath.Abs(path)
+	return cfg, err
 }
 
 // decodeNativeFile parses the configuration document. It refuses what
@@ -197,11 +206,18 @@ func (f nativeFile) check() (nativeConfig, error) {
 		{"gateway.admin_listen", g.AdminListen},
 		{"gateway.jwt.issuer", g.JWT.Issuer},
 		{"gateway.jwt.audience", g.JWT.Audience},
-		{"gateway.jwt.public_key_file", g.JWT.PublicKeyFile},
 		{"data.listen", d.Listen},
 	} {
 		if required.value == "" {
 			return nativeConfig{}, fmt.Errorf("%s is required", required.name)
+		}
+	}
+	if len(g.JWT.Keys) == 0 || len(g.JWT.Keys) > maxVerificationKeys {
+		return nativeConfig{}, fmt.Errorf("gateway.jwt.keys must contain 1 to %d keys", maxVerificationKeys)
+	}
+	for i, key := range g.JWT.Keys {
+		if key.PublicKeyFile == "" || !filepath.IsAbs(key.PublicKeyFile) {
+			return nativeConfig{}, fmt.Errorf("gateway.jwt.keys[%d].public_key_file must be an absolute path", i)
 		}
 	}
 	// A relative path would depend on the directory the gateway is started
@@ -212,7 +228,6 @@ func (f nativeFile) check() (nativeConfig, error) {
 	}{
 		{"gateway.database", &g.Database},
 		{"gateway.audit_log", &g.AuditLog},
-		{"gateway.jwt.public_key_file", &g.JWT.PublicKeyFile},
 		{"gateway.admin_ui", g.AdminUI},
 		{"data.website", d.Website},
 	} {
@@ -223,8 +238,19 @@ func (f nativeFile) check() (nativeConfig, error) {
 	if err := checkDataListen(d.Listen, g.AdminListen); err != nil {
 		return nativeConfig{}, err
 	}
+	metrics, err := demoports.Offset("127.0.0.1:9450")
+	if err != nil {
+		return nativeConfig{}, err
+	}
+	if g.MetricsListen != nil {
+		metrics = *g.MetricsListen
+	}
+	address, err := netip.ParseAddrPort(metrics)
+	if err != nil || !address.Addr().IsLoopback() || address.Port() == 0 || metrics == d.Listen || metrics == g.AdminListen {
+		return nativeConfig{}, errors.New("gateway.metrics_listen must be a separate loopback address with a nonzero port")
+	}
+	cfg.metricsListen = metrics
 
-	var err error
 	durations := []struct {
 		name      string
 		value     *string

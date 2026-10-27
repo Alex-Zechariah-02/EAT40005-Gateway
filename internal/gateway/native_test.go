@@ -66,21 +66,21 @@ func TestNativeGatewayServesFixtures(t *testing.T) {
 	}
 }
 
-// The native process listens on exactly its data and admin addresses. It has
+// The native process listens on exactly its data, admin and metrics addresses. It has
 // no Caddy administration endpoint, the data plane reaches no Admin API
 // route, and the Admin API keeps its Host, session, Origin, CSRF and
 // permission checks and its authority over the served policy, including the
 // confirmed-activation and temporary-override lifecycles.
 func TestNativeListenersAndAdministration(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain, "CADDY_ADMIN="+freeAddr(t))
 	before := e.status()
 
 	ports := listeningPorts(t, e.process.Process.Pid)
-	if len(ports) != 2 || !strings.Contains(" "+strings.Join(ports, " ")+" ", " "+port(e.dataAddr)+" ") ||
-		!strings.Contains(" "+strings.Join(ports, " ")+" ", " "+port(e.admin)+" ") {
-		t.Fatalf("listening ports %v, want exactly %s and %s", ports, port(e.dataAddr), port(e.admin))
+	if len(ports) != 3 || !strings.Contains(" "+strings.Join(ports, " ")+" ", " "+port(e.dataAddr)+" ") ||
+		!strings.Contains(" "+strings.Join(ports, " ")+" ", " "+port(e.admin)+" ") || !strings.Contains(" "+strings.Join(ports, " ")+" ", " "+port(e.metrics)+" ") {
+		t.Fatalf("listening ports %v, want exactly data %s, admin %s and metrics %s", ports, port(e.dataAddr), port(e.admin), port(e.metrics))
 	}
 	if dialable("127.0.0.1:2019") {
 		t.Fatal("Caddy's default admin address accepts connections")
@@ -102,7 +102,7 @@ func TestNativeListenersAndAdministration(t *testing.T) {
 	session := harness.headers(e)
 	for _, probe := range []struct{ method, path string }{
 		{http.MethodGet, "/admin/health"}, {http.MethodGet, "/admin/status"}, {http.MethodPost, "/admin/session"},
-		{http.MethodPut, "/admin/subjects/mallory"}, {http.MethodPost, "/admin/candidates"}, {http.MethodGet, "/"},
+		{http.MethodPut, "/admin/blocked-accounts/mallory"}, {http.MethodPost, "/admin/candidates"}, {http.MethodGet, "/"},
 	} {
 		resp, body := e.exchange(probe.method, probe.path, "application/json", `{}`, session...)
 		_, id := requestID(resp, body)
@@ -112,9 +112,9 @@ func TestNativeListenersAndAdministration(t *testing.T) {
 	}
 
 	// The Admin API's own boundary.
-	membership := `{"status":"active","roles":["READER"]}`
+	membership := `{"reason":"test containment"}`
 	put := func(header ...string) int {
-		code, _, _ := e.adminSend(http.MethodPut, "/admin/subjects/carol", membership,
+		code, _, _ := e.adminSend(http.MethodPut, "/admin/blocked-accounts/alice", membership,
 			append([]string{"If-Match", `"r1"`, "Idempotency-Key", "native-admin-" + newToken()[:8]}, header...)...)
 		return code
 	}
@@ -135,19 +135,25 @@ func TestNativeListenersAndAdministration(t *testing.T) {
 	if after := e.status(); after.Generation != before.Generation {
 		t.Fatalf("refused requests changed the generation to %s", after.Generation)
 	}
-	if code, _ := e.get("/a/x", bearer(t, "carol")...); code != http.StatusForbidden {
-		t.Fatalf("carol before her membership: %d", code)
+	if code, _ := e.get("/a/x", bearer(t, "alice")...); code != http.StatusOK {
+		t.Fatalf("alice before containment: %d", code)
 	}
 	if got := put(session...); got != http.StatusOK {
 		t.Fatalf("authorised membership change: %d", got)
 	}
 	member := e.status()
-	if member.Revision != 2 || member.Generation == before.Generation {
-		t.Fatalf("membership change not published: %+v", member)
+	if member.Revision != 1 || member.Generation != before.Generation {
+		t.Fatalf("containment changed policy: %+v", member)
 	}
 	e.resetReceivers()
-	if code, _ := e.get("/a/x", bearer(t, "carol")...); code != http.StatusOK {
-		t.Fatalf("carol after her membership: %d", code)
+	if code, _ := e.get("/a/x", bearer(t, "alice")...); code != http.StatusForbidden {
+		t.Fatalf("alice after containment: %d", code)
+	}
+	if code, body := e.unblockAccount(harness, "alice", "native-account-unblock"); code != 200 {
+		t.Fatalf("unblock: %d %s", code, body)
+	}
+	if code, _ := e.get("/a/x", bearer(t, "alice")...); code != 200 {
+		t.Fatalf("unblocked account: %d", code)
 	}
 	if r := e.a.receipts(); len(r) != 1 || r[0].Generation != member.Generation {
 		t.Fatalf("receipts %+v, want one under %s", r, member.Generation)
@@ -155,8 +161,8 @@ func TestNativeListenersAndAdministration(t *testing.T) {
 
 	// Confirmed activation: the candidate moves API a to C, and its
 	// confirmation keeps it there.
-	_, outcome := e.provisionalFrom(harness, e.cpaCandidate(), 2, 60, "native-cpa")
-	if code, _, body := e.resolve(harness, "confirm", outcome.Provisional, `"r2"`, "native-cpa-confirm"); code != http.StatusOK {
+	_, outcome := e.provisionalFrom(harness, e.cpaCandidate(), 1, 60, "native-cpa")
+	if code, _, body := e.resolve(harness, "confirm", outcome.Provisional, `"r1"`, "native-cpa-confirm"); code != http.StatusOK {
 		t.Fatalf("confirmation: %d %s", code, body)
 	}
 	e.resetReceivers()
@@ -391,7 +397,7 @@ func TestNativeResponseStallAndCancellation(t *testing.T) {
 // refusal is recorded at its stage and reaches no upstream.
 func TestNativeGatewayEnforcesControls(t *testing.T) {
 	e := newEnv(t)
-	p := e.protectedPolicy(alice, bob)
+	p := e.protectedPolicy()
 	for i := range p.Operations {
 		switch p.Operations[i].ID {
 		case "write-a":
@@ -411,7 +417,7 @@ func TestNativeGatewayEnforcesControls(t *testing.T) {
 	expired, foreign, claimed := validClaims("alice"), validClaims("alice"), validClaims("mallory")
 	expired["exp"] = time.Now().Add(-time.Minute).Unix()
 	foreign["iss"] = "another-issuer"
-	claimed["roles"] = []string{"WRITER"}
+	claimed["roles"] = []string{"UNKNOWN"}
 	altered := issuer.tokenFor(t, "alice")
 	altered = altered[:len(altered)-6] + "AAAAAA"
 	asAlice := append(bearer(t, "alice"), "X-Mode", "fast")
@@ -426,7 +432,7 @@ func TestNativeGatewayEnforcesControls(t *testing.T) {
 		{"expired token", http.MethodGet, "/a/x", "", "", token(expired), http.StatusUnauthorized, "JWT"},
 		{"token of another issuer", http.MethodGet, "/a/x", "", "", token(foreign), http.StatusUnauthorized, "JWT"},
 		{"altered signature", http.MethodGet, "/a/x", "", "", []string{"Authorization", "Bearer " + altered}, http.StatusUnauthorized, "JWT"},
-		{"role claimed in the token", http.MethodGet, "/a/x", "", "", token(claimed), http.StatusForbidden, "RBAC"},
+		{"unknown role claimed in the verified token", http.MethodGet, "/a/x", "", "", token(claimed), http.StatusForbidden, "RBAC"},
 		{"role without the permit", http.MethodPost, "/a/item", "application/json", `{"n":1}`, append(bearer(t, "bob"), "X-Mode", "fast"), http.StatusForbidden, "RBAC"},
 		{"body outside its schema", http.MethodPost, "/a/item", "application/json", `{"n":"one"}`, asAlice, http.StatusBadRequest, "VALIDATION"},
 		{"missing validated header", http.MethodPost, "/a/item", "application/json", `{"n":1}`, bearer(t, "alice"), http.StatusBadRequest, "VALIDATION"},
@@ -869,7 +875,7 @@ func TestNativeGracefulStop(t *testing.T) {
 }
 
 // The native data plane serves the Client website itself: the page
-// at /demo/ and the flat assets directory, with the legacy security headers,
+// at the approved Fetch routes and flat assets directory, with its security headers,
 // matched on the exact target. Every other request, including every other
 // spelling of a website path, goes to enforcement, and no request reaches a
 // file outside the website or the admin dashboard. Without the setting there
@@ -891,11 +897,11 @@ func TestNativeWebsite(t *testing.T) {
 		"X-Content-Type-Options":  "nosniff",
 	}
 	for _, f := range []struct{ path, contentType, body string }{
-		{"/demo/", "text/html; charset=utf-8", "<!doctype html><title>dashboard</title>"},
-		{"/demo/?from=link", "text/html; charset=utf-8", "<!doctype html><title>dashboard</title>"},
-		{"/demo/assets/app.js", "text/javascript; charset=utf-8", "console.log('app')"},
-		{"/demo/assets/app.css", "text/css; charset=utf-8", "body{}"},
-		{"/demo/assets/logo.svg", "image/svg+xml", "<svg xmlns=\"http://www.w3.org/2000/svg\"/>"},
+		{"/", "text/html; charset=utf-8", "<!doctype html><title>dashboard</title>"},
+		{"/my-orders/ORD-1001?from=link", "text/html; charset=utf-8", "<!doctype html><title>dashboard</title>"},
+		{"/assets/app.js", "text/javascript", "console.log('app')"},
+		{"/assets/app.css", "text/css", "body{}"},
+		{"/assets/logo.svg", "image/svg+xml", "<svg xmlns=\"http://www.w3.org/2000/svg\"/>"},
 	} {
 		resp, body := e.exchange(http.MethodGet, f.path, "", "")
 		if resp.StatusCode != http.StatusOK || body != f.body || resp.Header.Get("Content-Type") != f.contentType {
@@ -908,15 +914,15 @@ func TestNativeWebsite(t *testing.T) {
 			}
 		}
 	}
-	if resp, body := e.exchange(http.MethodHead, "/demo/", "", ""); resp.StatusCode != http.StatusOK || body != "" {
-		t.Errorf("HEAD /demo/: %d %q", resp.StatusCode, body)
+	if resp, body := e.exchange(http.MethodHead, "/", "", ""); resp.StatusCode != http.StatusOK || body != "" {
+		t.Errorf("HEAD /: %d %q", resp.StatusCode, body)
 	}
-	if code, body := e.get("/demo/assets/missing.js"); code != http.StatusNotFound || strings.Contains(body, "request_id") {
+	if code, body := e.get("/assets/missing.js"); code != http.StatusNotFound || strings.Contains(body, "request_id") {
 		t.Errorf("missing asset: %d %q", code, body)
 	}
 	// A Windows device name is no file of the website: os.DirFS refuses it,
 	// so the request is answered 404 at once instead of opening the device.
-	if code, body := e.get("/demo/assets/CON.js"); code != http.StatusNotFound || strings.Contains(body, "request_id") {
+	if code, body := e.get("/assets/CON.js"); code != http.StatusNotFound || strings.Contains(body, "request_id") {
 		t.Errorf("device name as an asset: %d %q", code, body)
 	}
 
@@ -924,14 +930,15 @@ func TestNativeWebsite(t *testing.T) {
 	// event, and never answered with a file.
 	files := []string{"dashboard", "console.log", "body{}", "<svg", "not for the browser", "nested", "hidden", "other", "SQLite"}
 	for _, probe := range []struct{ method, target string }{
-		{http.MethodGet, "/demo"}, {http.MethodGet, "/demo/index.html"}, {http.MethodGet, "/demo/assets/"},
-		{http.MethodGet, "/demo/assets/app.js.map"}, {http.MethodGet, "/demo/assets/nested/x.js"}, {http.MethodGet, "/demo/assets/readme.txt"},
-		{http.MethodGet, "/demo/assets/upper.JS.html"}, {http.MethodGet, "/demo/secret.txt"}, {http.MethodGet, "/demo/%61ssets/app.js"},
-		{http.MethodGet, "/demo/assets/..%2fsecret.txt"}, {http.MethodGet, "/demo/assets/%2e%2e%2fsecret.txt"},
-		{http.MethodGet, "/demo/assets/../../secret.txt"}, {http.MethodGet, "/demo/assets/..\\secret.txt"},
-		{http.MethodGet, "/demo//"}, {http.MethodGet, "//demo/"}, {http.MethodGet, "/DEMO/"}, {http.MethodGet, "/demo/%2e"},
-		{http.MethodGet, "/demo/assets/" + filepath.Base(e.database)}, {http.MethodGet, "/"},
-		{http.MethodPost, "/demo/"}, {http.MethodPut, "/demo/assets/app.js"}, {http.MethodOptions, "/demo/"},
+		{http.MethodGet, "/demo"}, {http.MethodGet, "/demo/"}, {http.MethodGet, "/index.html"}, {http.MethodGet, "/assets/"},
+		{http.MethodGet, "/assets/app.js.map"}, {http.MethodGet, "/assets/nested/x.js"}, {http.MethodGet, "/assets/readme.txt"},
+		{http.MethodGet, "/assets/upper.JS.html"}, {http.MethodGet, "/secret.txt"}, {http.MethodGet, "/%61ssets/app.js"},
+		{http.MethodGet, "/assets/..%2fsecret.txt"}, {http.MethodGet, "/assets/%2e%2e%2fsecret.txt"},
+		{http.MethodGet, "/assets/../../secret.txt"}, {http.MethodGet, "/assets/..\\secret.txt"},
+		{http.MethodGet, "/food//"}, {http.MethodGet, "//food"}, {http.MethodGet, "/FOOD"}, {http.MethodGet, "/food/%2e"},
+		{http.MethodGet, "/assets/" + filepath.Base(e.database)}, {http.MethodGet, "/demo/assets/app.js"},
+		{http.MethodGet, "/orders"}, {http.MethodGet, "/orders/ORD-1001"}, {http.MethodGet, "/support/tickets"},
+		{http.MethodPost, "/"}, {http.MethodPut, "/assets/app.js"}, {http.MethodOptions, "/"},
 	} {
 		resp, body := e.rawResponse(probe.method + " " + probe.target + " HTTP/1.1\r\nHost: gw\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
 		_, id := requestID(resp, body)
@@ -953,8 +960,8 @@ func TestNativeWebsite(t *testing.T) {
 	e.stop()
 	e.writeNative(e.nativeSettings())
 	e.start(binaries.plain)
-	resp, body := e.exchange(http.MethodGet, "/demo/", "", "")
+	resp, body := e.exchange(http.MethodGet, "/", "", "")
 	if _, id := requestID(resp, body); resp.StatusCode != http.StatusNotFound || id == "" {
-		t.Errorf("/demo/ without a website: %d %q", resp.StatusCode, body)
+		t.Errorf("/ without a website: %d %q", resp.StatusCode, body)
 	}
 }

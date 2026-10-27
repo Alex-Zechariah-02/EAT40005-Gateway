@@ -142,7 +142,7 @@ func TestEventsCoverEveryDecisionClass(t *testing.T) {
 	}
 	for kind := range kinds {
 		known := slices.Contains([]string{"request.admitted", "request.forwarded", "request.rejected", "controller.reconciled",
-			"transition.intent", "transition.published", "transition.rejected", "admin.authenticated", "admin.read"}, kind)
+			"transition.intent", "transition.published", "transition.rejected", "account.block", "admin.authenticated", "admin.read"}, kind)
 		if !known {
 			t.Errorf("unexpected event kind %s", kind)
 		}

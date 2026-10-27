@@ -193,7 +193,7 @@ func TestOverrideRequestGrammar(t *testing.T) {
 // produces the same generation whatever order the overrides come in.
 func TestApplyOverrides(t *testing.T) {
 	e := &env{a: &receiver{name: "A", addr: "127.0.0.1:1"}, b: &receiver{name: "B", addr: "127.0.0.1:2"}}
-	basePolicy := e.protectedPolicy(alice, bob)
+	basePolicy := e.protectedPolicy()
 	basePolicy.Operations[0].Rate = rate(4, 60) // read-a
 	pristine := string(mustJSON(basePolicy))
 
@@ -324,7 +324,7 @@ func TestApplyOverrides(t *testing.T) {
 // place.
 func TestOverrideConflictWithCandidate(t *testing.T) {
 	e := &env{a: &receiver{name: "A", addr: "127.0.0.1:1"}, b: &receiver{name: "B", addr: "127.0.0.1:2"}}
-	before := e.protectedPolicy(alice, bob)
+	before := e.protectedPolicy()
 	before.Operations[0].Rate = rate(4, 60)
 	overrides := []override{
 		{ID: 3, Type: overrideException, Control: controlPermit, Role: "READER", Operation: "write-a", Target: "permit:READER:write-a"},
@@ -336,7 +336,6 @@ func TestOverrideConflictWithCandidate(t *testing.T) {
 		p.Operations = slices.Clone(before.Operations)
 		p.Permits = slices.Clone(before.Permits)
 		p.Roles = slices.Clone(before.Roles)
-		p.Subjects = slices.Clone(before.Subjects)
 		edit(&p)
 		return p
 	}
@@ -349,7 +348,6 @@ func TestOverrideConflictWithCandidate(t *testing.T) {
 		{"role of a permit override removed", func(p *Policy) {
 			p.Roles = p.Roles[1:] // READER
 			p.Permits = slices.DeleteFunc(p.Permits, func(x Permit) bool { return x.Role == "READER" })
-			p.Subjects = []Subject{alice}
 		}, 3},
 		{"operation of a permit override changed", func(p *Policy) { p.Operations[1].Body = jsonBody(512, anyObject) }, 3},
 		{"operation of a permit override removed", func(p *Policy) {
@@ -379,7 +377,7 @@ func TestOverrideConflictWithCandidate(t *testing.T) {
 		{"operation added beside a prefix, outside it", func(p *Policy) {
 			p.Operations = append(p.Operations, Operation{ID: "bee", API: "b", Method: "GET", Target: "/bee", Access: "allow", Auth: "none"})
 		}, 0},
-		{"membership changed", func(p *Policy) { p.Subjects = append(p.Subjects, carol) }, 0},
+		{"unrelated role added", func(p *Policy) { p.Roles = append(p.Roles, Role{ID: "OTHER"}) }, 0},
 		{"nothing changed", func(p *Policy) {}, 0},
 	}
 	for _, c := range cases {
@@ -402,7 +400,7 @@ func TestOverrideConflictWithCandidate(t *testing.T) {
 // change, and revoking one removes that one only.
 func TestOverrideLifecycle(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 	baseGeneration := e.status().Generation
@@ -480,16 +478,17 @@ func TestOverrideLifecycle(t *testing.T) {
 	}
 
 	// An unrelated permanent change keeps every override.
-	if code, _, body := e.putSubject(harness, "carol", `{"status":"active","roles":["READER"]}`, 1, "lifecycle-membership"); code != http.StatusOK {
-		t.Fatalf("membership change: %d %s", code, body)
-	}
+	next := e.protectedPolicy()
+	next.Roles = append(next.Roles, Role{ID: "TRIAL"})
+	next.Permits = append(next.Permits, Permit{Role: "TRIAL", Operation: "read-a"})
+	e.confirmPolicy(harness, next, 1, "lifecycle-permanent")
 	s := e.status()
 	if s.Confirmed != 2 || !strings.HasPrefix(s.Generation, "r2+o1.2.3-") {
 		t.Fatalf("status after the membership change %+v", s)
 	}
 	expect(map[string]int{"bob POST /a/item": 200, "bob GET /a/x": 200, "bob GET /b/x": 403, "alice GET /a/x": 403, "alice POST /a/item": 200}, [3]int{3, 0, 0})
-	if code := e.probe("carol", http.MethodPost, "/a/item"); code != http.StatusOK {
-		t.Fatalf("carol (READER, new) under the grant: %d", code)
+	if code := e.probe("carol", http.MethodGet, "/a/x"); code != http.StatusOK {
+		t.Fatalf("new TRIAL permit applies independently of WRITER containment: %d", code)
 	}
 
 	// Revoking the grant removes it alone, over the current base (with
@@ -591,7 +590,7 @@ func TestOverrideLifecycle(t *testing.T) {
 // malformed requests are answered 400 without reaching the controller.
 func TestOverrideRefusals(t *testing.T) {
 	e := newEnv(t)
-	p := e.protectedPolicy(alice, bob)
+	p := e.protectedPolicy()
 	p.Operations[0].Rate = rate(4, 60) // read-a
 	seed(t, e.database, p, seedOptions{})
 	e.start(binaries.plain)
@@ -772,7 +771,7 @@ func TestOverrideRefusals(t *testing.T) {
 // are policy identifiers, so another spelling is simply unknown.
 func TestOverrideConflicts(t *testing.T) {
 	e := newEnv(t)
-	p := e.protectedPolicy(alice, bob)
+	p := e.protectedPolicy()
 	p.Operations[0].Rate = rate(4, 60) // read-a
 	seed(t, e.database, p, seedOptions{})
 	e.start(binaries.plain)
@@ -883,7 +882,7 @@ func TestOverrideConflicts(t *testing.T) {
 // racing the expiry produces one final disposition.
 func TestOverrideExpiry(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 	baseGeneration := e.status().Generation
@@ -966,7 +965,7 @@ func TestOverrideExpiry(t *testing.T) {
 // override expired.
 func TestExpiredOverrideAdmitsNothing(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.fault, "GATEWAY_FAULT=no-deadline-timer")
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 
@@ -1062,7 +1061,9 @@ func TestExpiredOverrideAdmitsNothing(t *testing.T) {
 // (admit when C + P*(W-d)/W + 1 <= N), not taken from the implementation.
 func TestRateOverrideKeepsCounters(t *testing.T) {
 	ratePolicy := func(e *env) Policy {
-		p := e.protectedPolicy(alice, bob, carol)
+		p := e.protectedPolicy()
+		p.Roles = append(p.Roles, Role{ID: "TRIAL"})
+		p.Permits = append(p.Permits, Permit{Role: "TRIAL", Operation: "read-a"})
 		p.Operations[0].Rate = rate(4, 10) // read-a: 4 per 10 s per subject
 		return p
 	}
@@ -1158,9 +1159,9 @@ func TestRateOverrideKeepsCounters(t *testing.T) {
 	// that expires in 2 s, then a new subject is added to the base.
 	clock.set(base + 80_000)
 	expiring := e.mustOverride(harness, rateOverride(overrideException, "read-a", 6, 2), `"r1"`, "rate-expiring-0001")
-	if code, _, body := e.putSubject(harness, "dave", `{"status":"active","roles":["READER"]}`, 1, "rate-membership-01"); code != http.StatusOK {
-		t.Fatalf("membership change: %d %s", code, body)
-	}
+	next := ratePolicy(e)
+	next.Roles = append(next.Roles, Role{ID: "OTHER"})
+	e.confirmPolicy(harness, next, 1, "rate-permanent-change")
 	if got := e.sendAs("alice", http.MethodGet, "/a/x", "", 5); !statusesAre(got, times(5, 200)...) {
 		t.Fatalf("alice under the expiring exception: %v", got)
 	}

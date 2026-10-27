@@ -15,9 +15,9 @@ import (
 	"time"
 )
 
-// An installed database has exactly the current schema: the nine STRICT
+// An installed database has exactly the current schema: the eleven STRICT
 // tables, their keys and constraints, the activation and override indexes and
-// triggers, WAL journaling and user_version 4, and nothing else.
+// triggers, WAL journaling and user_version 5, and nothing else.
 func TestInstalledSchema(t *testing.T) {
 	e := newEnv(t)
 	if out, code := e.runOperator(binaries.plain, nil, "install", "--admin", "root"); code != 0 {
@@ -45,7 +45,7 @@ func TestInstalledSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	rows.Close()
-	want := []string{"activation", "administrator", "base", "candidate", "deployment", "enrolment", "override", "revision", "transition"}
+	want := []string{"activation", "administrator", "base", "blocked_account", "candidate", "control_result", "deployment", "enrolment", "override", "revision", "transition"}
 	if !slices.Equal(tables, want) {
 		t.Fatalf("tables %v, want %v", tables, want)
 	}
@@ -77,13 +77,13 @@ func TestInstalledSchema(t *testing.T) {
 	if n := count(t, db, `SELECT COUNT(*) FROM pragma_index_info('sqlite_autoindex_override_1') WHERE name = 'creation'`); n != 1 {
 		t.Fatal("the override UNIQUE column constraint is not on creation")
 	}
-	foreignKeys := map[string]int{"revision": 1, "base": 2, "candidate": 1, "transition": 2, "activation": 4, "override": 3}
+	foreignKeys := map[string]int{"revision": 1, "base": 2, "candidate": 1, "transition": 2, "activation": 4, "override": 3, "blocked_account": 1, "control_result": 1}
 	for table, want := range foreignKeys {
 		if n := count(t, db, `SELECT COUNT(*) FROM pragma_foreign_key_list(?)`, table); n != want {
 			t.Errorf("table %s has %d foreign keys, want %d", table, n, want)
 		}
 	}
-	if n := count(t, db, `PRAGMA user_version`); n != 4 {
+	if n := count(t, db, `PRAGMA user_version`); n != 5 {
 		t.Fatalf("user_version %d", n)
 	}
 	var journal string
@@ -107,7 +107,7 @@ func TestInstalledSchema(t *testing.T) {
 // the schema's constraints reject invalid rows on a production connection.
 func TestConnectionAndConstraints(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 
 	plain, err := sql.Open("sqlite", "file:"+e.database)
 	if err != nil {
@@ -168,7 +168,7 @@ func TestConnectionAndConstraints(t *testing.T) {
 // override a temporary-override transition created or ended.
 func TestOverrideResolutionConstraints(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	db, err := connect(e.database, "WAL")
 	if err != nil {
 		t.Fatal(err)
@@ -254,14 +254,14 @@ func TestStartupRefusesUntrustedDatabase(t *testing.T) {
 		{"extra index", []string{`CREATE INDEX extra ON revision (actor)`}, "schema differs"},
 		{"added column", []string{`ALTER TABLE revision ADD COLUMN note TEXT`}, "schema differs"},
 		{"dropped table", []string{`DROP TABLE enrolment`}, "schema differs"},
-		{"newer schema version", []string{`PRAGMA user_version = 5`}, "schema version 5"},
-		{"altered stored policy", []string{`UPDATE revision SET document = CAST('{"schema_version":3}' AS BLOB) WHERE id = 1`}, "checksum mismatch"},
+		{"newer schema version", []string{fmt.Sprintf(`PRAGMA user_version = %d`, databaseVersion+1)}, fmt.Sprintf("schema version %d", databaseVersion+1)},
+		{"altered stored policy", []string{`UPDATE revision SET document = CAST('{"schema_version":4}' AS BLOB) WHERE id = 1`}, "checksum mismatch"},
 		{"dangling confirmed base", []string{`PRAGMA foreign_keys = OFF`, `UPDATE base SET confirmed = 99`}, "reading revision 99"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newEnv(t)
-			seed(t, e.database, e.protectedPolicy(alice), seedOptions{})
+			seed(t, e.database, e.protectedPolicy(), seedOptions{})
 			db, err := sql.Open("sqlite", "file:"+e.database)
 			if err != nil {
 				t.Fatal(err)
@@ -285,7 +285,7 @@ func TestStartupRefusesUntrustedDatabase(t *testing.T) {
 				t.Fatalf("data plane: %d", code)
 			}
 			// No mutation is accepted, whether or not anyone can log in.
-			code, _, _ := e.harnessCall(http.MethodPut, "/admin/subjects/carol", `{"status":"active","roles":["READER"]}`,
+			code, _, _ := e.harnessCall(http.MethodPut, "/admin/blocked-accounts/alice", `{"reason":"contain"}`,
 				"If-Match", `"r1"`, "Idempotency-Key", "untrusted-database-1")
 			if code != http.StatusServiceUnavailable {
 				t.Fatalf("membership change on an untrusted database: %d", code)
@@ -299,37 +299,35 @@ func TestStartupRefusesUntrustedDatabase(t *testing.T) {
 // leaves neither half; the retried change then applies once.
 func TestCrashInsideCommit(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.fault, "GATEWAY_FAULT=commit-partway")
-	put := `{"status":"active","roles":["WRITER"]}`
-	if code, body, _ := e.harnessCall(http.MethodPut, "/admin/subjects/carol", put, "If-Match", `"r1"`, "Idempotency-Key", "crash-inside-commit"); code != 0 {
-		t.Fatalf("change answered %d instead of crashing: %s", code, body)
+	if code, body, _ := e.harnessCall("PUT", "/admin/blocked-accounts/alice", `{"reason":"contain"}`, "Idempotency-Key", "crash-inside-commit"); code != 0 {
+		t.Fatalf("mutation answered %d: %s", code, body)
 	}
 	if code := e.waitExit(); code != crashExit {
-		t.Fatalf("exit code %d", code)
+		t.Fatalf("exit %d", code)
 	}
 	for query, want := range map[string]int{
-		`SELECT COUNT(*) FROM revision`:                 1,
+		`SELECT count(*) FROM revision`:                 1,
 		`SELECT confirmed FROM base`:                    1,
-		`SELECT COUNT(*) FROM transition`:               0,
-		`SELECT COUNT(*) FROM pragma_foreign_key_check`: 0,
+		`SELECT count(*) FROM transition`:               0,
+		`SELECT count(*) FROM blocked_account`:          0,
+		`SELECT count(*) FROM control_result`:           0,
+		`SELECT count(*) FROM pragma_foreign_key_check`: 0,
 	} {
 		if n := queryInt(t, e.database, query); n != want {
-			t.Fatalf("%s = %d, want %d", query, n, want)
+			t.Fatalf("%s: %d want %d", query, n, want)
 		}
 	}
-
 	e.start(binaries.plain)
-	carol := issuer.tokenFor(t, "carol")
-	if code, _ := e.request(http.MethodPost, "/a/item", "application/json", `{"n":1}`, "Authorization", "Bearer "+carol); code != http.StatusForbidden {
-		t.Fatalf("carol after the interrupted commit: %d", code)
+	if code, _ := e.get("/a/x", bearer(t, "alice")...); code != 200 {
+		t.Fatal("uncommitted block survived")
 	}
-	code, body, _ := e.harnessCall(http.MethodPut, "/admin/subjects/carol", put, "If-Match", `"r1"`, "Idempotency-Key", "crash-inside-commit")
-	if outcome := fromJSON[Outcome](t, body); code != http.StatusOK || outcome.Revision != 2 {
+	if code, body, _ := e.harnessCall("PUT", "/admin/blocked-accounts/alice", `{"reason":"contain"}`, "Idempotency-Key", "crash-inside-commit"); code != 200 {
 		t.Fatalf("retry: %d %s", code, body)
 	}
-	if code, _ := e.request(http.MethodPost, "/a/item", "application/json", `{"n":1}`, "Authorization", "Bearer "+carol); code != http.StatusOK {
-		t.Fatalf("carol after the retry: %d", code)
+	if code, _ := e.get("/a/x", bearer(t, "alice")...); code != 403 {
+		t.Fatal("committed retry did not contain account")
 	}
 	e.assertReceipts(1, 0, 0)
 }
@@ -339,52 +337,58 @@ func TestCrashInsideCommit(t *testing.T) {
 // admission stops, and the next startup records the event from the database.
 func TestOutcomeEventFailure(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.fault, "GATEWAY_FAULT=audit-fail-published")
-	put := `{"status":"active","roles":["READER"]}`
-	header := []string{"If-Match", `"r1"`, "Idempotency-Key", "outcome-event-fails"}
-	code, body, _ := e.harnessCall(http.MethodPut, "/admin/subjects/carol", put, header...)
-	outcome := fromJSON[Outcome](t, body)
-	if code != http.StatusServiceUnavailable || outcome.Outcome != "committed" || outcome.Reason != "OUTCOME_AUDIT_PENDING" || outcome.Revision != 2 {
-		t.Fatalf("change with a failing outcome event: %d %s", code, body)
+	before := e.status()
+	header := []string{"Idempotency-Key", "outcome-event-fails"}
+	code, body, _ := e.harnessCall("PUT", "/admin/blocked-accounts/alice", `{"reason":"contain"}`, header...)
+	if code != 503 {
+		t.Fatalf("unacknowledged outcome: %d %s", code, body)
 	}
-	if s := e.status(); s.Revision != 2 || s.Generation != outcome.Generation || !s.AuditFailed {
-		t.Fatalf("status after the failure: %+v", s)
+	if status := e.status(); !status.AuditFailed || status.Generation != before.Generation {
+		t.Fatalf("status %+v", status)
 	}
-	carol := issuer.tokenFor(t, "carol")
-	if code, _ := e.get("/a/x", "Authorization", "Bearer "+carol); code != http.StatusServiceUnavailable {
-		t.Fatalf("admission with a failed audit log: %d", code)
+	if code, _ := e.get("/a/x", bearer(t, "bob")...); code != 503 {
+		t.Fatal("admitted with failed durable audit")
 	}
 	e.assertReceipts(0, 0, 0)
-	code, body, _ = e.harnessCall(http.MethodPut, "/admin/subjects/carol", put, header...)
-	if again := fromJSON[Outcome](t, body); code != http.StatusServiceUnavailable || again.Reason != "OUTCOME_AUDIT_PENDING" || again.Revision != 2 {
-		t.Fatalf("retry before restart: %d %s", code, body)
+	if code, _, _ := e.harnessCall("PUT", "/admin/blocked-accounts/alice", `{"reason":"contain"}`, header...); code != 503 {
+		t.Fatalf("unacknowledged replay: %d", code)
 	}
 	e.stop()
-	if n := queryInt(t, e.database, `SELECT COUNT(*) FROM transition WHERE id = 'admin:harness:outcome-event-fails' AND audited_at IS NULL`); n != 1 {
-		t.Fatalf("the unaudited transition is not marked: %d", n)
+	if n := queryInt(t, e.database, `SELECT count(*) FROM transition WHERE id='admin:harness:outcome-event-fails' AND audited_at IS NULL`); n != 1 {
+		t.Fatalf("pending outcome %d", n)
 	}
-
+	if n := queryInt(t, e.database, `SELECT count(*) FROM blocked_account WHERE subject='alice'`); n != 1 {
+		t.Fatal("committed containment was lost")
+	}
 	e.start(binaries.plain)
-	published := publishedEvents(e.auditEvents(), outcome.Transition)
-	if len(published) != 1 || published[0]["reason"] != "reconciled" || published[0]["revision"] != float64(2) || published[0]["actor"] != harnessAdmin {
-		t.Fatalf("reconciled outcome events: %v", published)
+	count := 0
+	for _, event := range e.auditEvents() {
+		if event["kind"] == "account.block" && event["transition"] == "admin:harness:outcome-event-fails" {
+			count++
+			if event["reason"] != "reconciled" || event["actor"] != harnessAdmin {
+				t.Fatalf("reconciled outcome %v", event)
+			}
+		}
 	}
-	code, body, _ = e.harnessCall(http.MethodPut, "/admin/subjects/carol", put, header...)
-	if again := fromJSON[Outcome](t, body); code != http.StatusOK || again.Revision != 2 {
-		t.Fatalf("retry after restart: %d %s", code, body)
+	if count != 1 {
+		t.Fatalf("reconciled outcomes %d", count)
 	}
-	if code, _ := e.get("/a/x", "Authorization", "Bearer "+carol); code != http.StatusOK {
-		t.Fatalf("carol after reconciliation: %d", code)
+	if code, body, _ := e.harnessCall("PUT", "/admin/blocked-accounts/alice", `{"reason":"contain"}`, header...); code != 200 {
+		t.Fatalf("settled replay: %d %s", code, body)
+	}
+	if code, _ := e.get("/a/x", bearer(t, "alice")...); code != 403 {
+		t.Fatal("reconciled block was lost")
 	}
 	e.stop()
-	if n := queryInt(t, e.database, `SELECT COUNT(*) FROM transition WHERE audited_at IS NULL`); n != 0 {
-		t.Fatalf("%d transitions still unaudited", n)
+	if n := queryInt(t, e.database, `SELECT count(*) FROM transition WHERE audited_at IS NULL`); n != 0 {
+		t.Fatalf("unaudited transitions %d", n)
 	}
 }
 
-// A crash at each boundary of a membership publication ends,
-// after restart, in either the old or the new membership, and the
+// A crash at each boundary of containment publication ends,
+// after restart, in either the old or the new blocked state, and the
 // administrator's retry with the same key settles it exactly once.
 func TestMembershipChangeSurvivesCrash(t *testing.T) {
 	for _, tc := range []struct {
@@ -400,52 +404,49 @@ func TestMembershipChangeSurvivesCrash(t *testing.T) {
 	} {
 		t.Run(tc.point, func(t *testing.T) {
 			e := newEnv(t)
-			seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+			seed(t, e.database, e.protectedPolicy(), seedOptions{})
 			e.start(binaries.fault, "GATEWAY_FAULT="+tc.point)
-			put := `{"status":"active","roles":["READER"]}`
-			header := []string{"If-Match", `"r1"`, "Idempotency-Key", "membership-crash-key"}
-			if code, body, _ := e.harnessCall(http.MethodPut, "/admin/subjects/carol", put, header...); code != 0 {
-				t.Fatalf("change answered %d instead of crashing: %s", code, body)
+			header := []string{"Idempotency-Key", "membership-crash-key"}
+			if code, body, _ := e.harnessCall("PUT", "/admin/blocked-accounts/alice", `{"reason":"contain"}`, header...); code != 0 {
+				t.Fatalf("change answered %d: %s", code, body)
 			}
 			if code := e.waitExit(); code != crashExit {
-				t.Fatalf("exit code %d", code)
+				t.Fatalf("exit %d", code)
 			}
-			revisions := 1
+			wantBlocked := 0
 			if tc.committed {
-				revisions = 2
+				wantBlocked = 1
 			}
-			if n := queryInt(t, e.database, `SELECT COUNT(*) FROM revision`); n != revisions {
-				t.Fatalf("%d revisions after the crash, want %d", n, revisions)
+			if n := queryInt(t, e.database, `SELECT count(*) FROM blocked_account`); n != wantBlocked {
+				t.Fatalf("blocks %d want %d", n, wantBlocked)
 			}
-
+			if n := queryInt(t, e.database, `SELECT count(*) FROM revision`); n != 1 {
+				t.Fatalf("policy changed: %d revisions", n)
+			}
 			e.start(binaries.plain)
-			carol := issuer.tokenFor(t, "carol")
-			want := http.StatusForbidden
+			want := 200
 			if tc.committed {
-				want = http.StatusOK
+				want = 403
 			}
-			if code, _ := e.get("/a/x", "Authorization", "Bearer "+carol); code != want {
-				t.Fatalf("carol after restart: %d, want %d", code, want)
+			if code, _ := e.get("/a/x", bearer(t, "alice")...); code != want {
+				t.Fatalf("after restart: %d want %d", code, want)
 			}
-
-			code, body, _ := e.harnessCall(http.MethodPut, "/admin/subjects/carol", put, header...)
-			outcome := fromJSON[Outcome](t, body)
-			if code != http.StatusOK || outcome.Revision != 2 {
+			if code, body, _ := e.harnessCall("PUT", "/admin/blocked-accounts/alice", `{"reason":"contain"}`, header...); code != 200 {
 				t.Fatalf("retry: %d %s", code, body)
 			}
-			_, body, _ = e.harnessCall(http.MethodGet, "/admin/history/"+outcome.Transition, "")
-			if entry := fromJSON[historyEntry](t, body); entry.PublishedBy != tc.publishedBy || entry.AuditedAt == nil {
-				t.Fatalf("history: %s", body)
+			_, body, _ := e.harnessCall("GET", "/admin/history/admin:"+harnessAdmin+":membership-crash-key", "")
+			if history := fromJSON[historyEntry](t, body); history.PublishedBy != tc.publishedBy || history.AuditedAt == nil {
+				t.Fatalf("history %s", body)
 			}
-			if code, _ := e.get("/a/x", "Authorization", "Bearer "+carol); code != http.StatusOK {
-				t.Fatalf("carol after the retry: %d", code)
-			}
-			if published := publishedEvents(e.auditEvents(), outcome.Transition); len(published) != 1 {
-				t.Fatalf("%d published events for one change: %v", len(published), published)
+			if code, _ := e.get("/a/x", bearer(t, "alice")...); code != 403 {
+				t.Fatal("retry not contained")
 			}
 			e.stop()
-			if n := queryInt(t, e.database, `SELECT COUNT(*) FROM revision`); n != 2 {
-				t.Fatalf("%d revisions, want 2", n)
+			if n := queryInt(t, e.database, `SELECT count(*) FROM transition WHERE id='admin:harness:membership-crash-key'`); n != 1 {
+				t.Fatalf("repeated commit %d", n)
+			}
+			if n := countKind(e.auditEvents(), "account.block"); n != 1 {
+				t.Fatalf("repeated outcome %d", n)
 			}
 		})
 	}
@@ -456,41 +457,49 @@ func TestMembershipChangeSurvivesCrash(t *testing.T) {
 // operator command against the running gateway's database fails at once.
 func TestConcurrencyAndLockContention(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 
 	const writers = 20
+	code, staged, body := e.stage(harness, e.protectedPolicy(), `"r1"`, "concurrent-base-candidate")
+	if code != http.StatusCreated {
+		t.Fatalf("stage: %d %s", code, body)
+	}
 	codes := make([]int, writers)
+	outcomes := make([]Outcome, writers)
 	var wg sync.WaitGroup
 	for i := range writers {
 		wg.Go(func() {
-			code, _, _ := e.adminSend(http.MethodPut, fmt.Sprintf("/admin/subjects/c%02d", i), `{"status":"active","roles":["READER"]}`,
-				append(harness.headers(e), "If-Match", `"r1"`, "Idempotency-Key", fmt.Sprintf("stale-writer-%04d", i))...)
-			codes[i] = code
+			codes[i], outcomes[i], _ = e.activate(harness, staged.Candidate.candidateRecord, 60, `"r1"`, fmt.Sprintf("concurrent-activation-%04d", i))
 		})
 	}
 	wg.Wait()
-	applied, stale := 0, 0
-	for _, code := range codes {
+	winner := -1
+	conflicts := 0
+	for i, code := range codes {
 		switch code {
 		case http.StatusOK:
-			applied++
-		case http.StatusPreconditionFailed:
-			stale++
+			if winner >= 0 {
+				t.Fatal("two activations won")
+			}
+			winner = i
+		case http.StatusConflict:
+			conflicts++
 		default:
-			t.Errorf("concurrent change: %d", code)
+			t.Errorf("activation: %d %+v", code, outcomes[i])
 		}
 	}
-	if applied != 1 || stale != writers-1 {
-		t.Fatalf("%d applied, %d stale", applied, stale)
+	if winner < 0 || conflicts != writers-1 {
+		t.Fatalf("winner %d conflicts %d", winner, conflicts)
 	}
-	code, body, header := e.as(harness, http.MethodGet, "/admin/subjects", "")
-	subjects := fromJSON[struct {
-		Items []Subject `json:"items"`
-	}](t, body)
-	if code != http.StatusOK || header.Get("ETag") != `"r2"` || len(subjects.Items) != 3 {
-		t.Fatalf("subjects after the race: %d %s %s", code, header.Get("ETag"), body)
+	if code, _, body := e.resolve(harness, "confirm", outcomes[winner].Provisional, `"r1"`, "concurrent-base-confirm"); code != http.StatusOK {
+		t.Fatalf("confirm: %d %s", code, body)
+	}
+	code, body, header := e.as(harness, "GET", "/admin/policy", "")
+	revision := fromJSON[revisionInfo](t, body)
+	if code != http.StatusOK || header.Get("ETag") != `"r2"` || revision.ID != 2 {
+		t.Fatalf("policy after activation race: %d %s", code, body)
 	}
 
 	// The running gateway is the audit log's only writer. An operator command
@@ -523,9 +532,9 @@ func TestConcurrencyAndLockContention(t *testing.T) {
 	}
 	e.stop()
 	for query, want := range map[string]int{
-		`SELECT COUNT(*) FROM revision`:                                        2,
-		`SELECT COUNT(*) FROM transition WHERE reason = 'PRECONDITION_FAILED'`: writers - 1,
-		`SELECT COUNT(*) FROM enrolment`:                                       0,
+		`SELECT COUNT(*) FROM revision`: 2,
+		`SELECT COUNT(*) FROM transition WHERE kind = 'cpa.activate' AND outcome = 'rejected'`: writers - 1,
+		`SELECT COUNT(*) FROM enrolment`: 0,
 	} {
 		if n := queryInt(t, e.database, query); n != want {
 			t.Errorf("%s = %d, want %d", query, n, want)
@@ -540,7 +549,7 @@ func TestConcurrencyAndLockContention(t *testing.T) {
 // actor, and nothing it asked for is stored.
 func TestRejectedMutationsAreRecorded(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
 	_, readerPassword := e.addAdmin(binaries.plain, "reader", "read,read_history")
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
@@ -548,9 +557,11 @@ func TestRejectedMutationsAreRecorded(t *testing.T) {
 
 	// Stale and invalid: recorded in history. Unauthorised: refused before
 	// the controller, recorded as an audit denial only.
-	e.putSubject(harness, "carol", `{"status":"active","roles":["READER"]}`, 7, "rejected-stale-01")
-	e.putSubject(harness, "carol", `{"status":"active","roles":["ROOT"]}`, 1, "rejected-invalid-01")
-	if code, _, _ := e.as(reader, http.MethodPut, "/admin/subjects/carol", `{"status":"active","roles":["READER"]}`,
+	e.stage(harness, e.protectedPolicy(), `"r7"`, "rejected-stale-01")
+	invalid := e.protectedPolicy()
+	invalid.Permits = append(invalid.Permits, Permit{Role: "ROOT", Operation: "read-a"})
+	e.stage(harness, invalid, `"r1"`, "rejected-invalid-01")
+	if code, _, _ := e.as(reader, http.MethodPut, "/admin/blocked-accounts/carol", `{"reason":"contain"}`,
 		"If-Match", `"r1"`, "Idempotency-Key", "rejected-unauthorised"); code != http.StatusForbidden {
 		t.Fatalf("reader's change: %d", code)
 	}
@@ -564,7 +575,7 @@ func TestRejectedMutationsAreRecorded(t *testing.T) {
 	}
 	reasons := map[string]string{}
 	for _, entry := range history.Items {
-		if entry.Kind == "membership.put" {
+		if entry.Kind == "candidate.create" {
 			if entry.Outcome != "rejected" || entry.Actor != harnessAdmin || entry.Revision != 0 || entry.PublishedAt != nil {
 				t.Errorf("history entry %+v", entry)
 			}
@@ -602,7 +613,7 @@ func TestRejectedMutationsAreRecorded(t *testing.T) {
 // interrupted migration leaves the earlier version intact.
 func TestMigrateFromVersionOne(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{version: 1})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{version: 1})
 	e.start(binaries.plain)
 	if health := e.health(); health != "unavailable" {
 		t.Fatalf("health %q on a version 1 database", health)
@@ -624,7 +635,7 @@ func TestMigrateFromVersionOne(t *testing.T) {
 		t.Fatalf("user_version %d after an interrupted migration", n)
 	}
 	out, code := e.runOperator(binaries.plain, nil, "migrate")
-	if code != 0 || !strings.Contains(out, "from schema version 1 to 4") {
+	if code != 0 || !strings.Contains(out, "from schema version 1 to 5") {
 		t.Fatalf("migrate exited %d: %s", code, out)
 	}
 	if n := queryInt(t, e.database, `SELECT COUNT(*) FROM transition WHERE kind = 'operator.migrate' AND outcome = 'committed' AND audited_at IS NOT NULL`); n != 1 {
@@ -661,10 +672,10 @@ func TestMigrateFromVersionOne(t *testing.T) {
 	}{
 		{"provisional base", func(path string) {
 			candidate := e.cpaCandidate()
-			seed(t, path, e.protectedPolicy(alice, bob), seedOptions{version: 1, provisional: &candidate, deadline: time.Now().Add(time.Hour)})
+			seed(t, path, e.protectedPolicy(), seedOptions{version: 1, provisional: &candidate, deadline: time.Now().Add(time.Hour)})
 		}, "provisional base"},
 		{"altered schema", func(path string) {
-			seed(t, path, e.protectedPolicy(alice, bob), seedOptions{version: 1})
+			seed(t, path, e.protectedPolicy(), seedOptions{version: 1})
 			db := inspect(t, path)
 			mustExec(t, db, `CREATE INDEX extra ON revision (actor)`)
 			db.Close()

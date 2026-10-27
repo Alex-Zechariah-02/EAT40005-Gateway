@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"bytes"
-	"encoding/json"
 	"net"
 	"net/http"
 	"os"
@@ -23,7 +22,7 @@ func TestNativeAdministrationIsAbsent(t *testing.T) {
 	before := e.status()
 
 	ports := listeningPorts(t, e.process.Process.Pid)
-	want := map[string]bool{port(e.dataAddr): true, port(e.admin): true}
+	want := map[string]bool{port(e.dataAddr): true, port(e.admin): true, port(e.metrics): true}
 	for _, p := range ports {
 		if !want[p] {
 			t.Fatalf("unexpected listener on port %s (listeners %v)", p, ports)
@@ -73,13 +72,16 @@ func TestNativeAdministrationIsAbsent(t *testing.T) {
 
 	// The project channel still changes the effective generation, through
 	// the guarded membership API.
-	code, body, _ := e.harnessCall(http.MethodPut, "/admin/subjects/probe-01", `{"status":"active","roles":[]}`,
+	code, body, _ := e.harnessCall(http.MethodPut, "/admin/blocked-accounts/probe-01", `{"reason":"test containment"}`,
 		"If-Match", `"r1"`, "Idempotency-Key", "native-admin-probe-1")
 	if code != http.StatusOK {
 		t.Fatalf("authorised membership change: %d %s", code, body)
 	}
-	if after := e.status(); after.Revision != 2 || after.Generation == before.Generation {
-		t.Fatalf("membership change not published: %+v", after)
+	if after := e.status(); after.Revision != before.Revision || after.Generation != before.Generation {
+		t.Fatalf("account containment changed policy: %+v", after)
+	}
+	if code, body, _ := e.harnessCall("GET", "/admin/blocked-accounts", ""); code != 200 || !strings.Contains(body, "probe-01") {
+		t.Fatalf("containment not published: %d %s", code, body)
 	}
 }
 
@@ -136,9 +138,12 @@ func TestUpstreamsBindOnlyToLoopback(t *testing.T) {
 	}
 }
 
-// wslGatewayPort and the binary path in the test match the host firewall rule that lets
-// the WSL network reach this one program on this one port.
-const wslGatewayPort = "18443"
+// The separate-network probe also isolates its port by the configured offset. Its
+// optional host firewall rule must match this address and the test binary.
+func wslDataAddress(t *testing.T, host string) string {
+	t.Helper()
+	return net.JoinHostPort(host, port(demoTestAddress(t, "127.0.0.1:18443")))
+}
 
 // TestBypassFromSeparateNetwork probes from WSL, a separate network position.
 // The gateway must be reachable from there (the positive control), while the
@@ -155,9 +160,9 @@ func TestBypassFromSeparateNetwork(t *testing.T) {
 	copyFile(t, binaries.plain, wslGatewayBinary)
 
 	e := newEnv(t)
-	e.dataAddr = net.JoinHostPort(host, wslGatewayPort)
+	e.dataAddr = wslDataAddress(t, host)
 	e.writeConfig(configOptions{})
-	seed(t, e.database, e.protectedPolicy(alice), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(wslGatewayBinary)
 
 	token := issuer.tokenFor(t, "alice")
@@ -376,11 +381,9 @@ func TestAuditGateAndSecretSafety(t *testing.T) {
 			e.assertReceipts(0, 0, 0)
 			// A policy change needs its durable audit intent first, so the
 			// membership API refuses to publish anything.
-			code, body, _ := e.harnessCall(http.MethodPut, "/admin/subjects/someone", `{"status":"active","roles":[]}`,
+			code, body, _ := e.harnessCall(http.MethodPut, "/admin/blocked-accounts/someone", `{"reason":"test containment"}`,
 				"If-Match", `"r1"`, "Idempotency-Key", "audit-failure-probe")
-			var outcome Outcome
-			json.Unmarshal([]byte(body), &outcome)
-			if code != http.StatusServiceUnavailable || outcome.Reason != "AUDIT_UNAVAILABLE" {
+			if code != http.StatusServiceUnavailable || !strings.Contains(body, "gateway_unavailable") {
 				t.Fatalf("publication with failed audit log: %d %s", code, body)
 			}
 			if s := e.status(); !s.AuditFailed || s.Generation != before.Generation {

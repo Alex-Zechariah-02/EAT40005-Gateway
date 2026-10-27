@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -71,13 +72,9 @@ func (e *env) historyItems(s adminSession) []historyEntry {
 // into a recovery that keeps the history and trusts nothing restored.
 func TestBackupIncludesWALAndRestoresElsewhere(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
-	put := `{"status":"active","roles":["READER"]}`
-	code, body, _ := e.harnessCall(http.MethodPut, "/admin/subjects/carol", put, "If-Match", `"r1"`, "Idempotency-Key", "change-before-backup")
-	if code != http.StatusOK {
-		t.Fatalf("change: %d %s", code, body)
-	}
+	e.confirmPolicy(e.mustLogin(harnessAdmin, harnessPassword), withoutRole(e.protectedPolicy(), "WRITER"), 1, "change-before-backup")
 	e.stop()
 
 	// The change is only in the write-ahead log: the main file alone lacks it.
@@ -129,13 +126,13 @@ func TestBackupIncludesWALAndRestoresElsewhere(t *testing.T) {
 		t.Fatal("restore changed the backup")
 	}
 	for query, want := range map[string]int{
-		`SELECT COUNT(*) FROM revision`:                                                   2,
-		`SELECT COUNT(*) FROM administrator WHERE status = 'active'`:                      0,
-		`SELECT COUNT(*) FROM administrator WHERE status = 'quarantined'`:                 1,
-		`SELECT COUNT(*) FROM enrolment`:                                                  0,
-		`SELECT COUNT(*) FROM deployment WHERE mode = 'recovery_required'`:                1,
-		`SELECT COUNT(*) FROM transition WHERE kind = 'operator.restore'`:                 1,
-		`SELECT COUNT(*) FROM transition WHERE id = 'admin:harness:change-before-backup'`: 1,
+		`SELECT COUNT(*) FROM revision`:                                                           2,
+		`SELECT COUNT(*) FROM administrator WHERE status = 'active'`:                              0,
+		`SELECT COUNT(*) FROM administrator WHERE status = 'quarantined'`:                         1,
+		`SELECT COUNT(*) FROM enrolment`:                                                          0,
+		`SELECT COUNT(*) FROM deployment WHERE mode = 'recovery_required'`:                        1,
+		`SELECT COUNT(*) FROM transition WHERE kind = 'operator.restore'`:                         1,
+		`SELECT COUNT(*) FROM transition WHERE id = 'admin:harness:confirm-change-before-backup'`: 1,
 	} {
 		if n := queryInt(t, other.database, query); n != want {
 			t.Errorf("%s = %d, want %d", query, n, want)
@@ -157,7 +154,7 @@ func TestBackupIncludesWALAndRestoresElsewhere(t *testing.T) {
 	root := other.recoverAdministrator()
 	found := false
 	for _, entry := range other.historyItems(root) {
-		found = found || (entry.ID == "admin:harness:change-before-backup" && entry.Revision == 2 && entry.Actor == harnessAdmin)
+		found = found || (entry.ID == "admin:harness:confirm-change-before-backup" && entry.Revision == 2 && entry.Actor == harnessAdmin)
 	}
 	if !found {
 		t.Fatal("the change that was in the write-ahead log is missing from the restored history")
@@ -182,7 +179,7 @@ func TestBackupIncludesWALAndRestoresElsewhere(t *testing.T) {
 // enrolled administrator confirms a deny-all recovery base.
 func TestHistoricalRestore(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 	code, staged, body := e.stage(harness, e.denyAllPolicy(), `"r1"`, "candidate-before-backup")
@@ -196,9 +193,7 @@ func TestHistoricalRestore(t *testing.T) {
 	// Newer state: alice is removed after the backup.
 	e.start(binaries.plain)
 	harness = e.mustLogin(harnessAdmin, harnessPassword)
-	if code, outcome := e.deleteSubject(harness, "alice", 1, "remove-alice-later"); code != http.StatusOK || outcome.Revision != 2 {
-		t.Fatalf("removing alice: %d %+v", code, outcome)
-	}
+	e.confirmPolicy(harness, withoutRole(e.protectedPolicy(), "WRITER"), 1, "remove-writer-later")
 	e.stop()
 
 	out, code := e.runOperator(binaries.plain, nil, "restore", "--backup", older)
@@ -242,9 +237,9 @@ func TestHistoricalRestore(t *testing.T) {
 	if code, outcome := e.establish(root, "/admin/genesis", staged.Candidate.ID, staged.Candidate.Checksum); code != http.StatusConflict || outcome.Reason != "INVALID_STATE" {
 		t.Fatalf("genesis during recovery: %d %+v", code, outcome)
 	}
-	code, body, _ = e.as(root, http.MethodPut, "/admin/subjects/carol", `{"status":"active","roles":[]}`, "If-Match", `"r1"`, "Idempotency-Key", "membership-in-recovery")
-	if code != http.StatusConflict || !strings.Contains(body, "INVALID_STATE") {
-		t.Fatalf("membership change during recovery: %d %s", code, body)
+	code, body, _ = e.as(root, http.MethodPut, "/admin/blocked-accounts/carol", `{"reason":"test containment"}`, "If-Match", `"r1"`, "Idempotency-Key", "membership-in-recovery")
+	if code != http.StatusOK || !strings.Contains(body, "carol") {
+		t.Fatalf("independent containment during recovery: %d %s", code, body)
 	}
 	e.establishRecoveryBase(root)
 	if health := e.health(); health != modeNormal {
@@ -271,7 +266,7 @@ func TestHistoricalRestore(t *testing.T) {
 // database is left exactly as it was.
 func TestRestoreRefusals(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	good := filepath.Join(e.dir, "good.db")
 	e.backup(good)
 	goodData, _ := os.ReadFile(good)
@@ -318,7 +313,7 @@ func TestRestoreRefusals(t *testing.T) {
 	flipped := append([]byte(nil), goodData...)
 	flipped[len(flipped)/2] ^= 0xff
 	foreign := newEnv(t)
-	seed(t, foreign.database, foreign.protectedPolicy(alice), seedOptions{})
+	seed(t, foreign.database, foreign.protectedPolicy(), seedOptions{})
 	otherInstallation := filepath.Join(foreign.dir, "foreign.db")
 	foreign.backup(otherInstallation)
 
@@ -329,8 +324,8 @@ func TestRestoreRefusals(t *testing.T) {
 		{"truncated", write("truncated.db", goodData[:len(goodData)/2], goodManifest), "does not match its manifest"},
 		{"missing manifest", write("bare.db", goodData, nil), "reading the backup manifest"},
 		{"not a manifest", write("odd.db", goodData, []byte(`{"format":"other"}`)), "not a gateway backup manifest"},
-		{"manifest with another schema version", seal(write("future.db", goodData, nil), func(m *backupManifest) { m.SchemaVersion = 5 }), "schema version 5"},
-		{"database with another schema version", alter("version.db", `PRAGMA user_version = 5`), "schema version 5"},
+		{"manifest with another schema version", seal(write("future.db", goodData, nil), func(m *backupManifest) { m.SchemaVersion = databaseVersion + 1 }), fmt.Sprintf("schema version %d", databaseVersion+1)},
+		{"database with another schema version", alter("version.db", fmt.Sprintf(`PRAGMA user_version = %d`, databaseVersion+1)), fmt.Sprintf("schema version %d", databaseVersion+1)},
 		{"altered schema", alter("altered.db", `CREATE INDEX extra ON revision (actor)`), "schema differs"},
 		{"another installation", otherInstallation, "belongs to installation"},
 		{"the live database itself", e.database, "cannot be the live database"},
@@ -379,7 +374,7 @@ func TestHistoricalRestoreQuarantinesProvisional(t *testing.T) {
 	}{{"deadline not yet passed", 3600, false}, {"deadline passed", 2, true}} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newEnv(t)
-			seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+			seed(t, e.database, e.protectedPolicy(), seedOptions{})
 			e.start(binaries.plain)
 			harness := e.mustLogin(harnessAdmin, harnessPassword)
 			_, activated := e.provisionalFrom(harness, e.cpaCandidate(), 1, tc.seconds, "restore-provisional")
@@ -466,7 +461,7 @@ func TestRestoreSurvivesCrash(t *testing.T) {
 	} {
 		t.Run(tc.point, func(t *testing.T) {
 			e := newEnv(t)
-			seed(t, e.database, e.protectedPolicy(alice), seedOptions{})
+			seed(t, e.database, e.protectedPolicy(), seedOptions{})
 			older := filepath.Join(e.dir, "older.db")
 			e.backup(older)
 
@@ -528,7 +523,7 @@ func TestRestoreSurvivesCrash(t *testing.T) {
 // failed backup leaves no file that looks complete.
 func TestBackupRefusalsAndInterruption(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	liveRevisions := queryInt(t, e.database, `SELECT COUNT(*) FROM revision`)
 
 	existing := filepath.Join(e.dir, "existing.db")

@@ -24,13 +24,17 @@ import (
 // fixedNow is the validation time of every vector below.
 var fixedNow = time.Unix(1_800_000_000, 0)
 
+func testTrust(issuer, audience, file string) TrustConfig {
+	return TrustConfig{Issuer: issuer, Audience: audience, Keys: []VerificationKey{{Kid: "test-a", PublicKeyFile: file}}}
+}
+
 func testVerifier(t *testing.T) *verifier {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "issuer.pem")
 	if err := os.WriteFile(path, issuer.publicPEM(), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	v, err := loadVerifier(TrustConfig{Issuer: testIssuerName, Audience: testAudience, PublicKeyFile: path})
+	v, err := loadVerifier(testTrust(testIssuerName, testAudience, path))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +59,8 @@ func authenticate(v *verifier, fields []string, now time.Time) (string, string) 
 	if reason != "" {
 		return "", reason
 	}
-	return v.verify(token, now)
+	verified, reason := v.verify(token, now)
+	return verified.subject, reason
 }
 
 func TestBearerCredentialExtraction(t *testing.T) {
@@ -98,7 +103,7 @@ func TestBearerCredentialExtraction(t *testing.T) {
 func TestSignatureAndAlgorithm(t *testing.T) {
 	v := testVerifier(t)
 	payload := claimsJSON(claimsAt(nil))
-	valid := issuer.signRaw(`{"alg":"RS256","typ":"JWT"}`, payload)
+	valid := issuer.signRaw(`{"alg":"RS256","typ":"JWT","kid":"test-a"}`, payload)
 	segments := strings.Split(valid, ".")
 
 	// Flip one bit of the signature, and swap in a payload signed for
@@ -120,8 +125,8 @@ func TestSignatureAndAlgorithm(t *testing.T) {
 		{"genuine RS256 token signed by hand", valid, ""},
 		{"signature bit flipped", badSignature, "invalid_signature"},
 		{"payload replaced after signing", swappedPayload, "invalid_signature"},
-		{"signed by an untrusted RSA key", other.signRaw(`{"alg":"RS256"}`, payload), "invalid_signature"},
-		{"untrusted key named by kid", other.signRaw(`{"alg":"RS256","kid":"trusted"}`, payload), "invalid_signature"},
+		{"signed by an untrusted RSA key", other.signRaw(`{"alg":"RS256","kid":"test-a"}`, payload), "invalid_signature"},
+		{"untrusted key named by a trusted kid", other.signRaw(`{"alg":"RS256","kid":"test-a"}`, payload), "invalid_signature"},
 		{"alg none with a fake signature", encodeSegment(`{"alg":"none"}`) + "." + encodeSegment(payload) + ".AAAA", "unsupported_header"},
 		{"alg None", encodeSegment(`{"alg":"None"}`) + "." + encodeSegment(payload) + ".AAAA", "unsupported_header"},
 		{"HS256 keyed with the public key", hmacToken(issuer.publicPEM(), payload), "unsupported_header"},
@@ -161,7 +166,7 @@ func publicDER(t *testing.T) []byte {
 func rs256HeaderOverHMAC(payload string) string {
 	forged := hmacToken(issuer.publicPEM(), payload)
 	segments := strings.Split(forged, ".")
-	return encodeSegment(`{"alg":"RS256"}`) + "." + segments[1] + "." + segments[2]
+	return encodeSegment(`{"alg":"RS256","kid":"test-a"}`) + "." + segments[1] + "." + segments[2]
 }
 
 func TestHeaderMembers(t *testing.T) {
@@ -179,31 +184,31 @@ func TestHeaderMembers(t *testing.T) {
 		signer *testIssuer
 		reason string
 	}{
-		{"typ JWT", `{"alg":"RS256","typ":"JWT"}`, issuer, ""},
-		{"typ in lower case", `{"alg":"RS256","typ":"jwt"}`, issuer, ""},
-		{"no typ", `{"alg":"RS256"}`, issuer, ""},
-		{"kid is ignored", `{"alg":"RS256","kid":"key-1"}`, issuer, ""},
-		{"kid naming a file", `{"alg":"RS256","kid":"` + filepath.ToSlash(otherKey) + `"}`, issuer, ""},
-		{"kid naming a file, signed with that file's key", `{"alg":"RS256","kid":"` + filepath.ToSlash(otherKey) + `"}`, other, "invalid_signature"},
-		{"kid traversal, signed with another key", `{"alg":"RS256","kid":"../../other.pem"}`, other, "invalid_signature"},
+		{"typ JWT", `{"alg":"RS256","typ":"JWT","kid":"test-a"}`, issuer, ""},
+		{"typ in lower case", `{"alg":"RS256","typ":"jwt","kid":"test-a"}`, issuer, ""},
+		{"no typ", `{"alg":"RS256","kid":"test-a"}`, issuer, ""},
+		{"unknown kid is refused", `{"alg":"RS256","kid":"key-1"}`, issuer, "unknown_kid"},
+		{"kid naming a file", `{"alg":"RS256","kid":"` + filepath.ToSlash(otherKey) + `"}`, issuer, "unknown_kid"},
+		{"kid naming a file, signed with that file's key", `{"alg":"RS256","kid":"` + filepath.ToSlash(otherKey) + `"}`, other, "unknown_kid"},
+		{"kid traversal, signed with another key", `{"alg":"RS256","kid":"../../other.pem"}`, other, "unknown_kid"},
 		{"kid not a string", `{"alg":"RS256","kid":7}`, issuer, "unsupported_header"},
-		{"other typ", `{"alg":"RS256","typ":"at+jwt"}`, issuer, "unsupported_header"},
-		{"typ not a string", `{"alg":"RS256","typ":null}`, issuer, "unsupported_header"},
-		{"jku", `{"alg":"RS256","jku":"http://127.0.0.1:1/jwks.json"}`, issuer, "unsupported_header"},
-		{"x5u", `{"alg":"RS256","x5u":"http://127.0.0.1:1/cert.pem"}`, issuer, "unsupported_header"},
-		{"x5c", `{"alg":"RS256","x5c":["MIIB"]}`, issuer, "unsupported_header"},
-		{"x5t#S256", `{"alg":"RS256","x5t#S256":"abc"}`, issuer, "unsupported_header"},
-		{"embedded jwk", `{"alg":"RS256","jwk":{"kty":"RSA","n":"AQAB","e":"AQAB"}}`, issuer, "unsupported_header"},
-		{"crit", `{"alg":"RS256","crit":["exp"],"exp":1}`, issuer, "unsupported_header"},
-		{"unencoded payload", `{"alg":"RS256","b64":false,"crit":["b64"]}`, issuer, "unsupported_header"},
-		{"nested token", `{"alg":"RS256","cty":"JWT"}`, issuer, "unsupported_header"},
-		{"case variant of alg", `{"alg":"RS256","ALG":"none"}`, issuer, "unsupported_header"},
+		{"other typ", `{"alg":"RS256","kid":"test-a","typ":"at+jwt"}`, issuer, "unsupported_header"},
+		{"typ not a string", `{"alg":"RS256","kid":"test-a","typ":null}`, issuer, "unsupported_header"},
+		{"jku", `{"alg":"RS256","kid":"test-a","jku":"http://127.0.0.1:1/jwks.json"}`, issuer, "unsupported_header"},
+		{"x5u", `{"alg":"RS256","kid":"test-a","x5u":"http://127.0.0.1:1/cert.pem"}`, issuer, "unsupported_header"},
+		{"x5c", `{"alg":"RS256","kid":"test-a","x5c":["MIIB"]}`, issuer, "unsupported_header"},
+		{"x5t#S256", `{"alg":"RS256","kid":"test-a","x5t#S256":"abc"}`, issuer, "unsupported_header"},
+		{"embedded jwk", `{"alg":"RS256","kid":"test-a","jwk":{"kty":"RSA","n":"AQAB","e":"AQAB"}}`, issuer, "unsupported_header"},
+		{"crit", `{"alg":"RS256","kid":"test-a","crit":["exp"],"exp":1}`, issuer, "unsupported_header"},
+		{"unencoded payload", `{"alg":"RS256","kid":"test-a","b64":false,"crit":["b64"]}`, issuer, "unsupported_header"},
+		{"nested token", `{"alg":"RS256","kid":"test-a","cty":"JWT"}`, issuer, "unsupported_header"},
+		{"case variant of alg", `{"alg":"RS256","kid":"test-a","ALG":"none"}`, issuer, "unsupported_header"},
 		{"repeated alg", `{"alg":"none","alg":"RS256"}`, issuer, "malformed_credential"},
 		{"repeated alg, same value", `{"alg":"RS256","alg":"RS256"}`, issuer, "malformed_credential"},
 	}
 	for _, tc := range cases {
 		subject, reason := v.verify(tc.signer.signRaw(tc.header, payload), fixedNow)
-		if reason != tc.reason || (reason == "" && subject != "staff-01") {
+		if reason != tc.reason || (reason == "" && subject.subject != "staff-01") {
 			t.Errorf("%s: subject %q reason %q, want reason %q", tc.name, subject, reason, tc.reason)
 		}
 	}
@@ -218,11 +223,11 @@ func TestClaimProfile(t *testing.T) {
 		reason string
 	}{
 		{"all claims present", claimsAt(nil), ""},
-		{"no iss", claimsAt(map[string]any{"iss": nil}), ""},
-		{"no aud", claimsAt(map[string]any{"aud": nil}), ""},
-		{"neither iss nor aud", claimsAt(map[string]any{"iss": nil, "aud": nil}), ""},
+		{"no iss", claimsAt(map[string]any{"iss": nil}), "invalid_claims"},
+		{"no aud", claimsAt(map[string]any{"aud": nil}), "invalid_claims"},
+		{"neither iss nor aud", claimsAt(map[string]any{"iss": nil, "aud": nil}), "invalid_claims"},
 		{"aud array naming this gateway", claimsAt(map[string]any{"aud": []string{"other", testAudience}}), ""},
-		{"role claims are ignored", claimsAt(map[string]any{"roles": []string{"ADMIN"}, "role": "MANAGER", "scope": "admin"}), ""},
+		{"roles are asserted and other permission claims are ignored", claimsAt(map[string]any{"roles": []string{"ADMIN"}, "role": "MANAGER", "scope": "admin"}), ""},
 		{"iat, jti and unknown claims are ignored", claimsAt(map[string]any{"iat": "yesterday", "jti": 5, "x": []any{}}), ""},
 
 		{"wrong iss", claimsAt(map[string]any{"iss": "https://other.test"}), "wrong_issuer"},
@@ -274,7 +279,7 @@ func TestClaimProfile(t *testing.T) {
 		if reason != tc.reason {
 			t.Errorf("%s: subject %q reason %q, want reason %q", tc.name, subject, reason, tc.reason)
 		}
-		if reason == "" && subject != tc.claims["sub"] {
+		if reason == "" && subject.subject != tc.claims["sub"] {
 			t.Errorf("%s: subject %q, want %v", tc.name, subject, tc.claims["sub"])
 		}
 	}
@@ -284,7 +289,7 @@ func TestClaimProfile(t *testing.T) {
 func TestFractionalTimeBoundary(t *testing.T) {
 	v := testVerifier(t)
 	expires := time.Unix(fixedNow.Unix(), 500_000_000)
-	token := issuer.signRaw(`{"alg":"RS256"}`, `{"sub":"staff-01","exp":1800000000.5,"nbf":1800000000.25}`)
+	token := issuer.signRaw(`{"alg":"RS256","kid":"test-a"}`, `{"iss":"https://issuer.test","aud":"gateway.test","sub":"staff-01","exp":1800000000.5,"nbf":1800000000.25}`)
 	checks := []struct {
 		at     time.Time
 		reason string
@@ -335,7 +340,18 @@ func TestAmbiguousClaimEncodings(t *testing.T) {
 	}
 	for _, tc := range cases {
 		started := time.Now()
-		_, reason := v.verify(issuer.signRaw(`{"alg":"RS256"}`, tc.payload), fixedNow)
+		// Add the now-mandatory trust claims without decoding away the exact
+		// malformed or duplicate representation this vector exercises.
+		payload := tc.payload
+		if strings.HasPrefix(payload, "{") {
+			if !strings.Contains(payload, `"iss":`) {
+				payload = `{"iss":"https://issuer.test",` + payload[1:]
+			}
+			if !strings.Contains(payload, `"aud":`) {
+				payload = `{"aud":"gateway.test",` + payload[1:]
+			}
+		}
+		_, reason := v.verify(issuer.signRaw(`{"alg":"RS256","kid":"test-a"}`, payload), fixedNow)
 		if reason != tc.reason {
 			t.Errorf("%s: reason %q, want %q", tc.name, reason, tc.reason)
 		}
@@ -368,26 +384,26 @@ func TestTrustMaterialValidation(t *testing.T) {
 		name   string
 		config TrustConfig
 	}{
-		{"missing file", TrustConfig{testIssuerName, testAudience, filepath.Join(dir, "absent.pem")}},
-		{"empty file", TrustConfig{testIssuerName, testAudience, write("empty.pem", nil)}},
-		{"not PEM", TrustConfig{testIssuerName, testAudience, write("garbage.pem", []byte("not a key"))}},
-		{"corrupted key", TrustConfig{testIssuerName, testAudience, write("corrupt.pem", pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: []byte("corrupt")}))}},
-		{"PKCS#8 private key", TrustConfig{testIssuerName, testAudience, write("private.pem", pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privateDER}))}},
-		{"PKCS#1 private key", TrustConfig{testIssuerName, testAudience, write("rsa-private.pem", pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(issuer.key)}))}},
-		{"PKCS#1 public key block", TrustConfig{testIssuerName, testAudience, write("pkcs1.pem", pem.EncodeToMemory(&pem.Block{Type: "RSA PUBLIC KEY", Bytes: x509.MarshalPKCS1PublicKey(&issuer.key.PublicKey)}))}},
-		{"EC key", TrustConfig{testIssuerName, testAudience, write("ec.pem", pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: ecDER}))}},
-		{"1024-bit RSA key", TrustConfig{testIssuerName, testAudience, write("small.pem", pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: smallDER}))}},
-		{"two keys", TrustConfig{testIssuerName, testAudience, write("two.pem", append(append([]byte{}, public...), newTestIssuer(2048).publicPEM()...))}},
-		{"key followed by its private key", TrustConfig{testIssuerName, testAudience, write("pair.pem", append(append([]byte{}, public...), pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privateDER})...))}},
-		{"text before the key", TrustConfig{testIssuerName, testAudience, write("leading.pem", append([]byte("comment\n"), public...))}},
-		{"text after the key", TrustConfig{testIssuerName, testAudience, write("trailing.pem", append(append([]byte{}, public...), "comment\n"...))}},
-		{"PEM headers", TrustConfig{testIssuerName, testAudience, write("headers.pem", pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Headers: map[string]string{"Proc-Type": "4,ENCRYPTED"}, Bytes: publicDER(t)}))}},
-		{"oversize file", TrustConfig{testIssuerName, testAudience, write("big.pem", append(append([]byte{}, public...), make([]byte, maxKeyFileBytes)...))}},
-		{"no key file configured", TrustConfig{testIssuerName, testAudience, ""}},
-		{"no issuer", TrustConfig{"", testAudience, valid}},
-		{"no audience", TrustConfig{testIssuerName, "", valid}},
-		{"issuer with a space", TrustConfig{"issuer one", testAudience, valid}},
-		{"overlong audience", TrustConfig{testIssuerName, strings.Repeat("a", maxTrustValue+1), valid}},
+		{"missing file", testTrust(testIssuerName, testAudience, filepath.Join(dir, "absent.pem"))},
+		{"empty file", testTrust(testIssuerName, testAudience, write("empty.pem", nil))},
+		{"not PEM", testTrust(testIssuerName, testAudience, write("garbage.pem", []byte("not a key")))},
+		{"corrupted key", testTrust(testIssuerName, testAudience, write("corrupt.pem", pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: []byte("corrupt")})))},
+		{"PKCS#8 private key", testTrust(testIssuerName, testAudience, write("private.pem", pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privateDER})))},
+		{"PKCS#1 private key", testTrust(testIssuerName, testAudience, write("rsa-private.pem", pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(issuer.key)})))},
+		{"PKCS#1 public key block", testTrust(testIssuerName, testAudience, write("pkcs1.pem", pem.EncodeToMemory(&pem.Block{Type: "RSA PUBLIC KEY", Bytes: x509.MarshalPKCS1PublicKey(&issuer.key.PublicKey)})))},
+		{"EC key", testTrust(testIssuerName, testAudience, write("ec.pem", pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: ecDER})))},
+		{"1024-bit RSA key", testTrust(testIssuerName, testAudience, write("small.pem", pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: smallDER})))},
+		{"two keys in one PEM file", testTrust(testIssuerName, testAudience, write("two.pem", append(append([]byte{}, public...), newTestIssuer(2048).publicPEM()...)))},
+		{"key followed by its private key", testTrust(testIssuerName, testAudience, write("pair.pem", append(append([]byte{}, public...), pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privateDER})...)))},
+		{"text before the key", testTrust(testIssuerName, testAudience, write("leading.pem", append([]byte("comment\n"), public...)))},
+		{"text after the key", testTrust(testIssuerName, testAudience, write("trailing.pem", append(append([]byte{}, public...), "comment\n"...)))},
+		{"PEM headers", testTrust(testIssuerName, testAudience, write("headers.pem", pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Headers: map[string]string{"Proc-Type": "4,ENCRYPTED"}, Bytes: publicDER(t)})))},
+		{"oversize file", testTrust(testIssuerName, testAudience, write("big.pem", append(append([]byte{}, public...), make([]byte, maxKeyFileBytes)...)))},
+		{"no key file configured", testTrust(testIssuerName, testAudience, "")},
+		{"no issuer", testTrust("", testAudience, valid)},
+		{"no audience", testTrust(testIssuerName, "", valid)},
+		{"issuer with a space", testTrust("issuer one", testAudience, valid)},
+		{"overlong audience", testTrust(testIssuerName, strings.Repeat("a", maxTrustValue+1), valid)},
 	}
 	for _, tc := range cases {
 		if v, err := loadVerifier(tc.config); err == nil {
@@ -397,12 +413,12 @@ func TestTrustMaterialValidation(t *testing.T) {
 		}
 	}
 
-	v, err := loadVerifier(TrustConfig{testIssuerName, testAudience, valid})
+	v, err := loadVerifier(testTrust(testIssuerName, testAudience, valid))
 	if err != nil {
 		t.Fatalf("valid trust configuration rejected: %v", err)
 	}
 	sum := sha256.Sum256(publicDER(t))
-	if v.fingerprint != hex.EncodeToString(sum[:]) {
-		t.Fatalf("fingerprint %s, want SHA-256 of the key's SubjectPublicKeyInfo", v.fingerprint)
+	if len(v.info) != 1 || v.info[0].Kid != "test-a" || v.info[0].Fingerprint != "sha256:"+hex.EncodeToString(sum[:]) {
+		t.Fatalf("key metadata %+v, want kid and SHA-256 of the key's SubjectPublicKeyInfo", v.info)
 	}
 }

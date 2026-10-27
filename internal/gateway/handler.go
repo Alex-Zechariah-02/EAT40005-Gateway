@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"net/http"
+	"net/netip"
 	"slices"
 	"strings"
 	"time"
@@ -62,9 +63,11 @@ type bindingKey struct{}
 
 // request tracks one request through the stages for its security event.
 type request struct {
-	event Event
-	w     http.ResponseWriter
-	audit *auditLog
+	event        Event
+	w            http.ResponseWriter
+	audit        *auditLog
+	observations *observations
+	started      time.Time
 	// bodyPending is true while a declared request body has not been
 	// consumed by validation.
 	bodyPending bool
@@ -76,7 +79,9 @@ func (q *request) reject(stage int, status int, code string) {
 	q.event.Kind, q.event.Stage, q.event.Decision = "request.rejected", stageNames[stage], "reject"
 	q.event.Stages[stage] = stageReject
 	q.event.Status, q.event.Error = status, code
+	q.event.DurationMS = float64(time.Since(q.started)) / float64(time.Millisecond)
 	q.audit.Record(q.event)
+	q.observations.record(q.event)
 	if q.bodyPending {
 		// Closing the connection stops net/http from reading the unread body
 		// before it writes the rejection, which a client that declares a body
@@ -88,11 +93,22 @@ func (q *request) reject(stage int, status int, code string) {
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	q := &request{
-		w:           w,
-		audit:       h.controller.audit,
-		event:       Event{RequestID: newRequestID(), Method: r.Method, Path: r.URL.Path},
-		bodyPending: r.ContentLength != 0 || len(r.TransferEncoding) > 0,
+		w:            w,
+		audit:        h.controller.audit,
+		observations: h.controller.observations,
+		started:      time.Now(),
+		event:        Event{RequestID: newRequestID(), Time: time.Now().UTC(), Method: r.Method, Path: r.URL.Path},
+		bodyPending:  r.ContentLength != 0 || len(r.TransferEncoding) > 0,
 	}
+	w.Header().Set("X-Request-Id", q.event.RequestID)
+	if peer, err := netip.ParseAddrPort(r.RemoteAddr); err == nil {
+		q.event.ClientAddress = peer.Addr().Unmap().String()
+	}
+	// Keep credentials only for authentication; discard client identity metadata
+	// before any ingress refusal as well as before forwarding.
+	credentials := r.Header.Values("Authorization")
+	q.event.identityKnown = len(credentials) == 0
+	stripUntrustedHeaders(r.Header)
 
 	// Ingress: only origin-form targets, no tunnelling, bounded declared size.
 	// A protocol upgrade would turn an admitted request into a raw stream the
@@ -109,10 +125,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		q.reject(stageIngress, http.StatusRequestEntityTooLarge, "payload_too_large")
 		return
 	}
-	// The credential is kept only for the authentication stage; the header is
-	// removed with the others, so it is never forwarded.
-	credentials := r.Header.Values("Authorization")
-	stripUntrustedHeaders(r.Header)
 	q.pass(stageIngress)
 
 	// Capture: the single generation used for every later decision.
@@ -160,16 +172,19 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	q.pass(stageAccess)
 
 	// Authentication and authorisation apply to every operation not declared
-	// public. Roles come only from the captured generation, never from the
-	// token or the request.
+	// public. Roles come only from verified claims and are filtered through
+	// the declared roles of the one captured generation.
 	var roles []string
 	if rule.public {
 		q.event.Stages[stageJWT] = stageNotApplicable
 		q.event.Stages[stageRBAC] = stageNotApplicable
 	} else {
+		q.event.identityKnown = true
 		token, reason := bearerToken(credentials)
+		var verified verifiedToken
 		if reason == "" {
-			q.event.Subject, reason = h.controller.verifier.verify(token, time.Now())
+			verified, reason = h.controller.verifier.Load().verify(token, time.Now())
+			q.event.Subject = verified.subject
 		}
 		if reason != "" {
 			q.event.Reason = reason
@@ -178,8 +193,19 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		q.pass(stageJWT)
+		roles, q.event.IgnoredRoles, reason = g.authorise(verified.roles, rule)
+		q.event.Roles = roles
+		blocked := h.controller.blocked.Load()
+		if blocked == nil {
+			q.reject(stageRBAC, http.StatusServiceUnavailable, "gateway_unavailable")
+			return
+		}
+		if _, found := (*blocked)[q.event.Subject]; found {
+			q.event.Reason = "account_blocked"
+			q.reject(stageRBAC, http.StatusForbidden, "account_blocked")
+			return
+		}
 
-		roles, reason = g.authorise(q.event.Subject, rule)
 		if reason != "" {
 			q.event.Reason = reason
 			q.reject(stageRBAC, http.StatusForbidden, "forbidden")
@@ -188,12 +214,20 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		q.pass(stageRBAC)
 	}
 
-	// Rate limiting counts only requests whose subject was verified and
-	// authorised above. The counter key is that subject, never a request value.
+	// Rate limiting uses either the verified subject or the direct socket
+	// peer. Client forwarding headers never choose an address counter.
 	if rule.rate == nil {
 		q.event.Stages[stageRate] = stageNotApplicable
 	} else {
-		key := counterKey{operation: rule.operation, keyType: rateKeySubject, key: q.event.Subject}
+		key := counterKey{operation: rule.operation, keyType: rule.rateKey, key: q.event.Subject}
+		if rule.rateKey == rateKeyAddress {
+			if q.event.ClientAddress == "" {
+				q.event.Reason = "invalid_peer_address"
+				q.reject(stageRate, http.StatusBadRequest, "bad_request")
+				return
+			}
+			key.key = q.event.ClientAddress
+		}
 		switch h.controller.limiter.admit(key, rule.rate, h.controller.clock.now()) {
 		case rateExceeded:
 			q.event.Reason = "quota_exceeded"
@@ -284,7 +318,9 @@ func (q *request) forwarded(status int, decision, code string) {
 		q.event.Stages[stageForward] = stageFail
 	}
 	q.event.Decision, q.event.Status, q.event.Error = decision, status, code
+	q.event.DurationMS = float64(time.Since(q.started)) / float64(time.Millisecond)
 	q.audit.Record(q.event)
+	q.observations.record(q.event)
 }
 
 // isGatewayHeader reports whether only the gateway may set the named header.

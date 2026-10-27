@@ -213,6 +213,17 @@ BEGIN SELECT RAISE(ABORT, 'override history is kept'); END;
 CREATE TRIGGER override_shared BEFORE UPDATE OF resolution ON override WHEN EXISTS (
 	SELECT 1 FROM override WHERE resolution = NEW.resolution AND (status = 'quarantined') <> (NEW.status = 'quarantined'))
 BEGIN SELECT RAISE(ABORT, 'a resolution is shared only by overrides quarantined together'); END;
+`, `
+CREATE TABLE blocked_account (
+	subject TEXT PRIMARY KEY CHECK (length(subject) BETWEEN 1 AND 128),
+	reason TEXT NOT NULL CHECK (length(CAST(reason AS BLOB)) BETWEEN 1 AND 800),
+	blocked_by TEXT NOT NULL REFERENCES administrator (name),
+	blocked_at INTEGER NOT NULL
+) STRICT;
+CREATE TABLE control_result (
+	transition TEXT PRIMARY KEY REFERENCES transition (id),
+	body BLOB NOT NULL CHECK (length(body) BETWEEN 1 AND 65536)
+) STRICT;
 `}
 
 // databaseVersion is the schema version this build reads and writes.
@@ -891,7 +902,7 @@ func (s *store) markPublished(ctx context.Context, id string, how string, now ti
 // publication receipt.
 func (s *store) unpublished(ctx context.Context) ([]string, error) {
 	return s.ids(ctx, `SELECT id FROM transition
-		WHERE outcome = 'committed' AND (result_revision IS NOT NULL OR kind LIKE 'tpo.%') AND published_at IS NULL ORDER BY rowid`)
+		WHERE outcome = 'committed' AND (result_revision IS NOT NULL OR kind LIKE 'tpo.%' OR kind IN ('account.block','account.unblock','keys.reload')) AND published_at IS NULL ORDER BY rowid`)
 }
 
 // markAudited records that the transition's outcome event was durably written.

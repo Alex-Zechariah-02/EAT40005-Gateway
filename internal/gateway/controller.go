@@ -62,6 +62,8 @@ type Config struct {
 	// AdminUI is an optional directory of built dashboard files, served by
 	// the admin listener so the dashboard shares the Admin API's origin.
 	AdminUI string
+	// settingsFile is the startup operator configuration, never chosen by HTTP.
+	settingsFile string
 }
 
 // Controller is the only component that changes the effective policy. It owns
@@ -78,14 +80,15 @@ type Controller struct {
 	// ui reads the dashboard files; nil when AdminUI is not set.
 	ui fs.FS
 
-	// verifier is set once by NewController and never changes, so a new
-	// verification key takes effect only through a restart.
-	verifier *verifier
+	// Trust and account containment are published independently of policy.
+	verifier atomic.Pointer[verifier]
+	blocked  atomic.Pointer[blockedAccounts]
 
 	// limiter holds the rate counters. They belong to the process, not to a
 	// generation, so publication never resets them; a restart does.
-	limiter *limiter
-	clock   rateClock
+	limiter      *limiter
+	clock        rateClock
+	observations *observations
 
 	// Administrator authentication state, in memory only.
 	sessions *sessions
@@ -137,15 +140,16 @@ func NewController(cfg Config, logger *slog.Logger) (*Controller, error) {
 		return nil, err
 	}
 	c := &Controller{
-		config:   cfg,
-		verifier: verifier,
-		limiter:  newLimiter(),
-		clock:    rateClock{anchor: time.Now()},
-		sessions: newSessions(cfg.AdminIdleTimeout, cfg.AdminSessionLifetime),
-		throttle: newThrottle(),
-		hashing:  make(chan struct{}, maxHashing),
-		logger:   logger,
+		config:       cfg,
+		limiter:      newLimiter(),
+		clock:        rateClock{anchor: time.Now()},
+		observations: newObservations(),
+		sessions:     newSessions(cfg.AdminIdleTimeout, cfg.AdminSessionLifetime),
+		throttle:     newThrottle(),
+		hashing:      make(chan struct{}, maxHashing),
+		logger:       logger,
 	}
+	c.verifier.Store(verifier)
 	if cfg.AdminUI != "" {
 		if c.ui, err = frontendFiles("admin_ui", cfg.AdminUI); err != nil {
 			return nil, err
@@ -174,6 +178,12 @@ func NewController(cfg Config, logger *slog.Logger) (*Controller, error) {
 		return c, nil
 	}
 	c.store = st
+	blocked, err := st.blockedAccounts(context.Background())
+	if err != nil {
+		c.unavailable("reading blocked accounts: " + err.Error())
+		return c, nil
+	}
+	c.blocked.Store(&blocked)
 	c.reconcile(trustedNow())
 	return c, nil
 }
@@ -279,6 +289,7 @@ func (c *Controller) beginStop() {
 		return
 	}
 	c.stopping = true
+	c.observations.close()
 	c.state = stateStopping
 	c.current.Store(nil)
 	if c.timer != nil {
@@ -441,7 +452,7 @@ func (c *Controller) reconcileAudit(ctx context.Context, now time.Time) error {
 		if err != nil {
 			return err
 		}
-		event := Event{Kind: outcomeKind(t), Transition: t.ID, Actor: t.Actor, Revision: t.Revision, Candidate: t.Candidate, Reason: "reconciled"}
+		event := Event{Kind: outcomeKind(t), Transition: t.ID, Actor: t.Actor, Target: t.Target, Revision: t.Revision, Candidate: t.Candidate, Reason: "reconciled"}
 		if strings.HasPrefix(t.Kind, "tpo.") {
 			o, found, err := c.store.overrideOf(ctx, t.ID)
 			if err != nil || !found {
@@ -702,6 +713,8 @@ func (c *Controller) compileEffective(ctx context.Context, revision int64, deadl
 // outcomeKind names the outcome event of a committed transition.
 func outcomeKind(t transitionRecord) string {
 	switch t.Kind {
+	case "account.block", "account.unblock", "keys.reload":
+		return t.Kind
 	case "cpa.activate":
 		return "cpa.activated"
 	case "cpa.confirm":
@@ -854,6 +867,8 @@ func rejectionStatus(reason string) int {
 	case "NOT_FOUND":
 		return http.StatusNotFound
 	case "TRANSITION_ID_REUSED":
+		return http.StatusUnprocessableEntity
+	case "KEYS_INVALID":
 		return http.StatusUnprocessableEntity
 	case "TARGET_INVALID":
 		return http.StatusInternalServerError
@@ -1038,58 +1053,6 @@ func requestDigest(kind, target string, expected sql.NullInt64, payload any) str
 	fmt.Fprintf(sum, "%s|%s|%v|%d|", kind, target, expected.Valid, expected.Int64)
 	sum.Write(canonical)
 	return hex.EncodeToString(sum.Sum(nil))
-}
-
-// ChangeMembership replaces (replacement non-nil) or removes one subject's
-// membership record and publishes the resulting complete policy. Only the
-// subject list changes: roles, permits and operations change only through a
-// candidate, so a membership edit can never alter what a role may do.
-func (c *Controller) ChangeMembership(ctx context.Context, t transitionRecord, subject string, replacement *Subject) (Outcome, int) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	now := trustedNow()
-	if !c.ready() {
-		return unavailableOutcome(t.ID)
-	}
-	if result, status, done := c.replay(ctx, t); done {
-		return result, status
-	}
-	if c.state == modeNormal && !c.settle(ctx, now, false) {
-		return unavailableOutcome(t.ID)
-	}
-
-	a, err := c.store.load(ctx)
-	if err != nil {
-		return c.storeFailure(t.ID, err)
-	}
-	switch {
-	case a.mode != modeNormal:
-		return c.reject(ctx, t, "INVALID_STATE", "", now)
-	case a.provisional != 0:
-		return c.reject(ctx, t, "PROVISIONAL_ACTIVE", "", now)
-	case a.confirmed != t.Expected.Int64:
-		return c.reject(ctx, t, "PRECONDITION_FAILED", "", now)
-	}
-	policy, err := DecodePolicy(a.document)
-	if err != nil {
-		return c.storeFailure(t.ID, err)
-	}
-
-	index := slices.IndexFunc(policy.Subjects, func(s Subject) bool { return s.ID == subject })
-	switch {
-	case replacement == nil && index < 0:
-		return c.reject(ctx, t, "NOT_FOUND", "", now)
-	case replacement == nil:
-		policy.Subjects = slices.Delete(policy.Subjects, index, index+1)
-	case index < 0:
-		policy.Subjects = append(policy.Subjects, *replacement)
-	default:
-		policy.Subjects[index] = *replacement
-	}
-	// Membership is not a target any override depends on, so the active
-	// overrides carry over unchanged.
-	change := revisionChange{parent: a.confirmed, origin: "membership", actor: t.Actor, mode: modeNormal}
-	return c.publish(ctx, t, policy, change, a.overrides, now)
 }
 
 // EstablishBase confirms a validated deny-all candidate as the first

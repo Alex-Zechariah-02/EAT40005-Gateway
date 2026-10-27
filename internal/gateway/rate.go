@@ -8,12 +8,12 @@ import (
 const (
 	rateAlgorithm    = "sliding-window"
 	rateKeySubject   = "subject"
+	rateKeyAddress   = "client_address"
 	maxRateCount     = 1_000_000
 	maxRateWindowSec = 86_400
-	// maxCounters bounds the counter table. Only subjects declared in the
-	// policy pass RBAC and reach the limiter, so the key space never exceeds
-	// one counter per subject and operation.
-	maxCounters = maxSubjects * maxOperations
+	// Subject and public-address cardinality is untrusted. A full table fails
+	// closed; expired counters are swept without resetting live quotas.
+	maxCounters = 262144
 	// sweepInterval is how many admissions pass between removals of expired
 	// counters.
 	sweepInterval = 1024
@@ -30,7 +30,7 @@ func compileRate(rule RateRule, field string) (*rateRule, error) {
 	if rule.Algorithm != rateAlgorithm {
 		return nil, invalid("UNSUPPORTED_FEATURE", "%s.algorithm", field)
 	}
-	if rule.Key != rateKeySubject {
+	if rule.Key != rateKeySubject && rule.Key != rateKeyAddress {
 		return nil, invalid("UNSUPPORTED_FEATURE", "%s.key", field)
 	}
 	if rule.Count < 1 || rule.Count > maxRateCount {

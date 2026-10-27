@@ -7,6 +7,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -22,7 +23,7 @@ func configDocument(t *testing.T, dir string, change func(settings map[string]an
 			"database":     filepath.Join(dir, "state.db"),
 			"audit_log":    filepath.Join(dir, "audit.log"),
 			"admin_listen": "127.0.0.1:9440",
-			"jwt":          map[string]any{"issuer": "issuer", "audience": "gateway", "public_key_file": filepath.Join(dir, "issuer.pem")},
+			"jwt":          map[string]any{"issuer": "issuer", "audience": "gateway", "keys": []VerificationKey{{Kid: "test-a", PublicKeyFile: filepath.Join(dir, "issuer.pem")}}},
 		},
 		"data": map[string]any{"listen": "127.0.0.2:9480"},
 	}
@@ -62,9 +63,10 @@ func TestNativeConfigSettings(t *testing.T) {
 			AuditTimeout:         2 * time.Second,
 			AuditMaxBytes:        64 << 20,
 			AuditMaxFiles:        8,
-			JWT:                  TrustConfig{Issuer: "issuer", Audience: "gateway", PublicKeyFile: filepath.Join(dir, "issuer.pem")},
+			JWT:                  testTrust("issuer", "gateway", filepath.Join(dir, "issuer.pem")),
 		},
 		listen:            "127.0.0.2:9480",
+		metricsListen:     demoTestAddress(t, "127.0.0.1:9450"),
 		maxBodyBytes:      16 << 10,
 		headerLimit:       16 << 10,
 		readHeaderTimeout: 5 * time.Second,
@@ -73,7 +75,7 @@ func TestNativeConfigSettings(t *testing.T) {
 		idleTimeout:       5 * time.Minute,
 		upstream:          upstreamTimeouts{dial: 2 * time.Second, responseHeader: 5 * time.Second, readIdle: 5 * time.Second},
 	}
-	if cfg != want {
+	if !reflect.DeepEqual(cfg, want) {
 		t.Fatalf("defaults\n got %+v\nwant %+v", cfg, want)
 	}
 
@@ -144,8 +146,8 @@ func TestNativeConfigRefusals(t *testing.T) {
 		{"no audit log", string(configDocument(t, dir, remove("gateway", "audit_log"))), "gateway.audit_log is required"},
 		{"no admin address", string(configDocument(t, dir, remove("gateway", "admin_listen"))), "gateway.admin_listen is required"},
 		{"no trust key", string(configDocument(t, dir, func(s map[string]any) {
-			delete(section(s, "gateway")["jwt"].(map[string]any), "public_key_file")
-		})), "gateway.jwt.public_key_file is required"},
+			delete(section(s, "gateway")["jwt"].(map[string]any), "keys")
+		})), "gateway.jwt.keys must contain"},
 		{"no trust configuration", string(configDocument(t, dir, remove("gateway", "jwt"))), "gateway.jwt.issuer is required"},
 		{"no data section", string(configDocument(t, dir, func(s map[string]any) { delete(s, "data") })), "data.listen is required"},
 		{"relative database", string(configDocument(t, dir, set("gateway", "database", "state.db"))), "gateway.database must be an absolute path"},
@@ -279,12 +281,12 @@ func TestNativeStartupRefusesConfiguration(t *testing.T) {
 		}, "literal loopback address"},
 		{"private key as the trust key", func(e *env) {
 			s := e.nativeSettings()
-			section(s, "gateway")["jwt"].(map[string]any)["public_key_file"] = privateKey
+			section(s, "gateway")["jwt"] = testTrust(testIssuerName, testAudience, privateKey)
 			e.writeNative(s)
 		}, "exactly one PEM PUBLIC KEY block"},
 		{"missing trust key", func(e *env) {
 			s := e.nativeSettings()
-			section(s, "gateway")["jwt"].(map[string]any)["public_key_file"] = filepath.Join(e.dir, "absent.pem")
+			section(s, "gateway")["jwt"] = testTrust(testIssuerName, testAudience, filepath.Join(e.dir, "absent.pem"))
 			e.writeNative(s)
 		}, "jwt: opening public key"},
 		{"dashboard directory without index.html", func(e *env) {

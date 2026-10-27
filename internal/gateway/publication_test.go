@@ -42,8 +42,8 @@ func TestInvalidCandidateLeavesStateUnchanged(t *testing.T) {
 		{"hostname dial", Change{Policy: withUpstream("localhost:80")}, 400, "INVALID_UPSTREAM"},
 		{"non-canonical target", Change{Policy: withOperation(Operation{ID: "n", API: "a", Method: "GET", Target: "/a/../b", Access: "allow", Auth: "none"})}, 400, "INVALID_TARGET"},
 		{"invalid method", Change{Policy: withOperation(Operation{ID: "m", API: "a", Method: "get", Target: "/m", Access: "allow", Auth: "none"})}, 400, "INVALID_METHOD"},
-		{"unknown field", Change{Policy: json.RawMessage(`{"schema_version":3,"profile":"core","extra":1}`)}, 400, "UNKNOWN_FIELD"},
-		{"separate rate rule list", Change{Policy: json.RawMessage(`{"schema_version":3,"profile":"core","rate_rules":[{"id":"r","count":1}]}`)}, 400, "UNKNOWN_FIELD"},
+		{"unknown field", Change{Policy: json.RawMessage(`{"schema_version":4,"profile":"core","extra":1}`)}, 400, "UNKNOWN_FIELD"},
+		{"separate rate rule list", Change{Policy: json.RawMessage(`{"schema_version":4,"profile":"core","rate_rules":[{"id":"r","count":1}]}`)}, 400, "UNKNOWN_FIELD"},
 		// An invalid rate rule or schema rejects the whole candidate; nothing
 		// else in it is published.
 		{"body without a schema", Change{Policy: withOperation(Operation{ID: "x", API: "a", Method: "POST", Target: "/x", Access: "allow", Auth: "none", Body: &BodyRule{MaxBytes: 10}})}, 400, "INVALID_VALUE"},
@@ -59,9 +59,9 @@ func TestInvalidCandidateLeavesStateUnchanged(t *testing.T) {
 		{"profile without authentication", Change{Policy: withProfile(e.policy(e.a, true), "routing-only")}, 400, "UNSUPPORTED_FEATURE"},
 		{"profile claiming full enforcement", Change{Policy: withProfile(e.policy(e.a, true), "protected")}, 400, "UNSUPPORTED_FEATURE"},
 		{"permit for unknown role", Change{Policy: withPermit(e.policy(e.a, true), Permit{Role: "ADMIN", Operation: "write-a"})}, 400, "UNKNOWN_REFERENCE"},
-		{"subject with unknown role", Change{Policy: withSubject(e.policy(e.a, true), Subject{ID: "s-1", Status: "active", Roles: []string{"ADMIN"}})}, 400, "UNKNOWN_REFERENCE"},
-		{"subject with unknown status", Change{Policy: withSubject(e.policy(e.a, true), Subject{ID: "s-1", Status: "suspended", Roles: []string{"STAFF"}})}, 400, "INVALID_VALUE"},
-		{"subject with invalid identifier", Change{Policy: withSubject(e.policy(e.a, true), Subject{ID: "s 1", Status: "active", Roles: []string{"STAFF"}})}, 400, "INVALID_VALUE"},
+		{"subject with unknown role", Change{Policy: withSubject(e.policy(e.a, true), Subject{ID: "s-1", Status: "active", Roles: []string{"ADMIN"}})}, 400, "UNKNOWN_FIELD"},
+		{"subject with unknown status", Change{Policy: withSubject(e.policy(e.a, true), Subject{ID: "s-1", Status: "suspended", Roles: []string{"STAFF"}})}, 400, "UNKNOWN_FIELD"},
+		{"subject with invalid identifier", Change{Policy: withSubject(e.policy(e.a, true), Subject{ID: "s 1", Status: "active", Roles: []string{"STAFF"}})}, 400, "UNKNOWN_FIELD"},
 	}
 	for i, tc := range cases {
 		tc.change.ID = fmt.Sprintf("invalid-%d", i)
@@ -79,7 +79,7 @@ func TestInvalidCandidateLeavesStateUnchanged(t *testing.T) {
 
 	// A repeated member anywhere in the request makes the request itself
 	// malformed: it is refused before any transition is recorded.
-	malformed := `{"transition_id":"dup","expected_revision":1,"policy":{"schema_version":3,"schema_version":3,"profile":"core"}}`
+	malformed := `{"transition_id":"dup","expected_revision":1,"policy":{"schema_version":4,"schema_version":4,"profile":"core"}}`
 	if code, body := e.adminRaw(http.MethodPost, "/test/publish", malformed); code != http.StatusBadRequest || !strings.Contains(body, "bad_request") {
 		t.Errorf("repeated member: %d %s", code, body)
 	}
@@ -132,9 +132,10 @@ func withPermit(p Policy, permit Permit) json.RawMessage {
 }
 
 func withSubject(p Policy, s Subject) json.RawMessage {
-	p.Roles = append(p.Roles, Role{ID: "STAFF"})
-	p.Subjects = append(p.Subjects, s)
-	return mustJSON(p)
+	var document map[string]any
+	json.Unmarshal(mustJSON(p), &document)
+	document["subjects"] = []Subject{s}
+	return mustJSON(document)
 }
 
 func TestConcurrentAndStalePublications(t *testing.T) {

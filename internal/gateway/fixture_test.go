@@ -213,15 +213,6 @@ func fixturePolicy(fixtures map[string]*fixtureProcess) Policy {
 			{Role: "STAFF", Operation: "reports.summary"},
 			{Role: "MANAGER", Operation: "reports.summary"},
 		},
-		Subjects: []Subject{
-			{ID: "cust-001", Status: "active", Roles: []string{"CUSTOMER"}},
-			{ID: "cust-002", Status: "active", Roles: []string{"CUSTOMER"}},
-			{ID: "staff-01", Status: "active", Roles: []string{"STAFF"}},
-			{ID: "mgr-01", Status: "active", Roles: []string{"MANAGER"}},
-			{ID: "lead-01", Status: "active", Roles: []string{"MANAGER", "STAFF"}},
-			{ID: "nobody-01", Status: "active", Roles: []string{}},
-			{ID: "former-01", Status: "disabled", Roles: []string{"STAFF"}},
-		},
 	}
 }
 
@@ -389,6 +380,9 @@ func newFixtureEnv(t *testing.T) (*env, map[string]*fixtureProcess) {
 	e := newEnv(t)
 	seed(t, e.database, fixturePolicy(fixtures), seedOptions{})
 	e.start(binaries.plain)
+	if code, body, _ := e.harnessCall("PUT", "/admin/blocked-accounts/former-01", `{"reason":"disabled test account"}`, "Idempotency-Key", "fixture-disabled-account"); code != http.StatusOK {
+		t.Fatalf("seed containment: %d %s", code, body)
+	}
 	return e, fixtures
 }
 
@@ -676,19 +670,11 @@ func TestPolicyAgreesWithCatalogue(t *testing.T) {
 		t.Fatalf("catalogue roles %v", c.Roles)
 	}
 
-	subjects := map[string]Subject{}
-	for _, s := range p.Subjects {
-		subjects[s.ID] = s
-	}
-	if len(subjects) != len(c.Subjects) {
-		t.Fatalf("policy has %d subjects, catalogue %d", len(subjects), len(c.Subjects))
-	}
 	for _, want := range c.Subjects {
-		got, ok := subjects[want.ID]
-		gotRoles := slices.Sorted(slices.Values(got.Roles))
+		gotRoles := testRoles(want.ID)
 		wantRoles := slices.Sorted(slices.Values(want.Roles))
-		if !ok || got.Status != want.Status || !slices.Equal(gotRoles, wantRoles) {
-			t.Errorf("subject %s: policy %+v, catalogue %+v", want.ID, got, want)
+		if !slices.Equal(gotRoles, wantRoles) {
+			t.Errorf("subject %s: issuer %v, catalogue %+v", want.ID, gotRoles, want)
 		}
 	}
 	t.Logf("catalogue %s: %d operations, %d distinguish role profiles, %d subjects, %d scenarios",

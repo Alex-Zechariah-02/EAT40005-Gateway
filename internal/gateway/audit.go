@@ -44,31 +44,35 @@ var (
 // been verified; Actor only once an administrator has been authenticated, and
 // Session is a non-secret reference to that administrator's session.
 type Event struct {
-	Schema     int       `json:"schema"`
-	ID         string    `json:"event_id"`
-	Time       time.Time `json:"time"`
-	Seq        uint64    `json:"seq"`
-	Kind       string    `json:"kind"`
-	RequestID  string    `json:"request_id,omitempty"`
-	Stage      string    `json:"stage,omitempty"` // terminal stage of a request event
-	Stages     stages    `json:"stages,omitzero"`
-	Decision   string    `json:"decision,omitempty"`
-	Status     int       `json:"status,omitempty"`
-	Error      string    `json:"error,omitempty"`
-	Method     string    `json:"method,omitempty"`
-	Path       string    `json:"path,omitempty"`
-	Truncated  bool      `json:"path_truncated,omitempty"`
-	Operation  string    `json:"operation,omitempty"`
-	API        string    `json:"api,omitempty"`
-	Subject    string    `json:"subject,omitempty"`
-	Actor      string    `json:"actor,omitempty"`
-	Session    string    `json:"session,omitempty"`
-	Generation string    `json:"generation,omitempty"`
-	Profile    string    `json:"profile,omitempty"`
-	Upstream   string    `json:"upstream,omitempty"`
-	Transition string    `json:"transition,omitempty"`
-	Revision   int64     `json:"revision,omitempty"`
-	Candidate  int64     `json:"candidate,omitempty"`
+	Schema        int       `json:"schema"`
+	ID            string    `json:"event_id"`
+	Time          time.Time `json:"time"`
+	Seq           uint64    `json:"seq"`
+	Kind          string    `json:"kind"`
+	RequestID     string    `json:"request_id,omitempty"`
+	Stage         string    `json:"stage,omitempty"` // terminal stage of a request event
+	Stages        stages    `json:"stages,omitzero"`
+	Decision      string    `json:"decision,omitempty"`
+	Status        int       `json:"status,omitempty"`
+	Error         string    `json:"error,omitempty"`
+	Method        string    `json:"method,omitempty"`
+	Path          string    `json:"path,omitempty"`
+	Truncated     bool      `json:"path_truncated,omitempty"`
+	Operation     string    `json:"operation,omitempty"`
+	API           string    `json:"api,omitempty"`
+	Subject       string    `json:"subject,omitempty"`
+	Roles         []string  `json:"roles,omitempty"`
+	IgnoredRoles  []string  `json:"ignored_roles,omitempty"`
+	ClientAddress string    `json:"client_address,omitempty"`
+	DurationMS    float64   `json:"duration_ms,omitempty"`
+	Actor         string    `json:"actor,omitempty"`
+	Session       string    `json:"session,omitempty"`
+	Generation    string    `json:"generation,omitempty"`
+	Profile       string    `json:"profile,omitempty"`
+	Upstream      string    `json:"upstream,omitempty"`
+	Transition    string    `json:"transition,omitempty"`
+	Revision      int64     `json:"revision,omitempty"`
+	Candidate     int64     `json:"candidate,omitempty"`
 	// A provisional base's events name its revision, the confirmed revision
 	// it returns to on rollback and its deadline.
 	Provisional    int64     `json:"provisional,omitempty"`
@@ -83,6 +87,9 @@ type Event struct {
 	Lost     uint64    `json:"lost,omitempty"`
 	File     string    `json:"file,omitempty"`   // audit file named by audit.* events
 	Offset   int64     `json:"offset,omitempty"` // start of an incomplete record
+	// Private replay context; neither the durable envelope nor the public Event
+	// exposes this flag or retains the credential that led to it.
+	identityKnown bool
 }
 
 // Request stages in evaluation order. BODY covers framing, size, media type

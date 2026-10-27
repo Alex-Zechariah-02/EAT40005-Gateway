@@ -565,10 +565,10 @@ func TestAdminSessions(t *testing.T) {
 // even when its subject has an administrator's name.
 func TestAPIClientTokenIsNotAdminCredential(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
 	token := issuer.tokenFor(t, harnessAdmin)
-	put := `{"status":"active","roles":["WRITER"]}`
+	put := `{"reason":"test containment"}`
 	for _, header := range [][]string{
 		{"Authorization", "Bearer " + token},
 		{"Cookie", sessionCookie + "=" + token},
@@ -578,7 +578,7 @@ func TestAPIClientTokenIsNotAdminCredential(t *testing.T) {
 			t.Errorf("status with %s: %d", header[0], code)
 		}
 		mutation := append([]string{"Origin", e.adminOrigin(), "If-Match", `"r1"`, "Idempotency-Key", "api-token-probe-01"}, header...)
-		if code, _, _ := e.adminSend(http.MethodPut, "/admin/subjects/mallory", put, mutation...); code != http.StatusUnauthorized {
+		if code, _, _ := e.adminSend(http.MethodPut, "/admin/blocked-accounts/mallory", put, mutation...); code != http.StatusUnauthorized {
 			t.Errorf("membership change with %s: %d", header[0], code)
 		}
 	}
@@ -677,14 +677,14 @@ func TestLoginThrottling(t *testing.T) {
 // can claim an identity or permission.
 func TestBrowserRequestGuards(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
 	reader, _ := e.addAdmin(binaries.plain, "reader", "read")
 	writer := e.mustLogin(harnessAdmin, harnessPassword)
 	other := e.mustLogin(harnessAdmin, harnessPassword)
 	before := e.status()
 
-	put := `{"status":"active","roles":["WRITER"]}`
+	put := `{"reason":"test containment"}`
 	cookie := []string{"Cookie", sessionCookie + "=" + writer.cookie}
 	origin := []string{"Origin", e.adminOrigin()}
 	csrf := []string{csrfHeader, writer.csrf}
@@ -703,7 +703,7 @@ func TestBrowserRequestGuards(t *testing.T) {
 	}
 	for i, tc := range cases {
 		header := append(tc.header, "If-Match", `"r1"`, "Idempotency-Key", fmt.Sprintf("browser-guard-%04d", i))
-		if code, body, _ := e.adminSend(http.MethodPut, "/admin/subjects/mallory", put, header...); code != http.StatusForbidden {
+		if code, body, _ := e.adminSend(http.MethodPut, "/admin/blocked-accounts/mallory", put, header...); code != http.StatusForbidden {
 			t.Errorf("%s: %d %s", tc.name, code, body)
 		}
 	}
@@ -736,7 +736,7 @@ func TestBrowserRequestGuards(t *testing.T) {
 		t.Errorf("anonymous request with forged identity headers: %d", code)
 	}
 	readerHeader := append(append(reader.headers(e), forged...), "If-Match", `"r1"`, "Idempotency-Key", "browser-guard-reader")
-	if code, _, _ := e.adminSend(http.MethodPut, "/admin/subjects/mallory", put, readerHeader...); code != http.StatusForbidden {
+	if code, _, _ := e.adminSend(http.MethodPut, "/admin/blocked-accounts/mallory", put, readerHeader...); code != http.StatusForbidden {
 		t.Errorf("reader with forged permission headers: %d", code)
 	}
 	events := e.eventsWhen(func(events []map[string]any) bool { return countKind(events, "admin.denied") >= len(cases)+1 })
@@ -765,9 +765,9 @@ func TestBrowserRequestGuards(t *testing.T) {
 // its own permission, and no response carries a secret.
 func TestPermissionsAreServerSide(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
-	code, body, _ := e.harnessCall(http.MethodPost, "/admin/candidates", string(mustJSON(map[string]any{"policy": e.protectedPolicy(alice, bob)})),
+	code, body, _ := e.harnessCall(http.MethodPost, "/admin/candidates", string(mustJSON(map[string]any{"policy": e.protectedPolicy()})),
 		"If-Match", `"r1"`, "Idempotency-Key", "permission-candidate")
 	if code != http.StatusCreated {
 		t.Fatalf("staging: %d %s", code, body)
@@ -781,8 +781,8 @@ func TestPermissionsAreServerSide(t *testing.T) {
 	subjects := e.mustLogin("subjects", subjectsPassword)
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 
-	sensitive := []string{"/admin/status", "/admin/policy", "/admin/revisions", "/admin/revisions/1", "/admin/subjects",
-		"/admin/subjects/alice", "/admin/candidates", "/admin/candidates/1", "/admin/history", "/admin/history/x", "/admin/session"}
+	sensitive := []string{"/admin/status", "/admin/policy", "/admin/revisions", "/admin/revisions/1", "/admin/blocked-accounts",
+		"/admin/keys", "/admin/candidates", "/admin/candidates/1", "/admin/history", "/admin/history/x", "/admin/session", "/admin/events", "/admin/traffic", "/admin/administrators"}
 	for _, path := range sensitive {
 		code, body, _ := e.adminSend(http.MethodGet, path, "")
 		if code != http.StatusUnauthorized || strings.TrimSpace(body) != `{"error":"unauthenticated"}` {
@@ -792,8 +792,8 @@ func TestPermissionsAreServerSide(t *testing.T) {
 
 	type mutation struct{ method, path, body string }
 	mutations := []mutation{
-		{http.MethodPut, "/admin/subjects/mallory", `{"status":"active","roles":["WRITER"]}`},
-		{http.MethodDelete, "/admin/subjects/alice", ""},
+		{http.MethodPut, "/admin/blocked-accounts/mallory", `{"reason":"test containment"}`},
+		{http.MethodDelete, "/admin/blocked-accounts/alice", ""},
 		{http.MethodPost, "/admin/candidates", string(mustJSON(map[string]any{"policy": e.protectedPolicy()}))},
 		{http.MethodDelete, "/admin/candidates/1", ""},
 		{http.MethodPost, "/admin/genesis", `{"candidate":1,"checksum":"x"}`},
@@ -812,7 +812,7 @@ func TestPermissionsAreServerSide(t *testing.T) {
 	}
 	for who, paths := range map[string][]string{
 		"reader":   {"/admin/history"},
-		"subjects": {"/admin/status", "/admin/subjects", "/admin/history"},
+		"subjects": {"/admin/status", "/admin/blocked-accounts", "/admin/history"},
 		"auditor":  {"/admin/status", "/admin/policy"},
 	} {
 		session := map[string]adminSession{"reader": reader, "subjects": subjects, "auditor": auditor}[who]
@@ -822,7 +822,7 @@ func TestPermissionsAreServerSide(t *testing.T) {
 			}
 		}
 	}
-	if code, _, _ := e.as(reader, http.MethodGet, "/admin/subjects", ""); code != http.StatusOK {
+	if code, _, _ := e.as(reader, http.MethodGet, "/admin/blocked-accounts", ""); code != http.StatusOK {
 		t.Errorf("reader lists subjects: %d", code)
 	}
 	if code, _, _ := e.as(auditor, http.MethodGet, "/admin/history", ""); code != http.StatusOK {
@@ -831,7 +831,7 @@ func TestPermissionsAreServerSide(t *testing.T) {
 	if s := e.status(); s.Revision != 1 {
 		t.Fatalf("refused mutations changed the revision to %d", s.Revision)
 	}
-	if code, body, _ := e.as(subjects, http.MethodPut, "/admin/subjects/carol", `{"status":"active","roles":["READER"]}`,
+	if code, body, _ := e.as(subjects, http.MethodPut, "/admin/blocked-accounts/carol", `{"reason":"test containment"}`,
 		"If-Match", `"r1"`, "Idempotency-Key", "permission-subjects-2"); code != http.StatusOK {
 		t.Fatalf("manage_subjects changes membership: %d %s", code, body)
 	}
@@ -854,7 +854,7 @@ func TestPermissionsAreServerSide(t *testing.T) {
 // Reads return the authoritative state with bounded pages.
 func TestProtectedReads(t *testing.T) {
 	e := newEnv(t)
-	seeded := e.protectedPolicy(alice, bob)
+	seeded := e.protectedPolicy()
 	seed(t, e.database, seeded, seedOptions{})
 	e.start(binaries.plain)
 	before := e.status()
@@ -871,24 +871,22 @@ func TestProtectedReads(t *testing.T) {
 	}
 
 	for i := 1; i <= 5; i++ {
-		code, body, _ := e.harnessCall(http.MethodPut, fmt.Sprintf("/admin/subjects/c%02d", i), `{"status":"active","roles":[]}`,
-			"If-Match", fmt.Sprintf(`"r%d"`, i), "Idempotency-Key", fmt.Sprintf("read-subject-%04d", i))
-		if code != http.StatusOK {
-			t.Fatalf("adding c%02d: %d %s", i, code, body)
-		}
+		policy := e.protectedPolicy()
+		policy.Roles = append(policy.Roles, Role{ID: fmt.Sprintf("OTHER%02d", i)})
+		e.confirmPolicy(e.mustLogin(harnessAdmin, harnessPassword), policy, int64(i), fmt.Sprintf("read-revision-%04d", i))
 	}
-	var listed []string
+	var listed []int64
 	for after, pages := "", 0; ; pages++ {
-		path := "/admin/subjects?limit=3"
+		path := "/admin/revisions?limit=3"
 		if after != "" {
 			path += "&after=" + after
 		}
-		code, body, header := e.harnessCall(http.MethodGet, path, "")
+		code, body, _ := e.harnessCall(http.MethodGet, path, "")
 		page := fromJSON[struct {
-			Items []Subject `json:"items"`
-			Next  string    `json:"next"`
+			Items []revisionInfo `json:"items"`
+			Next  string         `json:"next"`
 		}](t, body)
-		if code != http.StatusOK || header.Get("ETag") != `"r6"` || len(page.Items) > 3 || pages > 3 {
+		if code != http.StatusOK || len(page.Items) > 3 || pages > 3 {
 			t.Fatalf("page %s: %d %s", path, code, body)
 		}
 		for _, s := range page.Items {
@@ -899,19 +897,19 @@ func TestProtectedReads(t *testing.T) {
 		}
 		after = page.Next
 	}
-	if strings.Join(listed, ",") != "alice,bob,c01,c02,c03,c04,c05" {
+	if !slices.Equal(listed, []int64{1, 2, 3, 4, 5, 6}) {
 		t.Fatalf("listed %v", listed)
 	}
 	code, body, _ = e.harnessCall(http.MethodGet, "/admin/revisions?limit=100", "")
 	revisions := fromJSON[struct {
 		Items []revisionInfo `json:"items"`
 	}](t, body)
-	if code != http.StatusOK || len(revisions.Items) != 6 || revisions.Items[5].Origin != "membership" || revisions.Items[5].Actor != harnessAdmin {
+	if code != http.StatusOK || len(revisions.Items) != 6 || revisions.Items[5].Origin != "publish" || revisions.Items[5].Actor != harnessAdmin {
 		t.Fatalf("revisions: %d %s", code, body)
 	}
 
-	for _, path := range []string{"/admin/subjects?limit=0", "/admin/subjects?limit=101", "/admin/subjects?limit=x",
-		"/admin/subjects?limit=99999999999999999999", "/admin/subjects?limit=1&limit=2", "/admin/subjects?sort=id",
+	for _, path := range []string{"/admin/revisions?limit=0", "/admin/revisions?limit=101", "/admin/revisions?limit=x",
+		"/admin/revisions?limit=99999999999999999999", "/admin/revisions?limit=1&limit=2", "/admin/revisions?sort=id",
 		"/admin/revisions?after=-1", "/admin/revisions?after=01", "/admin/history?after=x", "/admin/candidates?limit=+5"} {
 		if code, _, _ := e.harnessCall(http.MethodGet, path, ""); code != http.StatusBadRequest {
 			t.Errorf("GET %s: %d", path, code)
@@ -928,14 +926,18 @@ func TestProtectedReads(t *testing.T) {
 // refused input never reaches a reply or an event unescaped.
 func TestAdminInputBounds(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
 	before := e.status()
 	key := 0
 	put := func(path, body string, header ...string) int {
 		key++
 		header = append([]string{"If-Match", `"r1"`, "Idempotency-Key", fmt.Sprintf("input-bounds-%04d", key)}, header...)
-		code, _, _ := e.harnessCall(http.MethodPut, path, body, header...)
+		method := http.MethodPut
+		if path == "/admin/candidates" {
+			method = http.MethodPost
+		}
+		code, _, _ := e.harnessCall(method, path, body, header...)
 		return code
 	}
 	cases := []struct {
@@ -943,25 +945,25 @@ func TestAdminInputBounds(t *testing.T) {
 		header           []string
 		want             int
 	}{
-		{"oversized", "/admin/subjects/x", `{"status":"active","roles":["` + strings.Repeat("R", 5000) + `"]}`, nil, http.StatusRequestEntityTooLarge},
-		{"text body", "/admin/subjects/x", `{"status":"active","roles":[]}`, []string{"Content-Type", "text/plain"}, http.StatusUnsupportedMediaType},
-		{"repeated member", "/admin/subjects/x", `{"status":"active","status":"disabled","roles":[]}`, nil, http.StatusBadRequest},
-		{"case variant", "/admin/subjects/x", `{"Status":"active","roles":[]}`, nil, http.StatusBadRequest},
-		{"unknown field", "/admin/subjects/x", `{"status":"active","roles":[],"admin":true}`, nil, http.StatusBadRequest},
-		{"trailing data", "/admin/subjects/x", `{"status":"active","roles":[]} {}`, nil, http.StatusBadRequest},
-		{"wrong type", "/admin/subjects/x", `{"status":"active","roles":"WRITER"}`, nil, http.StatusBadRequest},
-		{"control character in id", "/admin/subjects/a%0Ab", `{"status":"active","roles":[]}`, nil, http.StatusBadRequest},
-		{"overlong id", "/admin/subjects/" + strings.Repeat("s", 129), `{"status":"active","roles":[]}`, nil, http.StatusBadRequest},
-		{"malformed If-Match", "/admin/subjects/x", `{"status":"active","roles":[]}`, []string{"If-Match", `W/"r1"`}, http.StatusBadRequest},
-		{"short idempotency key", "/admin/subjects/x", `{"status":"active","roles":[]}`, []string{"Idempotency-Key", "short"}, http.StatusBadRequest},
-		{"invalid idempotency key", "/admin/subjects/x", `{"status":"active","roles":[]}`, []string{"Idempotency-Key", "has spaces in it ok?"}, http.StatusBadRequest},
+		{"oversized", "/admin/blocked-accounts/x", `{"reason":"` + strings.Repeat("R", 5000) + `"}`, nil, http.StatusRequestEntityTooLarge},
+		{"text body", "/admin/blocked-accounts/x", `{"reason":"test containment"}`, []string{"Content-Type", "text/plain"}, http.StatusUnsupportedMediaType},
+		{"repeated member", "/admin/blocked-accounts/x", `{"reason":"x","reason":"y"}`, nil, http.StatusBadRequest},
+		{"case variant", "/admin/blocked-accounts/x", `{"Reason":"x"}`, nil, http.StatusBadRequest},
+		{"unknown field", "/admin/blocked-accounts/x", `{"status":"active","roles":[],"admin":true}`, nil, http.StatusBadRequest},
+		{"trailing data", "/admin/blocked-accounts/x", `{"reason":"test containment"} {}`, nil, http.StatusBadRequest},
+		{"wrong type", "/admin/blocked-accounts/x", `{"reason":["WRITER"]}`, nil, http.StatusBadRequest},
+		{"control character in id", "/admin/blocked-accounts/a%0Ab", `{"reason":"test containment"}`, nil, http.StatusBadRequest},
+		{"overlong id", "/admin/blocked-accounts/" + strings.Repeat("s", 129), `{"reason":"test containment"}`, nil, http.StatusBadRequest},
+		{"malformed If-Match", "/admin/candidates", `{"policy":{}}`, []string{"If-Match", `W/"r1"`}, http.StatusBadRequest},
+		{"short idempotency key", "/admin/blocked-accounts/x", `{"reason":"test containment"}`, []string{"Idempotency-Key", "short"}, http.StatusBadRequest},
+		{"invalid idempotency key", "/admin/blocked-accounts/x", `{"reason":"test containment"}`, []string{"Idempotency-Key", "has spaces in it ok?"}, http.StatusBadRequest},
 	}
 	for _, tc := range cases {
 		if code := put(tc.path, tc.body, tc.header...); code != tc.want {
 			t.Errorf("%s: %d, want %d", tc.name, code, tc.want)
 		}
 	}
-	code, _, _ := e.harnessCall(http.MethodPut, "/admin/subjects/x", `{"status":"active","roles":[]}`, "Idempotency-Key", "input-bounds-no-if-match")
+	code, _, _ := e.harnessCall(http.MethodPost, "/admin/candidates", `{"policy":{}}`, "Idempotency-Key", "input-bounds-no-if-match")
 	if code != http.StatusPreconditionRequired {
 		t.Errorf("no If-Match: %d", code)
 	}
@@ -969,11 +971,11 @@ func TestAdminInputBounds(t *testing.T) {
 	// Secret-looking input is neither echoed nor recorded.
 	privateKey := "-----BEGIN PRIVATE KEY-----MIIEvQIBADANBgkqhkiG9w0BAQEFAASC-----END PRIVATE KEY-----"
 	token := issuer.tokenFor(t, "alice")
-	if code := put("/admin/subjects/x", `{"status":"active","roles":[],"key":"`+privateKey+`"}`); code != http.StatusBadRequest {
+	if code := put("/admin/blocked-accounts/x", `{"status":"active","roles":[],"key":"`+privateKey+`"}`); code != http.StatusBadRequest {
 		t.Errorf("unknown field holding a key: %d", code)
 	}
 	e.login(harnessAdmin, token)
-	e.adminSend(http.MethodGet, "/admin/subjects/x%0A%7B%22kind%22%3A%22forged%22%7D", "")
+	e.adminSend(http.MethodGet, "/admin/blocked-accounts/x%0A%7B%22kind%22%3A%22forged%22%7D", "")
 	if after := e.status(); after.Revision != before.Revision || after.Generation != before.Generation {
 		t.Fatalf("refused input changed the state: %+v", after)
 	}
@@ -991,7 +993,7 @@ func TestAdminInputBounds(t *testing.T) {
 // policy. No recommendation route answers as if it worked.
 func TestOnlyVersionOperationsExist(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
 	before := e.status()
 	probes := []struct{ method, path string }{
@@ -1005,7 +1007,7 @@ func TestOnlyVersionOperationsExist(t *testing.T) {
 		{http.MethodPost, "/admin/install"}, {http.MethodPost, "/publish"}, {http.MethodPost, "/test/publish"},
 		{http.MethodPost, "/load"}, {http.MethodGet, "/config/"},
 	}
-	policy := string(mustJSON(map[string]any{"policy": e.protectedPolicy(alice, bob)}))
+	policy := string(mustJSON(map[string]any{"policy": e.protectedPolicy()}))
 	for _, probe := range probes {
 		code, _, _ := e.harnessCall(probe.method, probe.path, policy, "If-Match", `"r1"`, "Idempotency-Key", "future-route-probe-1")
 		if code != http.StatusNotFound && code != http.StatusMethodNotAllowed {

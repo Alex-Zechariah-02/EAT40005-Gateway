@@ -23,7 +23,7 @@ import (
 // upstreamCandidate moves API a from upstream A to upstream C and changes
 // nothing else, so it touches no target an override in these tests relies on.
 func (e *env) upstreamCandidate() Policy {
-	p := e.protectedPolicy(alice, bob)
+	p := e.protectedPolicy()
 	p.Upstreams = append(p.Upstreams, Upstream{ID: "C", Dial: e.c.addr})
 	p.APIs[0].Upstream = "C"
 	return p
@@ -36,7 +36,7 @@ func (e *env) upstreamCandidate() Policy {
 // confirmed with the overrides still applied.
 func TestCandidateAgainstActiveOverrides(t *testing.T) {
 	e := newEnv(t)
-	basePolicy := e.protectedPolicy(alice, bob)
+	basePolicy := e.protectedPolicy()
 	basePolicy.Operations[0].Rate = rate(4, 60) // read-a
 	seed(t, e.database, basePolicy, seedOptions{})
 	e.start(binaries.plain)
@@ -62,13 +62,13 @@ func TestCandidateAgainstActiveOverrides(t *testing.T) {
 		policy Policy
 		holder int64
 	}{grantCandidate, grant.Override}
-	newCount := e.protectedPolicy(alice, bob)
+	newCount := e.protectedPolicy()
 	newCount.Operations[0].Rate = rate(6, 60)
 	refused["rate count of an overridden rule"] = struct {
 		policy Policy
 		holder int64
 	}{newCount, raise.Override}
-	noReader := e.protectedPolicy(alice, Subject{ID: "bob", Status: "active", Roles: []string{}})
+	noReader := e.protectedPolicy()
 	noReader.Operations[0].Rate = rate(4, 60)
 	noReader.Roles = []Role{{ID: "WRITER"}}
 	noReader.Permits = slices.DeleteFunc(noReader.Permits, func(p Permit) bool { return p.Role == "READER" })
@@ -76,14 +76,14 @@ func TestCandidateAgainstActiveOverrides(t *testing.T) {
 		policy Policy
 		holder int64
 	}{noReader, grant.Override}
-	narrower := e.protectedPolicy(alice, bob)
+	narrower := e.protectedPolicy()
 	narrower.Operations[0].Rate = rate(4, 60)
 	narrower.Operations = append(narrower.Operations, Operation{ID: "special-a", API: "a", Method: "GET", Target: "/a/special", Access: "allow", Auth: "none"})
 	refused["more specific route inside an overridden prefix"] = struct {
 		policy Policy
 		holder int64
 	}{narrower, raise.Override}
-	reRouted := e.protectedPolicy(alice, bob)
+	reRouted := e.protectedPolicy()
 	reRouted.Operations[0].Rate = rate(4, 60)
 	reRouted.Operations[3].Target = "/bee/*"
 	refused["contained operation moved"] = struct {
@@ -167,7 +167,7 @@ func TestCandidateAgainstActiveOverrides(t *testing.T) {
 // effective policy, and an override that ended stays ended.
 func TestProvisionalRestrictsOverrides(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 
@@ -275,7 +275,7 @@ func TestProvisionalRestrictsOverrides(t *testing.T) {
 // provisional deadline give each its single final disposition.
 func TestConcurrentOverridesAndActivation(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 
@@ -333,7 +333,7 @@ func TestConcurrentOverridesAndActivation(t *testing.T) {
 		if round%2 == 1 {
 			// The other candidate: back to the protected policy.
 			e.resolve(harness, "rollback", activated.Provisional, policyETag(confirmed), fmt.Sprintf("race-reset-%02d-xxxxx", round))
-			_, activated = e.provisionalFrom(harness, e.protectedPolicy(alice, bob), confirmed, 2, fmt.Sprintf("race-deadline-b-%02d", round))
+			_, activated = e.provisionalFrom(harness, e.protectedPolicy(), confirmed, 2, fmt.Sprintf("race-deadline-b-%02d", round))
 		}
 		time.Sleep(time.Until(o.Expires.Add(-15 * time.Millisecond)))
 		var codes [3]int
@@ -385,7 +385,7 @@ func TestConcurrentOverridesAndActivation(t *testing.T) {
 // worked out by hand from the admission rule at a controlled limiter time.
 func TestRateOverrideAcrossActivation(t *testing.T) {
 	ratePolicy := func(e *env) Policy {
-		p := e.protectedPolicy(alice, bob)
+		p := e.protectedPolicy()
 		p.Operations[0].Rate = rate(3, 60) // read-a: 3 per minute per subject
 		return p
 	}
@@ -456,7 +456,7 @@ func TestOverrideTransitionsSurviveCrash(t *testing.T) {
 	for _, p := range creation {
 		t.Run("create/"+p.name, func(t *testing.T) {
 			e := newEnv(t)
-			seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+			seed(t, e.database, e.protectedPolicy(), seedOptions{})
 			e.start(binaries.fault, "GATEWAY_FAULT="+p.name)
 			harness := e.mustLogin(harnessAdmin, harnessPassword)
 			request := permitOverride(overrideException, "READER", "write-a", 600)
@@ -500,7 +500,7 @@ func TestOverrideTransitionsSurviveCrash(t *testing.T) {
 	for _, p := range ending {
 		t.Run("revoke/"+p.name, func(t *testing.T) {
 			e := newEnv(t)
-			seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+			seed(t, e.database, e.protectedPolicy(), seedOptions{})
 			e.start(binaries.plain)
 			harness := e.mustLogin(harnessAdmin, harnessPassword)
 			o := e.mustOverride(harness, permitOverride(overrideException, "READER", "write-a", 600), `"r1"`, "crash-revoke-create")
@@ -539,7 +539,7 @@ func TestOverrideTransitionsSurviveCrash(t *testing.T) {
 	for _, p := range []point{{"tpo-expire-before-commit", false}, {"tpo-expire-after-commit", true}, {"tpo-expire-after-swap", true}} {
 		t.Run("expire/"+p.name, func(t *testing.T) {
 			e := newEnv(t)
-			seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+			seed(t, e.database, e.protectedPolicy(), seedOptions{})
 			e.start(binaries.fault, "GATEWAY_FAULT="+p.name)
 			harness := e.mustLogin(harnessAdmin, harnessPassword)
 			o := e.mustOverride(harness, permitOverride(overrideException, "READER", "write-a", 1), `"r1"`, "crash-expire-create")
@@ -579,7 +579,7 @@ func TestOverrideTransitionsSurviveCrash(t *testing.T) {
 // with only the overrides still active.
 func TestRestartWithOverrides(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 
@@ -655,7 +655,7 @@ func TestRestartWithOverrides(t *testing.T) {
 // at startup keeps the gateway unavailable.
 func TestOverrideExpiryUnderClockChanges(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	offset := filepath.Join(t.TempDir(), "wall-offset")
 	setOffset := func(d time.Duration) {
 		if err := os.WriteFile(offset, []byte(strconv.FormatInt(d.Milliseconds(), 10)), 0o600); err != nil {
@@ -765,7 +765,7 @@ func TestDamagedOverrideStateAndAuditFailures(t *testing.T) {
 	for _, d := range damaged {
 		t.Run(d.name, func(t *testing.T) {
 			e := newEnv(t)
-			p := e.protectedPolicy(alice, bob)
+			p := e.protectedPolicy()
 			p.Operations[0].Rate = rate(4, 60)
 			seed(t, e.database, p, seedOptions{})
 			db := inspect(t, e.database)
@@ -788,7 +788,7 @@ func TestDamagedOverrideStateAndAuditFailures(t *testing.T) {
 
 	t.Run("audit unavailable for a creation", func(t *testing.T) {
 		e := newEnv(t)
-		seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+		seed(t, e.database, e.protectedPolicy(), seedOptions{})
 		e.start(binaries.plain)
 		harness := e.mustLogin(harnessAdmin, harnessPassword)
 		e.stop()
@@ -806,7 +806,7 @@ func TestDamagedOverrideStateAndAuditFailures(t *testing.T) {
 
 	t.Run("outcome not recorded for a creation", func(t *testing.T) {
 		e := newEnv(t)
-		seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+		seed(t, e.database, e.protectedPolicy(), seedOptions{})
 		e.start(binaries.fault, "GATEWAY_FAULT=audit-fail-published")
 		harness := e.mustLogin(harnessAdmin, harnessPassword)
 		code, outcome, body := e.createOverride(harness, permitOverride(overrideException, "READER", "write-a", 600), `"r1"`, "audit-pending-create")
@@ -833,7 +833,7 @@ func TestDamagedOverrideStateAndAuditFailures(t *testing.T) {
 
 	t.Run("audit unavailable for an expiry", func(t *testing.T) {
 		e := newEnv(t)
-		seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+		seed(t, e.database, e.protectedPolicy(), seedOptions{})
 		e.start(binaries.plain)
 		harness := e.mustLogin(harnessAdmin, harnessPassword)
 		o := e.mustOverride(harness, permitOverride(overrideException, "READER", "write-a", 3), `"r1"`, "audit-expiry-create")
@@ -864,7 +864,7 @@ func TestDamagedOverrideStateAndAuditFailures(t *testing.T) {
 
 	t.Run("audit unavailable for a revocation", func(t *testing.T) {
 		e := newEnv(t)
-		seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+		seed(t, e.database, e.protectedPolicy(), seedOptions{})
 		e.start(binaries.plain)
 		harness := e.mustLogin(harnessAdmin, harnessPassword)
 		o := e.mustOverride(harness, permitOverride(overrideException, "READER", "write-a", 600), `"r1"`, "audit-revoke-create")
@@ -899,7 +899,7 @@ func TestDamagedOverrideStateAndAuditFailures(t *testing.T) {
 // override. An ordinary restart of the current database keeps the override.
 func TestHistoricalRestoreQuarantinesOverrides(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 	grant := e.mustOverride(harness, permitOverride(overrideException, "READER", "write-a", 3600), `"r1"`, "restore-grant-00001")
@@ -983,7 +983,7 @@ func TestHistoricalRestoreQuarantinesSeveralOverrides(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			e := newEnv(t)
-			seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+			seed(t, e.database, e.protectedPolicy(), seedOptions{})
 			e.start(binaries.plain)
 			harness := e.mustLogin(harnessAdmin, harnessPassword)
 			grant := e.mustOverride(harness, permitOverride(overrideException, "READER", "write-a", 3600), `"r1"`, "several-grant-00001")
@@ -1154,13 +1154,13 @@ func TestHistoricalRestoreQuarantinesSeveralOverrides(t *testing.T) {
 func TestMigrateFromVersionTwo(t *testing.T) {
 	e := newEnv(t)
 	candidate := e.upstreamCandidate()
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{version: 2, provisional: &candidate, deadline: time.Now().Add(time.Hour)})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{version: 2, provisional: &candidate, deadline: time.Now().Add(time.Hour)})
 	e.start(binaries.plain)
 	if reason := e.unavailableReason(); !strings.Contains(reason, "schema version 2") || !strings.Contains(reason, "migrate") {
 		t.Fatalf("reason %q", reason)
 	}
 	e.stop()
-	if out, code := e.runOperator(binaries.plain, nil, "migrate"); code != 0 || !strings.Contains(out, "from schema version 2 to 4") {
+	if out, code := e.runOperator(binaries.plain, nil, "migrate"); code != 0 || !strings.Contains(out, fmt.Sprintf("from schema version 2 to %d", databaseVersion)) {
 		t.Fatalf("migrate exited %d: %s", code, out)
 	}
 	e.start(binaries.plain)
@@ -1246,7 +1246,7 @@ func writeVersion3Overrides(t *testing.T, path string) {
 // active override is still enforced and can be revoked.
 func TestMigrateFromVersionThree(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{version: 3})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{version: 3})
 	writeVersion3Overrides(t, e.database)
 	before := map[string][]string{}
 	for _, table := range []string{"override", "revision", "base", "candidate", "administrator", "enrolment", "activation", "transition"} {
@@ -1287,7 +1287,7 @@ func TestMigrateFromVersionThree(t *testing.T) {
 	}
 	expectVersion3("after an interrupted migration")
 
-	if out, code := e.runOperator(binaries.plain, nil, "migrate"); code != 0 || !strings.Contains(out, "from schema version 3 to 4") {
+	if out, code := e.runOperator(binaries.plain, nil, "migrate"); code != 0 || !strings.Contains(out, fmt.Sprintf("from schema version 3 to %d", databaseVersion)) {
 		t.Fatalf("migrate exited %d: %s", code, out)
 	}
 	if out, code := e.runOperator(binaries.plain, nil, "migrate"); code == 0 || !strings.Contains(out, "cannot be migrated") {
@@ -1315,7 +1315,7 @@ func TestMigrateFromVersionThree(t *testing.T) {
 		}
 	}
 	for query, want := range map[string]int{
-		`PRAGMA user_version`: 4,
+		`PRAGMA user_version`: databaseVersion,
 		`SELECT COUNT(*) FROM transition WHERE kind = 'operator.migrate' AND outcome = 'committed' AND audited_at IS NOT NULL`: 1,
 		`SELECT COUNT(*) FROM pragma_foreign_key_check`: 0,
 	} {
@@ -1376,8 +1376,8 @@ func TestMigrateFromVersionThree(t *testing.T) {
 		reason  string
 	}{
 		{"newer schema version", databaseVersion, func(db *sql.DB) {
-			mustExec(t, db, `PRAGMA user_version = 5`)
-		}, "schema version 5 cannot be migrated"},
+			mustExec(t, db, fmt.Sprintf(`PRAGMA user_version = %d`, databaseVersion+1))
+		}, fmt.Sprintf("schema version %d cannot be migrated", databaseVersion+1)},
 		{"override naming a missing revision", 3, func(db *sql.DB) {
 			withoutGuards(db, []string{"override_fixed"}, `PRAGMA foreign_keys = OFF`, `UPDATE override SET base = 99 WHERE id = 4`)
 		}, "FOREIGN KEY constraint failed"},
@@ -1393,7 +1393,7 @@ func TestMigrateFromVersionThree(t *testing.T) {
 	}
 	for _, r := range refusals {
 		other := newEnv(t)
-		seed(t, other.database, other.protectedPolicy(alice, bob), seedOptions{version: r.version})
+		seed(t, other.database, other.protectedPolicy(), seedOptions{version: r.version})
 		if r.version == 3 {
 			writeVersion3Overrides(t, other.database)
 		}
@@ -1413,7 +1413,7 @@ func TestMigrateFromVersionThree(t *testing.T) {
 		}
 	}
 	damaged := newEnv(t)
-	seed(t, damaged.database, damaged.protectedPolicy(alice, bob), seedOptions{version: 3})
+	seed(t, damaged.database, damaged.protectedPolicy(), seedOptions{version: 3})
 	corrupt(t, damaged.database)
 	corrupted := fileSHA256(t, damaged.database)
 	if out, code := damaged.runOperator(binaries.plain, nil, "migrate"); code == 0 || fileSHA256(t, damaged.database) != corrupted {
@@ -1522,7 +1522,7 @@ func TestOverridesWithFixtures(t *testing.T) {
 // the grant.
 func TestOverridesUnderLoad(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 	withGrant := map[string]bool{}
@@ -1608,7 +1608,7 @@ func TestOverridesUnderLoad(t *testing.T) {
 // upstream is reported without any other destination being tried.
 func TestOverridesKeepRoutingAndUpstreams(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 	e.mustOverride(harness, operationContainment("read-b", 600), `"r1"`, "routing-close-00001")

@@ -34,6 +34,7 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 
+	"github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/demoports"
 	"github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/fixture"
 )
 
@@ -41,11 +42,14 @@ import (
 // are on different loopback hosts because browsers scope cookies by host, not
 // port: the administrator's session cookie must never accompany a data-plane
 // request, which the gateway would forward to a fixture.
-const (
+var (
 	adminListen = "127.0.0.1:9440"
 	dataListen  = "127.0.0.2:9480"
-	issuerName  = "demo-issuer"
-	audience    = "demo-gateway"
+)
+
+const (
+	issuerName  = "fetch-accounts"
+	audience    = "fetch-gateway"
 	maxTokenTTL = time.Hour
 )
 
@@ -58,6 +62,25 @@ var fixtures = []fixtureService{
 	{"orders", "127.0.0.1:9501", "127.0.0.1:9601"},
 	{"inventory", "127.0.0.1:9502", "127.0.0.1:9602"},
 	{"reports", "127.0.0.1:9503", "127.0.0.1:9603"},
+}
+
+// Resolve the process's environment once. Invalid offsets stop the command
+// before it opens deployment state or starts any process.
+var portSetupError = applyDemoPortOffset()
+
+func applyDemoPortOffset() error {
+	addresses := []*string{&adminListen, &dataListen}
+	for i := range fixtures {
+		addresses = append(addresses, &fixtures[i].listen, &fixtures[i].control)
+	}
+	for _, address := range addresses {
+		value, err := demoports.Offset(*address)
+		if err != nil {
+			return err
+		}
+		*address = value
+	}
+	return nil
 }
 
 // Files inside the demonstration directory.
@@ -81,6 +104,10 @@ const usage = `usage:
   demo events -dir D [-request ID] [-last N]`
 
 func main() {
+	if portSetupError != nil {
+		fmt.Fprintln(os.Stderr, "demo:", portSetupError)
+		os.Exit(1)
+	}
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, usage)
 		os.Exit(2)
@@ -224,9 +251,9 @@ func gatewayConfig(dir, web string) map[string]any {
 			"admin_listen": adminListen,
 			"admin_ui":     filepath.Join(web, "admin"),
 			"jwt": map[string]any{
-				"issuer":          issuerName,
-				"audience":        audience,
-				"public_key_file": filepath.Join(dir, publicKeyFile),
+				"issuer":   issuerName,
+				"audience": audience,
+				"keys":     []map[string]string{{"kid": "fetch-2026-10-a", "public_key_file": filepath.Join(dir, publicKeyFile)}},
 			},
 		},
 		"data": map[string]any{
@@ -290,11 +317,8 @@ func baselinePolicy() map[string]any {
 	permit := func(role, operation string) map[string]any {
 		return map[string]any{"role": role, "operation": operation}
 	}
-	subject := func(id, status string, roles ...string) map[string]any {
-		return map[string]any{"id": id, "status": status, "roles": append([]string{}, roles...)}
-	}
 	return map[string]any{
-		"schema_version": 3,
+		"schema_version": 4,
 		"profile":        "core",
 		"upstreams":      upstreams,
 		"apis":           apis,
@@ -322,20 +346,10 @@ func baselinePolicy() map[string]any {
 			permit("STAFF", "reports.summary"),
 			permit("MANAGER", "reports.summary"),
 		},
-		"subjects": []map[string]any{
-			subject("cust-001", "active", "CUSTOMER"),
-			subject("cust-002", "active", "CUSTOMER"),
-			subject("staff-01", "active", "STAFF"),
-			subject("mgr-01", "active", "MANAGER"),
-			subject("lead-01", "active", "MANAGER", "STAFF"),
-			subject("nobody-01", "active"),
-			subject("former-01", "disabled", "STAFF"),
-		},
 	}
 }
 
-// denyAll is the baseline with every operation denied and no permits or
-// subjects: the only kind of document the first policy may be.
+// denyAll is the baseline with every operation denied and no permits.
 func denyAll(baseline map[string]any) map[string]any {
 	policy := maps.Clone(baseline)
 	var operations []map[string]any
@@ -346,7 +360,6 @@ func denyAll(baseline map[string]any) map[string]any {
 	}
 	policy["operations"] = operations
 	policy["permits"] = []any{}
-	policy["subjects"] = []any{}
 	return policy
 }
 
@@ -507,7 +520,7 @@ func runDemo(ctx context.Context, dir, gateway, fixtureBinary string, ready func
 		}
 	}
 	fmt.Printf("listening; protected admission: %s\n", admission)
-	fmt.Printf("  dashboard: http://%s/\n  website:   http://%s/demo/\n", adminListen, dataListen)
+	fmt.Printf("  dashboard: http://%s/\n  website:   http://%s/\n", adminListen, dataListen)
 	for i, p := range processes {
 		name := "gateway"
 		if i < len(fixtures) {
@@ -601,19 +614,31 @@ func mintToken(dir, subject string, ttl time.Duration) (string, time.Time, error
 	if err != nil {
 		return "", time.Time{}, err
 	}
-	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: key}, (&jose.SignerOptions{}).WithType("JWT"))
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: key}, (&jose.SignerOptions{}).WithType("JWT").WithHeader("kid", "fetch-2026-10-a"))
 	if err != nil {
 		return "", time.Time{}, err
 	}
 
 	now := time.Now()
 	expires := now.Add(ttl)
+	roles := []string{}
+	catalogue, err := fixture.LoadCatalogue()
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	for _, account := range catalogue.Subjects {
+		if account.ID == subject && account.Status == "active" {
+			roles = account.Roles
+			break
+		}
+	}
 	claims, err := json.Marshal(map[string]any{
-		"sub": subject,
-		"iss": issuerName,
-		"aud": audience,
-		"iat": now.Unix(),
-		"exp": expires.Unix(),
+		"sub":   subject,
+		"iss":   issuerName,
+		"aud":   audience,
+		"iat":   now.Unix(),
+		"exp":   expires.Unix(),
+		"roles": roles,
 	})
 	if err != nil {
 		return "", time.Time{}, err

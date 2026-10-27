@@ -239,7 +239,7 @@ func TestHeaderSchemaRefusesUnforwardedFields(t *testing.T) {
 // a validated field in Connection, reach nothing.
 func TestValidatedHeadersWithAuthentication(t *testing.T) {
 	e := newEnv(t)
-	p := e.protectedPolicy(alice, bob)
+	p := e.protectedPolicy()
 	for i := range p.Operations {
 		if p.Operations[i].ID == "write-a" {
 			p.Operations[i].Headers = json.RawMessage(`{"type":"object","additionalProperties":true,"required":["Idempotency-Key"],"properties":{"Idempotency-Key":{"type":"string","minLength":8}}}`)

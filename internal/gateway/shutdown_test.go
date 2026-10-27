@@ -597,7 +597,7 @@ func TestNativeStopReportsAuditFailure(t *testing.T) {
 	for _, fault := range []string{"audit-sync", "audit-full"} {
 		t.Run(fault, func(t *testing.T) {
 			e := newEnv(t)
-			seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+			seed(t, e.database, e.protectedPolicy(), seedOptions{})
 			e.interruptible = true
 			e.start(binaries.fault, "GATEWAY_FAULT="+fault)
 			waitFor(t, time.Now().Add(10*time.Second), "the audit failure", func() bool {
@@ -631,9 +631,10 @@ func TestNativeStopReportsAuditFailure(t *testing.T) {
 // exits with status 0.
 func TestNativeStopUnderLoad(t *testing.T) {
 	e := newEnv(t)
-	provisional := e.protectedPolicy(alice, bob)
-	provisional.Subjects = append(provisional.Subjects, Subject{ID: "carol", Status: "active", Roles: []string{"READER"}})
-	base := e.protectedPolicy(alice, bob)
+	provisional := e.protectedPolicy()
+	provisional.Roles = append(provisional.Roles, Role{ID: "TRIAL"})
+	provisional.Permits = append(provisional.Permits, Permit{Role: "TRIAL", Operation: "read-a"})
+	base := e.protectedPolicy()
 	seed(t, e.database, base, seedOptions{provisional: &provisional, deadline: time.Now().Add(time.Hour)})
 	e.interruptible = true
 	e.start(binaries.plain)
@@ -735,7 +736,7 @@ func TestNativeStopUnderLoad(t *testing.T) {
 // hold complete records only.
 func TestNativeRestartAfterGracefulStop(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	settings := e.nativeSettings()
 	section(settings, "gateway")["audit_max_bytes"] = minAuditBytes
 	section(settings, "gateway")["audit_max_files"] = maxAuditFiles
@@ -745,8 +746,9 @@ func TestNativeRestartAfterGracefulStop(t *testing.T) {
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 
 	override := e.mustOverride(harness, operationContainment("read-b", 3), `"r1"`, "restart-override-create")
-	candidate := e.protectedPolicy(alice, bob)
-	candidate.Subjects = append(candidate.Subjects, Subject{ID: "carol", Status: "active", Roles: []string{"READER"}})
+	candidate := e.protectedPolicy()
+	candidate.Roles = append(candidate.Roles, Role{ID: "TRIAL"})
+	candidate.Permits = append(candidate.Permits, Permit{Role: "TRIAL", Operation: "read-a"})
 	_, activated := e.provisionalFrom(harness, candidate, 1, 3, "restart-cpa")
 	if code, _ := e.get("/a/x", bearer(t, "carol")...); code != http.StatusOK {
 		t.Fatalf("carol under the provisional base: %d", code)

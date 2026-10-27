@@ -155,6 +155,7 @@ type env struct {
 	publicKey string // the issuer's verification key file
 	dataAddr  string
 	admin     string
+	metrics   string
 	config    string // the gateway's configuration file
 	process   *exec.Cmd
 	exited    chan error
@@ -185,6 +186,7 @@ func newEnv(t *testing.T) *env {
 		publicKey: filepath.Join(dir, "issuer.pem"),
 		dataAddr:  freeAddr(t),
 		admin:     freeAddr(t),
+		metrics:   freeAddr(t),
 		a:         newReceiver(t, "A"),
 		b:         newReceiver(t, "B"),
 		c:         newReceiver(t, "C"),
@@ -215,13 +217,14 @@ func (e *env) writeConfig(opts configOptions) {
 		opts.maxBodyBytes = 16384
 	}
 	if opts.jwt == nil {
-		opts.jwt = map[string]any{"issuer": testIssuerName, "audience": testAudience, "public_key_file": e.publicKey}
+		opts.jwt = testTrust(testIssuerName, testAudience, e.publicKey)
 	}
 	gateway := map[string]any{
-		"database":     e.database,
-		"audit_log":    e.auditLog,
-		"admin_listen": e.admin,
-		"jwt":          opts.jwt,
+		"database":       e.database,
+		"audit_log":      e.auditLog,
+		"admin_listen":   e.admin,
+		"metrics_listen": e.metrics,
+		"jwt":            opts.jwt,
 	}
 	maps.Copy(gateway, opts.audit)
 	maps.Copy(gateway, opts.admin)
@@ -246,10 +249,11 @@ func (e *env) nativeSettings() map[string]any {
 	return map[string]any{
 		"version": nativeConfigVersion,
 		"gateway": map[string]any{
-			"database":     e.database,
-			"audit_log":    e.auditLog,
-			"admin_listen": e.admin,
-			"jwt":          map[string]any{"issuer": testIssuerName, "audience": testAudience, "public_key_file": e.publicKey},
+			"database":       e.database,
+			"audit_log":      e.auditLog,
+			"admin_listen":   e.admin,
+			"metrics_listen": e.metrics,
+			"jwt":            testTrust(testIssuerName, testAudience, e.publicKey),
 		},
 		"data": map[string]any{"listen": e.dataAddr},
 	}

@@ -42,7 +42,7 @@ func TestNativeOperatorArguments(t *testing.T) {
 
 func TestNativeOperatorPaths(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	before := fileSHA256(t, e.database)
 	for _, output := range []string{
 		e.database, e.auditLog, e.publicKey, e.config,
@@ -80,7 +80,7 @@ func TestNativeOperatorPaths(t *testing.T) {
 
 func TestNativeOperatorOwnership(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	lock, err := lockDeployment(e.database)
 	if err != nil {
 		t.Fatal(err)

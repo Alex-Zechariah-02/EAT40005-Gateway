@@ -14,14 +14,15 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 )
 
 // compilerVersion is part of every generation identity so that a change in
 // compilation rules is visible even when the policy revision is unchanged.
-const compilerVersion = "4"
+const compilerVersion = "5"
 
 // schemaVersion is the only policy document version this compiler accepts.
-const schemaVersion = 3
+const schemaVersion = 4
 
 // profileCore is the only enforcement profile that can be activated. Under it
 // the gateway enforces routing, the per-operation access flag, bearer JWT
@@ -39,7 +40,6 @@ const (
 	maxOperations    = 256
 	maxRoles         = 64
 	maxPermits       = 4096
-	maxSubjects      = 1024
 	maxIDLength      = 64
 	maxSubjectLength = 128
 	maxTargetLength  = 256
@@ -56,7 +56,6 @@ type Policy struct {
 	Operations    []Operation `json:"operations"`
 	Roles         []Role      `json:"roles"`
 	Permits       []Permit    `json:"permits"`
-	Subjects      []Subject   `json:"subjects"`
 }
 
 // Upstream is one entry of the closed destination inventory.
@@ -92,8 +91,8 @@ type BodyRule struct {
 	Schema   json.RawMessage `json:"schema"`
 }
 
-// RateRule limits how many requests each verified subject may make to the
-// operation within a sliding window.
+// RateRule limits requests to an operation by verified subject or direct
+// client address within a sliding window.
 type RateRule struct {
 	Algorithm     string `json:"algorithm"`
 	Count         int64  `json:"count"`
@@ -111,14 +110,6 @@ type Role struct {
 type Permit struct {
 	Role      string `json:"role"`
 	Operation string `json:"operation"`
-}
-
-// Subject is the trusted membership record of one token subject of the
-// configured issuer. Its ID is compared with the verified "sub" claim.
-type Subject struct {
-	ID     string   `json:"id"`
-	Status string   `json:"status"`
-	Roles  []string `json:"roles"`
 }
 
 // PolicyError is a typed candidate rejection. Field is the JSON path of the
@@ -161,14 +152,7 @@ type Generation struct {
 
 	exact    map[string]*target
 	prefixes []*target // ordered most specific first
-	subjects map[string]*member
-}
-
-// member is a compiled subject: whether it may authenticate at all, and its
-// roles in sorted order.
-type member struct {
-	active bool
-	roles  []string
+	roles    map[string]bool
 }
 
 type target struct {
@@ -189,6 +173,7 @@ type rule struct {
 	body      *bodyRule       // nil: the operation accepts no body
 	headers   *headerRule     // nil: no header schema
 	rate      *rateRule       // nil: no rate limit
+	rateKey   string          // subject or direct peer address, checked by the compiler
 }
 
 // DecodePolicy parses a policy document. It rejects oversized or deeply
@@ -251,6 +236,11 @@ func decodeStrict(data []byte, value any) error {
 // [a-z0-9_]. They are decoded as raw JSON, never into Go structs, so only the
 // repeated-name and depth rules apply inside them.
 func checkMembers(data []byte, maxDepth int) error {
+	// encoding/json replaces malformed Unicode. Policy, operator and Admin
+	// inputs must retain the same unambiguous UTF-8 representation as bodies.
+	if !utf8.Valid(data) || hasLoneSurrogate(data) {
+		return invalid("SCHEMA_INVALID", "")
+	}
 	type container struct {
 		object   bool
 		wantName bool
@@ -440,10 +430,7 @@ func Compile(p Policy, revision int64, notAfter time.Time) (*Generation, error) 
 	if err != nil {
 		return nil, err
 	}
-	g.subjects, err = compileSubjects(p.Subjects, roles)
-	if err != nil {
-		return nil, err
-	}
+	g.roles = roles
 
 	for _, t := range targets {
 		methods := make([]string, 0, len(t.methods))
@@ -468,11 +455,11 @@ func Compile(p Policy, revision int64, notAfter time.Time) (*Generation, error) 
 }
 
 // denyAll reports whether the policy can admit no request at all: it holds no
-// permits and no subjects, so no authenticated request can pass RBAC, and no
+// permits, so no authenticated request can pass RBAC, and no
 // operation is both allowed and public. Only such a policy may become the
 // first base of an installation or the base that ends a recovery.
 func denyAll(p Policy) bool {
-	if len(p.Permits) > 0 || len(p.Subjects) > 0 {
+	if len(p.Permits) > 0 {
 		return false
 	}
 	for _, op := range p.Operations {
@@ -494,7 +481,7 @@ type controlChange struct {
 // policyChanges lists, in a stable order, every control target whose
 // definition differs between two complete policies: an upstream, API,
 // operation (route, method, access, authentication, body and header rules),
-// its rate rule, a role, a permit (role and operation) or a subject.
+// its rate rule, a role or a permit (role and operation).
 func policyChanges(before, after Policy) []controlChange {
 	// encode gives a definition a comparable form; policy types always encode.
 	encode := func(value any) string {
@@ -503,7 +490,7 @@ func policyChanges(before, after Policy) []controlChange {
 	}
 	// collect maps each control to its targets and their definitions.
 	collect := func(p Policy) map[string]map[string]string {
-		d := map[string]map[string]string{"upstream": {}, "api": {}, "operation": {}, "rate": {}, "role": {}, "permit": {}, "subject": {}}
+		d := map[string]map[string]string{"upstream": {}, "api": {}, "operation": {}, "rate": {}, "role": {}, "permit": {}}
 		for _, u := range p.Upstreams {
 			d["upstream"][u.ID] = u.Dial
 		}
@@ -522,9 +509,6 @@ func policyChanges(before, after Policy) []controlChange {
 		}
 		for _, permit := range p.Permits {
 			d["permit"][permit.Role+":"+permit.Operation] = ""
-		}
-		for _, s := range p.Subjects {
-			d["subject"][s.ID] = encode(s)
 		}
 		return d
 	}
@@ -563,7 +547,6 @@ func checkCounts(p Policy) error {
 		{"operations", len(p.Operations), maxOperations},
 		{"roles", len(p.Roles), maxRoles},
 		{"permits", len(p.Permits), maxPermits},
-		{"subjects", len(p.Subjects), maxSubjects},
 	}
 	for _, l := range limits {
 		if l.count > l.limit {
@@ -594,15 +577,14 @@ func compileControls(op Operation, i int, r *rule) error {
 		}
 	}
 	if op.Rate != nil {
-		// The only counting key is the verified subject, so a public operation
-		// has no trusted key and cannot be rate limited.
-		if r.public {
+		if r.public && op.Rate.Key == rateKeySubject {
 			return invalid("INVALID_VALUE", "operations[%d].rate", i)
 		}
 		r.rate, err = compileRate(*op.Rate, fmt.Sprintf("operations[%d].rate", i))
 		if err != nil {
 			return err
 		}
+		r.rateKey = op.Rate.Key
 	}
 	return nil
 }
@@ -642,42 +624,6 @@ func checkPermits(p Policy, rules map[string]*rule) (map[string]bool, error) {
 		r.roles[permit.Role] = true
 	}
 	return roles, nil
-}
-
-// compileSubjects validates the membership records against the declared
-// roles. A subject is never created from a token: only these records exist.
-func compileSubjects(subjects []Subject, roles map[string]bool) (map[string]*member, error) {
-	members := map[string]*member{}
-	for i, s := range subjects {
-		if !isSubjectID(s.ID) {
-			return nil, invalid("INVALID_VALUE", "subjects[%d].id", i)
-		}
-		if _, exists := members[s.ID]; exists {
-			return nil, invalid("DUPLICATE_ID", "subjects[%d].id", i)
-		}
-		if s.Status != "active" && s.Status != "disabled" {
-			return nil, invalid("INVALID_VALUE", "subjects[%d].status", i)
-		}
-		if len(s.Roles) > maxRoles {
-			return nil, invalid("LIMIT_EXCEEDED", "subjects[%d].roles", i)
-		}
-
-		m := &member{active: s.Status == "active"}
-		held := map[string]bool{}
-		for j, role := range s.Roles {
-			if !roles[role] {
-				return nil, invalid("UNKNOWN_REFERENCE", "subjects[%d].roles[%d]", i, j)
-			}
-			if held[role] {
-				return nil, invalid("DUPLICATE_ID", "subjects[%d].roles[%d]", i, j)
-			}
-			held[role] = true
-			m.roles = append(m.roles, role)
-		}
-		sort.Strings(m.roles)
-		members[s.ID] = m
-	}
-	return members, nil
 }
 
 // isSubjectID accepts 1 to 128 printable ASCII characters without spaces. The
@@ -882,21 +828,20 @@ func (g *Generation) match(path, method string) (*target, *rule) {
 	return t, t.methods[method]
 }
 
-// authorise resolves a verified subject to its trusted roles in this
-// generation and allows the operation when at least one of those roles holds
-// a permit for it. It returns the subject's roles, or the refusal reason.
-func (g *Generation) authorise(subject string, r *rule) ([]string, string) {
-	m := g.subjects[subject]
-	if m == nil {
-		return nil, "unknown_subject"
-	}
-	if !m.active {
-		return nil, "disabled_subject"
-	}
-	for _, role := range m.roles {
-		if r.roles[role] {
-			return m.roles, ""
+// authorise retains only declared roles from already verified claims. Unknown
+// roles are returned for audit; a subject name never creates a permission.
+func (g *Generation) authorise(asserted []string, r *rule) (roles, ignored []string, reason string) {
+	allowed := false
+	for _, role := range asserted {
+		if g.roles[role] {
+			roles = append(roles, role)
+			allowed = allowed || r.roles[role]
+		} else {
+			ignored = append(ignored, role)
 		}
 	}
-	return nil, "no_permit"
+	if !allowed {
+		reason = "no_permit"
+	}
+	return
 }

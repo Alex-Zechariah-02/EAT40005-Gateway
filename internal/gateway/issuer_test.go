@@ -65,18 +65,50 @@ func changed(base, changes map[string]any) map[string]any {
 func validClaims(subject string) map[string]any {
 	now := time.Now()
 	return map[string]any{
-		"sub": subject,
-		"iss": testIssuerName,
-		"aud": testAudience,
-		"iat": now.Unix(),
-		"exp": now.Add(10 * time.Minute).Unix(),
+		"sub":   subject,
+		"iss":   testIssuerName,
+		"aud":   testAudience,
+		"iat":   now.Unix(),
+		"exp":   now.Add(10 * time.Minute).Unix(),
+		"roles": testRoles(subject),
 	}
+}
+
+// The isolated test issuer's account catalogue is independent of gateway
+// policies. Tests changing assertions sign an explicit roles claim instead.
+func testRoles(subject string) []string {
+	switch subject {
+	case "alice":
+		return []string{"WRITER"}
+	case "bob", "dave":
+		return []string{"READER"}
+	case "carol":
+		return []string{"TRIAL"}
+	case "cust-001", "cust-002":
+		return []string{"CUSTOMER"}
+	case "staff-01", "former-01":
+		return []string{"STAFF"}
+	case "mgr-01":
+		return []string{"MANAGER"}
+	case "lead-01":
+		return []string{"MANAGER", "STAFF"}
+	case "both@example.test":
+		return []string{"CUSTOMER", "STAFF"}
+	}
+	return []string{}
+}
+
+// Subject is solely a legacy-input test fixture. It is not a policy type.
+type Subject struct {
+	ID     string   `json:"id"`
+	Status string   `json:"status"`
+	Roles  []string `json:"roles"`
 }
 
 // token signs claims with go-jose's own signer, as an ordinary issuer would.
 func (i *testIssuer) token(t testing.TB, claims map[string]any) string {
 	t.Helper()
-	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: i.key}, (&jose.SignerOptions{}).WithType("JWT"))
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: i.key}, (&jose.SignerOptions{}).WithType("JWT").WithHeader("kid", "test-a"))
 	if err != nil {
 		t.Fatal(err)
 	}

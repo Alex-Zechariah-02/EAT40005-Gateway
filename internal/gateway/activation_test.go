@@ -53,6 +53,16 @@ func (e *env) provisionalFrom(s adminSession, policy Policy, parent, seconds int
 	return staged.Candidate.candidateRecord, outcome
 }
 
+func (e *env) confirmPolicy(s adminSession, policy Policy, parent int64, key string) Outcome {
+	e.t.Helper()
+	_, activation := e.provisionalFrom(s, policy, parent, 60, key)
+	code, outcome, body := e.resolve(s, "confirm", activation.Provisional, policyETag(parent), "confirm-"+key)
+	if code != http.StatusOK {
+		e.t.Fatalf("confirmation: %d %s", code, body)
+	}
+	return outcome
+}
+
 // storedActivations reads every activation record of a stopped gateway.
 func storedActivations(t *testing.T, path string) []activationRecord {
 	t.Helper()
@@ -84,7 +94,7 @@ func storedActivations(t *testing.T, path string) []activationRecord {
 // (READER) loses GET /b/* and gains POST /a/item, and API a moves from
 // upstream A to upstream C.
 func (e *env) cpaCandidate() Policy {
-	p := e.protectedPolicy(alice, bob)
+	p := e.protectedPolicy()
 	p.Upstreams = append(p.Upstreams, Upstream{ID: "C", Dial: e.c.addr})
 	p.APIs[0].Upstream = "C"
 	p.Permits = slices.DeleteFunc(p.Permits, func(permit Permit) bool { return permit == Permit{Role: "READER", Operation: "read-b"} })
@@ -134,7 +144,7 @@ func (e *env) expectEnforced(candidate bool, generation string) {
 // makes it the confirmed base, once.
 func TestActivationAndConfirmation(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 	base := e.status()
@@ -196,7 +206,7 @@ func TestActivationAndConfirmation(t *testing.T) {
 		again.Transition != activated.Transition || !again.Deadline.Equal(activated.Deadline) || again.Provisional != 2 {
 		t.Fatalf("retried activation: %d %s", code, body)
 	}
-	code, other, body := e.stage(harness, e.protectedPolicy(alice), `"r1"`, "stage-confirm-path-2")
+	code, other, body := e.stage(harness, e.protectedPolicy(), `"r1"`, "stage-confirm-path-2")
 	if code != http.StatusCreated {
 		t.Fatalf("staging a second candidate: %d %s", code, body)
 	}
@@ -204,8 +214,8 @@ func TestActivationAndConfirmation(t *testing.T) {
 		!strings.Contains(body, "PROVISIONAL_ACTIVE") {
 		t.Fatalf("second activation: %d %s", code, body)
 	}
-	if code, _, _ := e.putSubject(harness, "carol", `{"status":"active","roles":["READER"]}`, 1, "membership-provisional"); code != http.StatusConflict {
-		t.Fatalf("membership edit while provisional: %d", code)
+	if code, _, _ := e.blockAccount(harness, "carol", "independent containment", "account-provisional"); code != http.StatusOK {
+		t.Fatalf("containment while provisional: %d", code)
 	}
 	if s := e.status(); s.Provisional != 2 || s.Confirmed != 1 || !s.Deadline.Equal(activated.Deadline) {
 		t.Fatalf("status after traffic and reads: %+v", s)
@@ -325,7 +335,7 @@ func TestActivationAndConfirmation(t *testing.T) {
 // fresh quota.
 func TestRollbackRestoresConfirmedBase(t *testing.T) {
 	e := newEnv(t)
-	base := e.protectedPolicy(alice, bob)
+	base := e.protectedPolicy()
 	base.Operations[0].Rate = rate(3, 60) // read-a: three per minute per subject
 	seed(t, e.database, base, seedOptions{})
 	e.start(binaries.plain)
@@ -436,7 +446,7 @@ func TestRollbackRestoresConfirmedBase(t *testing.T) {
 // refusal is recorded and enforcement is unchanged.
 func TestActivationRefusals(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 
@@ -497,7 +507,7 @@ func TestActivationRefusals(t *testing.T) {
 	// A candidate whose stored document no longer matches its checksum: the
 	// checksum is the good candidate's, the document another policy.
 	result, err := db.Exec(`INSERT INTO candidate (parent, document, checksum, deny_all, status, actor, created_at) VALUES (1, ?, ?, 0, 'validated', 'x', 0)`,
-		[]byte(mustJSON(e.protectedPolicy(alice))), good.Checksum)
+		[]byte(mustJSON(e.protectedPolicy())), good.Checksum)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -582,15 +592,13 @@ func TestActivationRefusals(t *testing.T) {
 
 	// A candidate prepared on an older confirmed revision is stale once the
 	// confirmed base has moved on.
-	if code, _, body := e.putSubject(harness, "carol", `{"status":"active","roles":["READER"]}`, 1, "refusals-membership"); code != http.StatusOK {
-		t.Fatalf("membership change: %s", body)
-	}
+	e.confirmPolicy(harness, e.protectedPolicy(), 1, "refusals-new-base")
 	if code, outcome, body := e.activate(harness, good, 60, `"r2"`, "stale-candidate-activation"); code != http.StatusConflict || outcome.Reason != "CANDIDATE_STALE" {
 		t.Fatalf("stale candidate: %d %s", code, body)
 	}
 	e.stop()
-	if list := storedActivations(t, e.database); len(list) != 0 {
-		t.Fatalf("refusals stored activations: %+v", list)
+	if list := storedActivations(t, e.database); len(list) != 1 || list[0].Disposition != dispositionConfirmed {
+		t.Fatalf("refusals changed the one intentionally confirmed activation: %+v", list)
 	}
 	if n := queryInt(t, e.database, `SELECT COUNT(*) FROM transition WHERE kind = 'cpa.activate' AND outcome = 'rejected'`); n < len(cases)+1 {
 		t.Fatalf("%d recorded activation refusals", n)
@@ -604,7 +612,7 @@ func TestActivationRefusals(t *testing.T) {
 // returns someone else's receipt.
 func TestLifecycleNeedsAuthorisedAdministrator(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
 	// Each enrolment restarts the gateway, so everyone logs in afterwards.
 	_, readerPassword := e.addAdmin(binaries.plain, "reader", "read")
@@ -690,7 +698,7 @@ func TestLifecycleNeedsAuthorisedAdministrator(t *testing.T) {
 // each have exactly one winner, and every loser is told what happened.
 func TestOneProvisionalAndOneDisposition(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 
@@ -710,7 +718,7 @@ func TestOneProvisionalAndOneDisposition(t *testing.T) {
 
 	// Two candidates race for activation.
 	_, first, _ := e.stage(harness, e.cpaCandidate(), `"r1"`, "stage-race-first")
-	_, second, _ := e.stage(harness, e.protectedPolicy(alice), `"r1"`, "stage-race-second")
+	_, second, _ := e.stage(harness, e.protectedPolicy(), `"r1"`, "stage-race-second")
 	var codes [2]int
 	var outcomes [2]Outcome
 	concurrently(
@@ -770,7 +778,7 @@ func TestOneProvisionalAndOneDisposition(t *testing.T) {
 	for round := range 6 {
 		next := e.cpaCandidate()
 		if candidateConfirmed {
-			next = e.protectedPolicy(alice, bob)
+			next = e.protectedPolicy()
 		}
 		_, activated := e.provisionalFrom(harness, next, confirmed, 60, fmt.Sprintf("race-round-%02d", round))
 		actions := [2]string{"confirm", "rollback"}
@@ -903,7 +911,7 @@ func TestLifecycleWithFixtures(t *testing.T) {
 // requests to it, and every answer is one that policy gives.
 func TestLifecycleUnderLoad(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 	baseGenerations := map[string]bool{e.status().Generation: true}

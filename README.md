@@ -6,13 +6,15 @@ This Go gateway enforces a shared, configurable security policy before requests 
 
 The gateway has five security controls:
 
-- **JWT authentication** checks the access token of each caller.
+- **JWT authentication** checks RS256 access tokens with a trusted issuer, audience, expiry, subject and named signing key.
 - **Role-based access control** allows or blocks each call by the role of the caller.
-- **Rate limiting** counts the requests of each checked caller for each operation over a sliding time window. A request above the limit gets the answer 429 and goes no further.
-- **Request validation** checks the JSON body and selected headers of a request against a JSON Schema set for the operation. An unclear body, such as one with a repeated field, is rejected.
+- **Rate limiting** counts requests per account or direct client address for each operation over a sliding time window. Public operations use the client address. A request above the limit gets the answer 429 and goes no further.
+- **Request validation** checks the JSON body and selected headers against the operation's bounded JSON Schema. Bodies can include arrays with item schemas and item-count limits. Ambiguous fields and malformed Unicode are rejected.
 - **Security event logging** records each security decision in a local file. A request goes to an API only after its record is safely on disk. If the log cannot be written, the gateway stops letting requests through.
 
-Each request uses one policy version from start to end. When one control rejects a request, the request does not go to the next control and never reaches an API. The gateway checks tokens from an outside identity provider. It does not issue tokens itself. It accepts only RS256 tokens signed by one trusted public key. The roles of each caller come from the gateway's own policy, never from the token.
+Each request uses one policy version from start to end. When one control rejects a request, it never reaches an API. The gateway checks tokens from an outside identity provider and does not issue tokens itself. A token's `kid` selects one of the trusted public keys. Roles come from verified token claims and are kept only when the captured policy defines them. A separate blocked-account list refuses a verified account immediately and survives policy rollback. Public keys can be reloaded from operator files; an invalid reload keeps the current key set.
+
+Policy documents use schema version 4 and contain roles and permits without per-user membership. Version 3 policies are refused rather than converted automatically. A fresh demonstration creates a version 4 policy.
 
 ## Safe policy changes
 
@@ -25,11 +27,12 @@ A policy can pass all checks and still cause problems when it is in use. Adminis
 
 - The gateway has its own HTTP server and reverse proxy, built on the Go standard library. It serves HTTP/1.0 and HTTP/1.1 in plain text. Each request passes all five controls in one pipeline and then goes only to the API that the policy names, once.
 - The project implements the policy model and the five controls itself.
-- SQLite stores each policy version, including the callers and their roles, the administrators and a record of every change. No request waits for a database query. The gateway refuses to start serving from a database whose schema or stored policy it cannot verify.
+- One SQLite controller stores complete policy versions, roles, permits, independent account blocks, administrators and durable change receipts. Protected requests read immutable snapshots rather than querying the database. The gateway refuses protected admission from state it cannot verify.
 - Only the project controller changes the policy in use. The data plane has no administration endpoint.
-- A protected admin API listens on a local address only. Administrators sign in with a password, and each one holds only the permissions they are given. The API can read the policy and its history, change which roles each caller holds, store and check a proposed new policy, and then activate, confirm or roll it back. It also creates, lists and revokes temporary overrides.
+- A protected admin API listens on a local address only. Administrators sign in with a password and hold explicit permissions. The API reads policy and history, stages and checks complete candidates, and activates, confirms or rolls them back. It also manages temporary overrides, independent account blocks and disk-only key reloads.
+- Request lookup and live events use an in-memory window of the latest 10,000 API outcomes. Event streams have bounded queues, disclose dropped events and stop with the administrator's session. Traffic summaries and a separate loopback Prometheus listener expose bounded operational measurements without token, subject or address labels.
 - Local commands set up the first administrator, add or reset administrators, make and restore checked database backups, and upgrade a database made by an earlier version. A restored backup serves nothing until an administrator confirms a new policy that allows nothing, and a provisional policy in the backup never comes back.
-- A web dashboard for administrators (in `dashboard/`) is served by the admin listener itself, so it uses the same sign-in, origin and CSRF checks as the admin API. It shows the confirmed policy, any provisional policy and its deadline, the temporary overrides in force and the change history. It stages and activates new policies, confirms or rolls them back, changes caller roles and creates or revokes overrides. Each change is shown as done only when the gateway's receipt arrives, and a request with no answer is shown as having an unknown outcome.
+- A web dashboard for administrators (in `dashboard/`) is served by the admin listener itself, so it uses the same sign-in, origin and CSRF checks as the admin API. It shows the confirmed policy, any provisional policy and its deadline, the temporary overrides in force and the change history. It stages and activates new policies, confirms or rolls them back and creates or revokes overrides. Each change is shown as done only when the gateway's receipt arrives, and a request with no answer is shown as having an unknown outcome.
 - A demonstration website for ordinary API callers (in `client/`) is served by the gateway on a second loopback address, so the administrator's session cookie never reaches it. It is a small shop with customer, staff and manager views, and every call it makes goes through the gateway to the three test APIs with a test token pasted by the operator. Its inspector page shows permitted and refused requests, the rate limit and the request checks.
 
 ## Build and test
@@ -58,7 +61,7 @@ demo setup -dir <new-dir> -web <web-dir> -gateway <out-dir>/gateway.exe
 demo run -dir <new-dir> -gateway <out-dir>/gateway.exe -fixture <out-dir>/fixture.exe
 ```
 
-The dashboard is at `http://127.0.0.1:9440/` and the website at `http://127.0.0.2:9480/demo/`.
+The dashboard is at `http://127.0.0.1:9440/` and the website at `http://127.0.0.2:9480/`. Metrics are at `http://127.0.0.1:9450/metrics` on a separate loopback listener. `EAT_PORT_OFFSET` shifts the demonstration ports; for example, `1000` selects data port 10480, admin port 10440 and metrics port 10450.
 
 ### One command
 

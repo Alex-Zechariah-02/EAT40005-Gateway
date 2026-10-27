@@ -74,7 +74,7 @@ func TestGenesisEstablishesDenyAllBase(t *testing.T) {
 	root := e.mustLogin("root", password)
 
 	// Refusals before genesis: nothing is established and the mode stays.
-	code, permissive, body := e.stage(root, e.protectedPolicy(alice), `"r0"`, "genesis-permissive")
+	code, permissive, body := e.stage(root, e.protectedPolicy(), `"r0"`, "genesis-permissive")
 	if code != http.StatusCreated || permissive.Candidate.DenyAll {
 		t.Fatalf("staging a permissive candidate: %d %s", code, body)
 	}
@@ -96,10 +96,10 @@ func TestGenesisEstablishesDenyAllBase(t *testing.T) {
 			t.Errorf("%s: %d %+v, want %d %s", r.name, code, outcome, r.status, r.reason)
 		}
 	}
-	put := `{"status":"active","roles":[]}`
-	code, body, _ = e.as(root, http.MethodPut, "/admin/subjects/alice", put, "If-Match", `"r0"`, "Idempotency-Key", "bootstrap-membership")
-	if code != http.StatusConflict || !strings.Contains(body, "INVALID_STATE") {
-		t.Errorf("membership change in bootstrap: %d %s", code, body)
+	put := `{"reason":"test containment"}`
+	code, body, _ = e.as(root, http.MethodPut, "/admin/blocked-accounts/alice", put, "If-Match", `"r0"`, "Idempotency-Key", "bootstrap-membership")
+	if code != http.StatusOK || !strings.Contains(body, "alice") {
+		t.Errorf("independent containment in bootstrap: %d %s", code, body)
 	}
 	if e.health() != modeBootstrap {
 		t.Fatal("a refused request left bootstrap mode")

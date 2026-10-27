@@ -29,7 +29,7 @@ import (
 // protectedPolicy is the standard test policy with authentication required on
 // /a/*, /a/item and /b/*: READER may read /a/* and /b/*, WRITER may read and
 // write /a/*. GET /d stays a denied public operation.
-func (e *env) protectedPolicy(subjects ...Subject) Policy {
+func (e *env) protectedPolicy() Policy {
 	p := e.policy(e.a, true)
 	for i := range p.Operations {
 		if p.Operations[i].ID != "denied" {
@@ -43,14 +43,14 @@ func (e *env) protectedPolicy(subjects ...Subject) Policy {
 		{Role: "WRITER", Operation: "write-a"},
 		{Role: "READER", Operation: "read-b"},
 	}
-	p.Subjects = subjects
 	return p
 }
 
-var (
-	alice = Subject{ID: "alice", Status: "active", Roles: []string{"WRITER"}}
-	bob   = Subject{ID: "bob", Status: "active", Roles: []string{"READER"}}
-)
+func withoutRole(p Policy, role string) Policy {
+	p.Roles = slices.DeleteFunc(p.Roles, func(r Role) bool { return r.ID == role })
+	p.Permits = slices.DeleteFunc(p.Permits, func(permit Permit) bool { return permit.Role == role })
+	return p
+}
 
 // requestEvents waits for and returns the events of one request.
 func (e *env) requestEvents(requestID string, want int) []map[string]any {
@@ -123,7 +123,7 @@ func TestAuthenticationThroughGateway(t *testing.T) {
 	}
 	vectors := []vector{
 		{"valid token", []string{"Authorization", "Bearer " + valid}, "", 200, "", "staff-01"},
-		{"no iss and no aud (dedicated profile)", []string{"Authorization", "Bearer " + claims(map[string]any{"iss": nil, "aud": nil})}, "", 200, "", "staff-01"},
+		{"missing required issuer and audience", []string{"Authorization", "Bearer " + claims(map[string]any{"iss": nil, "aud": nil})}, "", 401, "invalid_claims", ""},
 		{"aud array naming this gateway", []string{"Authorization", "Bearer " + claims(map[string]any{"aud": []string{"other", testAudience}})}, "", 200, "", "staff-01"},
 
 		{"no credential", nil, "", 401, "missing_credential", ""},
@@ -138,8 +138,8 @@ func TestAuthenticationThroughGateway(t *testing.T) {
 		{"alg none without signature", []string{"Authorization", "Bearer " + encodeSegment(`{"alg":"none"}`) + "." + encodeSegment(payload) + "."}, "", 401, "malformed_credential", ""},
 		{"alg none with a fake signature", []string{"Authorization", "Bearer " + encodeSegment(`{"alg":"none"}`) + "." + encodeSegment(payload) + ".e30"}, "", 401, "unsupported_header", ""},
 		{"HS256 keyed with the public key", []string{"Authorization", "Bearer " + hmacToken(issuer.publicPEM(), payload)}, "", 401, "unsupported_header", ""},
-		{"key URL in jku", []string{"Authorization", "Bearer " + issuer.signRaw(`{"alg":"RS256","jku":"http://`+keyServer.addr+`/jwks"}`, payload)}, "", 401, "unsupported_header", ""},
-		{"certificate URL in x5u", []string{"Authorization", "Bearer " + issuer.signRaw(`{"alg":"RS256","x5u":"http://`+keyServer.addr+`/cert"}`, payload)}, "", 401, "unsupported_header", ""},
+		{"key URL in jku", []string{"Authorization", "Bearer " + issuer.signRaw(`{"alg":"RS256","kid":"test-a","jku":"http://`+keyServer.addr+`/jwks"}`, payload)}, "", 401, "unsupported_header", ""},
+		{"certificate URL in x5u", []string{"Authorization", "Bearer " + issuer.signRaw(`{"alg":"RS256","kid":"test-a","x5u":"http://`+keyServer.addr+`/cert"}`, payload)}, "", 401, "unsupported_header", ""},
 		{"signature bit flipped", []string{"Authorization", "Bearer " + tampered}, "", 401, "invalid_signature", ""},
 		{"payload swapped for another subject", []string{"Authorization", "Bearer " + elevated}, "", 401, "invalid_signature", ""},
 		{"untrusted RSA key", []string{"Authorization", "Bearer " + newTestIssuer(2048).tokenFor(t, "staff-01")}, "", 401, "invalid_signature", ""},
@@ -241,10 +241,8 @@ func TestRoleMatrixAgainstCatalogue(t *testing.T) {
 			wantReason := ""
 			switch {
 			case intended:
-			case s.Status == "":
-				wantReason = "unknown_subject"
 			case s.Status == "disabled":
-				wantReason = "disabled_subject"
+				wantReason = "account_blocked"
 			default:
 				wantReason = "no_permit"
 			}
@@ -278,7 +276,11 @@ func TestRoleMatrixAgainstCatalogue(t *testing.T) {
 			}
 
 			denied++
-			if resp.StatusCode != http.StatusForbidden || !strings.Contains(reply, `"forbidden"`) {
+			wantCode := "forbidden"
+			if s.Status == "disabled" {
+				wantCode = "account_blocked"
+			}
+			if resp.StatusCode != http.StatusForbidden || !strings.Contains(reply, `"`+wantCode+`"`) {
 				t.Errorf("%s: status %d %s, want 403", name, resp.StatusCode, reply)
 			}
 			if !maps.Equal(before, after) || target.state().SHA256 != stateBefore {
@@ -313,7 +315,7 @@ func TestForgedRolesGrantNothing(t *testing.T) {
 	forgedClaims["role"] = "ADMIN"
 	forgedClaims["groups"] = []string{"MANAGER"}
 	forgedClaims["scope"] = "reports.sales admin"
-	forgedToken := issuer.token(t, forgedClaims)
+	forgedToken := newTestIssuer(2048).token(t, forgedClaims)
 
 	attempts := []struct {
 		name   string
@@ -323,10 +325,8 @@ func TestForgedRolesGrantNothing(t *testing.T) {
 		header []string
 		status int
 	}{
-		{"token claiming MANAGER and ADMIN", http.MethodGet, "/reports/sales", "", []string{"Authorization", "Bearer " + forgedToken}, 403},
-		{"zero-role subject claiming MANAGER", http.MethodGet, "/orders", "", []string{"Authorization", "Bearer " + issuer.token(t, map[string]any{
-			"sub": "nobody-01", "exp": time.Now().Add(time.Minute).Unix(), "roles": []string{"STAFF", "MANAGER"},
-		})}, 403},
+		{"untrusted token claiming MANAGER and ADMIN", http.MethodGet, "/reports/sales", "", []string{"Authorization", "Bearer " + forgedToken}, 401},
+		{"untrusted zero-role subject claiming MANAGER", http.MethodGet, "/orders", "", []string{"Authorization", "Bearer " + newTestIssuer(2048).token(t, changed(validClaims("nobody-01"), map[string]any{"roles": []string{"STAFF", "MANAGER"}}))}, 401},
 		{"forged identity headers beside a valid token", http.MethodGet, "/reports/sales", "", append(bearer(t, "cust-001"),
 			"X-Gateway-Subject", "mgr-01", "X-Gateway-Roles", "MANAGER", "X-Roles", "MANAGER", "X-User", "mgr-01"), 403},
 		{"role in the query string", http.MethodGet, "/reports/sales?role=MANAGER&roles=ADMIN", "", bearer(t, "cust-001"), 403},
@@ -396,7 +396,7 @@ func TestObjectOwnershipStaysWithFixture(t *testing.T) {
 // verified subject only after verification, and never a credential.
 func TestAuthenticationEvents(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
 	g := e.status().Generation
 
@@ -419,11 +419,11 @@ func TestAuthenticationEvents(t *testing.T) {
 		{"no token", http.MethodGet, "/a/x", "", "", 0, []expected{
 			{"request.rejected", "JWT", "missing_credential", "", "unauthenticated", 401, expectedStages(routed, "JWT", stageReject)},
 		}},
-		{"expired token", http.MethodGet, "/a/x", "", issuer.token(t, map[string]any{"sub": "alice", "exp": time.Now().Add(-time.Minute).Unix()}), 0, []expected{
+		{"expired token", http.MethodGet, "/a/x", "", issuer.token(t, changed(validClaims("alice"), map[string]any{"exp": time.Now().Add(-time.Minute).Unix()})), 0, []expected{
 			{"request.rejected", "JWT", "expired", "", "unauthenticated", 401, expectedStages(routed, "JWT", stageReject)},
 		}},
 		{"unknown subject", http.MethodGet, "/a/x", "", issuer.tokenFor(t, "mallory"), 0, []expected{
-			{"request.rejected", "RBAC", "unknown_subject", "mallory", "forbidden", 403, expectedStages(append(routed, "JWT"), "RBAC", stageReject)},
+			{"request.rejected", "RBAC", "no_permit", "mallory", "forbidden", 403, expectedStages(append(routed, "JWT"), "RBAC", stageReject)},
 		}},
 		{"no permit", http.MethodPost, "/a/item", `{"n":1}`, issuer.tokenFor(t, "bob"), 0, []expected{
 			{"request.rejected", "RBAC", "no_permit", "bob", "forbidden", 403, expectedStages(append(routed, "JWT"), "RBAC", stageReject)},
@@ -484,12 +484,12 @@ func TestAuthenticationEvents(t *testing.T) {
 // output or a client error, whatever the request carries.
 func TestCredentialsNeverRecorded(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
 
 	valid := issuer.tokenFor(t, "alice")
 	forged := newTestIssuer(2048).tokenFor(t, "alice")
-	multiline := issuer.signRaw(`{"alg":"RS256"}`, `{"sub":"alice\n{\"kind\":\"forged\"}","exp":9999999999}`)
+	multiline := issuer.signRaw(`{"alg":"RS256","kid":"test-a"}`, `{"iss":"https://issuer.test","aud":"gateway.test","sub":"alice\n{\"kind\":\"forged\"}","exp":9999999999}`)
 	privatePEM := "-----BEGIN PRIVATE KEY-----MIIEvQIBADANBgkqhkiG9w0BAQEFAASC-----END PRIVATE KEY-----"
 	requests := [][]string{
 		{"Authorization", "Bearer " + valid},
@@ -545,7 +545,7 @@ func TestCredentialsNeverRecorded(t *testing.T) {
 // authorisation run, so both run after the new generation is published.
 func TestRoleChangeAppliesToNewRequestsOnly(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	holdFile, release := filepath.Join(e.dir, "hold"), filepath.Join(e.dir, "release")
 	e.start(binaries.fault, "GATEWAY_HOLD_PATH=/a/item", "GATEWAY_HOLD_FILE="+holdFile, "GATEWAY_HOLD_RELEASE="+release)
 	first := e.status().Generation
@@ -558,7 +558,7 @@ func TestRoleChangeAppliesToNewRequestsOnly(t *testing.T) {
 	}
 
 	// The next generation removes alice's role and grants READER the write.
-	next := e.protectedPolicy(Subject{ID: "alice", Status: "active", Roles: nil}, bob)
+	next := withoutRole(e.protectedPolicy(), "WRITER")
 	next.Permits = append(next.Permits, Permit{Role: "READER", Operation: "write-a"})
 	outcome, code := e.publish(Change{ID: "remove-writer", Expected: 1, Policy: mustJSON(next)})
 	if code != http.StatusOK {
@@ -609,7 +609,7 @@ func TestRoleChangeAppliesToNewRequestsOnly(t *testing.T) {
 // refusal happens only under one in which it does not.
 func TestRoleSwapsUnderLoad(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.fault)
 	bobToken := issuer.tokenFor(t, "bob")
 
@@ -649,7 +649,10 @@ func TestRoleSwapsUnderLoad(t *testing.T) {
 		if i%2 == 0 {
 			bobRoles = nil
 		}
-		policy := e.protectedPolicy(alice, Subject{ID: "bob", Status: "active", Roles: bobRoles})
+		policy := e.protectedPolicy()
+		if bobRoles == nil {
+			policy = withoutRole(policy, "READER")
+		}
 		outcome, code := e.publish(Change{ID: fmt.Sprintf("swap-%d", i), Expected: int64(i + 1), Policy: mustJSON(policy)})
 		if code != http.StatusOK {
 			t.Fatalf("swap %d: %d %+v", i, code, outcome)
@@ -691,14 +694,16 @@ func TestRoleSwapsUnderLoad(t *testing.T) {
 // refused as a whole; the previous membership keeps applying.
 func TestRejectedRoleChangeKeepsMembership(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.fault)
 	before := e.status()
 	aliceToken := issuer.tokenFor(t, "alice")
 
-	removal := e.protectedPolicy(Subject{ID: "alice", Status: "disabled", Roles: []string{"WRITER"}}, bob)
-	invalid := e.protectedPolicy(Subject{ID: "alice", Status: "active", Roles: []string{"WRITER", "ADMIN"}}, bob)
-	duplicate := e.protectedPolicy(alice, bob, Subject{ID: "alice", Status: "active", Roles: nil})
+	removal := withoutRole(e.protectedPolicy(), "WRITER")
+	invalid := e.protectedPolicy()
+	invalid.Permits = append(invalid.Permits, Permit{Role: "ADMIN", Operation: "write-a"})
+	duplicate := e.protectedPolicy()
+	duplicate.Roles = append(duplicate.Roles, Role{ID: "READER"})
 	changes := []struct {
 		change Change
 		status int
@@ -745,12 +750,13 @@ func TestRoleChangeSurvivesCrash(t *testing.T) {
 	} {
 		t.Run(tc.point, func(t *testing.T) {
 			e := newEnv(t)
-			seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+			seed(t, e.database, e.protectedPolicy(), seedOptions{})
 			e.start(binaries.fault, "GATEWAY_FAULT="+tc.point)
 			aliceToken, bobToken := issuer.tokenFor(t, "alice"), issuer.tokenFor(t, "bob")
 
-			// Removes alice's role and grants bob the write.
-			next := e.protectedPolicy(Subject{ID: "alice", Status: "active", Roles: nil}, Subject{ID: "bob", Status: "active", Roles: []string{"READER", "WRITER"}})
+			// Removes WRITER from policy and grants READER the write.
+			next := withoutRole(e.protectedPolicy(), "WRITER")
+			next.Permits = append(next.Permits, Permit{Role: "READER", Operation: "write-a"})
 			change := Change{ID: "swap-roles", Expected: 1, Policy: mustJSON(next)}
 			if _, code := e.publish(change); code != 0 {
 				t.Fatalf("publication answered %d instead of crashing", code)
@@ -794,7 +800,7 @@ func TestTrustMaterialAtStartup(t *testing.T) {
 	os.WriteFile(privateKey, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}), 0o600)
 
 	trust := func(e *env, changes map[string]any) map[string]any {
-		config := map[string]any{"issuer": testIssuerName, "audience": testAudience, "public_key_file": e.publicKey}
+		config := map[string]any{"issuer": testIssuerName, "audience": testAudience, "keys": []VerificationKey{{Kid: "test-a", PublicKeyFile: e.publicKey}}}
 		return changed(config, changes)
 	}
 	// cause is the part of the startup error that shows why it was refused.
@@ -806,9 +812,11 @@ func TestTrustMaterialAtStartup(t *testing.T) {
 	}{
 		{"no trust configuration", func(e *env) any { return map[string]any{} }, "gateway.jwt.issuer is required"},
 		{"missing key file", func(e *env) any {
-			return trust(e, map[string]any{"public_key_file": filepath.Join(e.dir, "absent.pem")})
+			return trust(e, map[string]any{"keys": []VerificationKey{{Kid: "test-a", PublicKeyFile: filepath.Join(e.dir, "absent.pem")}}})
 		}, "jwt: opening public key"},
-		{"private key given as the key", func(e *env) any { return trust(e, map[string]any{"public_key_file": privateKey}) }, "exactly one PEM PUBLIC KEY block"},
+		{"private key given as the key", func(e *env) any {
+			return trust(e, map[string]any{"keys": []VerificationKey{{Kid: "test-a", PublicKeyFile: privateKey}}})
+		}, "exactly one PEM PUBLIC KEY block"},
 		{"no issuer", func(e *env) any { return trust(e, map[string]any{"issuer": nil}) }, "gateway.jwt.issuer is required"},
 		{"no audience", func(e *env) any { return trust(e, map[string]any{"audience": nil}) }, "gateway.jwt.audience is required"},
 		{"several audiences", func(e *env) any { return trust(e, map[string]any{"audience": []string{testAudience, "other"}}) }, "gateway.jwt.audience: a JSON array is not a valid value"},
@@ -819,7 +827,7 @@ func TestTrustMaterialAtStartup(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newEnv(t)
-			seed(t, e.database, e.protectedPolicy(alice), seedOptions{})
+			seed(t, e.database, e.protectedPolicy(), seedOptions{})
 			e.writeConfig(configOptions{jwt: tc.changes(e)})
 			e.launch(binaries.plain, []string{"run", "--config", e.config})
 			if code := e.waitExit(); code == 0 {
@@ -839,7 +847,7 @@ func TestTrustMaterialAtStartup(t *testing.T) {
 
 	t.Run("key replaced by restart", func(t *testing.T) {
 		e := newEnv(t)
-		seed(t, e.database, e.protectedPolicy(alice), seedOptions{})
+		seed(t, e.database, e.protectedPolicy(), seedOptions{})
 		e.start(binaries.plain)
 		oldToken, newToken := issuer.tokenFor(t, "alice"), other.tokenFor(t, "alice")
 		before := e.status().JWTKey

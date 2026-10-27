@@ -134,7 +134,7 @@ func up(args []string) error {
 		cancel()
 		return errors.Join(err, <-finished)
 	}
-	fmt.Printf("\nDashboard: http://%s/  (sign in as %s)\nShop:      http://%s/demo/\nPress Ctrl+C to stop.\n", adminListen, upAdmin, dataListen)
+	fmt.Printf("\nDashboard: http://%s/  (sign in as %s)\nShop:      http://%s/\nPress Ctrl+C to stop.\n", adminListen, upAdmin, dataListen)
 	if *stdin {
 		// Every password prompt is answered; the rest of the input only
 		// signals the stop.

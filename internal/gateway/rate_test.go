@@ -96,7 +96,7 @@ func TestRateRuleCompilation(t *testing.T) {
 		{"missing window", `{"algorithm":"sliding-window","count":10,"key":"subject"}`, "INVALID_VALUE"},
 	}
 	for _, d := range documents {
-		document := `{"schema_version":3,"profile":"core","upstreams":[{"id":"u","dial":"127.0.0.1:1"}],"apis":[{"id":"a","upstream":"u"}],` +
+		document := `{"schema_version":4,"profile":"core","upstreams":[{"id":"u","dial":"127.0.0.1:1"}],"apis":[{"id":"a","upstream":"u"}],` +
 			`"operations":[` + fmt.Sprintf(valid, d.rate) + `]}`
 		if got := errorCode(compileJSON(t, document)); got != d.code {
 			t.Errorf("%s: %q, want %s", d.name, got, d.code)
@@ -104,7 +104,7 @@ func TestRateRuleCompilation(t *testing.T) {
 	}
 	// A repeated rate member on one operation is the only way to declare two
 	// rules for one target, and it is refused.
-	twice := `{"schema_version":3,"profile":"core","upstreams":[{"id":"u","dial":"127.0.0.1:1"}],"apis":[{"id":"a","upstream":"u"}],` +
+	twice := `{"schema_version":4,"profile":"core","upstreams":[{"id":"u","dial":"127.0.0.1:1"}],"apis":[{"id":"a","upstream":"u"}],` +
 		`"operations":[{"id":"x","api":"a","method":"GET","target":"/x","access":"allow","auth":"required",` +
 		`"rate":{"algorithm":"sliding-window","count":10,"window_seconds":60,"key":"subject"},` +
 		`"rate":{"algorithm":"sliding-window","count":1000,"window_seconds":60,"key":"subject"}}]}`
@@ -411,7 +411,9 @@ func TestConcurrentAdmissionsRespectQuota(t *testing.T) {
 // ratePolicy is the protected test policy with a rate rule on each of its
 // authenticated operations and a third subject.
 func (e *env) ratePolicy(read, write *RateRule) Policy {
-	p := e.protectedPolicy(alice, bob, carol)
+	p := e.protectedPolicy()
+	p.Roles = append(p.Roles, Role{ID: "TRIAL"})
+	p.Permits = append(p.Permits, Permit{Role: "TRIAL", Operation: "read-a"})
 	for i := range p.Operations {
 		switch p.Operations[i].ID {
 		case "read-a":
@@ -422,8 +424,6 @@ func (e *env) ratePolicy(read, write *RateRule) Policy {
 	}
 	return p
 }
-
-var carol = Subject{ID: "carol", Status: "active", Roles: []string{"READER"}}
 
 // controlledClock makes a fault-injection gateway read its limiter time from
 // a file the test writes.
@@ -581,7 +581,7 @@ func TestWeightedWindowThroughGateway(t *testing.T) {
 func TestEarlierRejectionsConsumeNoQuota(t *testing.T) {
 	e, _ := newRateEnv(t, func(e *env) Policy { return e.ratePolicy(rate(2, 60), rate(2, 60)) }, base)
 
-	expired := issuer.token(t, map[string]any{"sub": "alice", "exp": time.Now().Add(-time.Minute).Unix()})
+	expired := issuer.token(t, changed(validClaims("alice"), map[string]any{"exp": time.Now().Add(-time.Minute).Unix()}))
 	for range 5 {
 		if code, _ := e.request(http.MethodGet, "/a/x", "", "", "Authorization", "Bearer "+expired); code != http.StatusUnauthorized {
 			t.Fatalf("expired token: %d", code)
@@ -596,7 +596,7 @@ func TestEarlierRejectionsConsumeNoQuota(t *testing.T) {
 	}
 	// Grant READER write-a; carol's quota is untouched by the refusals.
 	p := e.ratePolicy(rate(2, 60), rate(2, 60))
-	p.Permits = append(p.Permits, Permit{Role: "READER", Operation: "write-a"})
+	p.Permits = append(p.Permits, Permit{Role: "TRIAL", Operation: "write-a"})
 	if outcome, code := e.publish(Change{ID: "grant", Expected: 1, Policy: mustJSON(p)}); code != http.StatusOK {
 		t.Fatalf("publish: %d %+v", code, outcome)
 	}
@@ -611,9 +611,6 @@ func TestEarlierRejectionsConsumeNoQuota(t *testing.T) {
 func TestConcurrentRequestsThroughGateway(t *testing.T) {
 	e, _ := newRateEnv(t, func(e *env) Policy {
 		p := e.ratePolicy(rate(10, 60), nil)
-		for i := range 8 {
-			p.Subjects = append(p.Subjects, Subject{ID: fmt.Sprintf("load-%d", i), Status: "active", Roles: []string{"READER"}})
-		}
 		return p
 	}, base)
 
@@ -622,7 +619,7 @@ func TestConcurrentRequestsThroughGateway(t *testing.T) {
 		results := map[string][2]int{}
 		var wg sync.WaitGroup
 		for _, subject := range subjects {
-			token := issuer.tokenFor(t, subject)
+			token := issuer.token(t, changed(validClaims(subject), map[string]any{"roles": []string{"READER"}}))
 			for range perSubject {
 				wg.Go(func() {
 					req, _ := http.NewRequest(http.MethodGet, "http://"+e.dataAddr+"/a/x", http.NoBody)

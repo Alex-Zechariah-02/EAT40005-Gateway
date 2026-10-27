@@ -257,7 +257,7 @@ func TestUnavailableAuthorityAdmitsNothing(t *testing.T) {
 			e.start(binaries.fault)
 			wantHealth, wantMutation := "unavailable", http.StatusServiceUnavailable
 			if tc.state == modeRecovery || tc.state == modeBootstrap {
-				wantHealth, wantMutation = tc.state, http.StatusConflict
+				wantHealth, wantMutation = tc.state, http.StatusOK
 			}
 			if health := e.health(); health != wantHealth {
 				t.Fatalf("health %q, want %q", health, wantHealth)
@@ -274,10 +274,13 @@ func TestUnavailableAuthorityAdmitsNothing(t *testing.T) {
 			if _, code := e.publish(Change{ID: "x", Expected: 1, Policy: mustJSON(e.policy(e.a, true))}); code != http.StatusServiceUnavailable {
 				t.Fatalf("publication accepted in unavailable state: %d", code)
 			}
-			code, body, _ := e.harnessCall(http.MethodPut, "/admin/subjects/someone", `{"status":"active","roles":[]}`,
+			code, body, _ := e.harnessCall(http.MethodPut, "/admin/blocked-accounts/someone", `{"reason":"contain"}`,
 				"If-Match", `"r1"`, "Idempotency-Key", "unavailable-probe-1")
 			if code != wantMutation {
-				t.Fatalf("membership change in unavailable state: %d %s, want %d", code, body, wantMutation)
+				t.Fatalf("independent containment in unavailable state: %d %s, want %d", code, body, wantMutation)
+			}
+			if e.health() != wantHealth {
+				t.Fatal("containment changed deployment mode")
 			}
 		})
 	}
@@ -396,7 +399,7 @@ func TestLifecycleSurvivesCrash(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.action+" "+tc.point, func(t *testing.T) {
 			e := newEnv(t)
-			seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+			seed(t, e.database, e.protectedPolicy(), seedOptions{})
 			e.start(binaries.plain)
 			harness := e.mustLogin(harnessAdmin, harnessPassword)
 			code, staged, body := e.stage(harness, e.cpaCandidate(), `"r1"`, "stage-crash-candidate")
@@ -497,7 +500,7 @@ func TestTimeoutSurvivesCrash(t *testing.T) {
 	for _, point := range []string{"timeout-before-commit", "timeout-after-commit", "timeout-after-swap", "timeout-after-receipt"} {
 		t.Run(point, func(t *testing.T) {
 			e := newEnv(t)
-			seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+			seed(t, e.database, e.protectedPolicy(), seedOptions{})
 			e.start(binaries.fault, "GATEWAY_FAULT="+point)
 			harness := e.mustLogin(harnessAdmin, harnessPassword)
 			e.provisionalFrom(harness, e.cpaCandidate(), 1, 2, "timeout-crash-case")
@@ -530,7 +533,7 @@ func TestTimeoutSurvivesCrash(t *testing.T) {
 // database. The same holds for the automatic rollback.
 func TestFailedRollbackStopsAdmission(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.fault, "GATEWAY_FAULT=rollback-target-invalid")
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 	e.provisionalFrom(harness, e.cpaCandidate(), 1, 60, "failed-rollback-01")
@@ -603,7 +606,7 @@ func TestCorruptLifecycleStateAdmitsNothing(t *testing.T) {
 			mustExec(t, db, `PRAGMA foreign_keys = OFF`, `DELETE FROM revision WHERE id = 1`)
 		}, "rollback target revision 1"},
 		{"rollback target altered", func(t *testing.T, db *sql.DB) {
-			mustExec(t, db, `UPDATE revision SET document = CAST('{"schema_version":3}' AS BLOB) WHERE id = 1`)
+			mustExec(t, db, `UPDATE revision SET document = CAST('{"schema_version":4}' AS BLOB) WHERE id = 1`)
 		}, "rollback target revision 1"},
 		{"provisional pointer cleared", func(t *testing.T, db *sql.DB) {
 			mustExec(t, db, `UPDATE base SET provisional = NULL, deadline = NULL`)
@@ -625,7 +628,7 @@ func TestCorruptLifecycleStateAdmitsNothing(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newEnv(t)
 			candidate := e.cpaCandidate()
-			seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{provisional: &candidate, deadline: time.Now().Add(time.Hour)})
+			seed(t, e.database, e.protectedPolicy(), seedOptions{provisional: &candidate, deadline: time.Now().Add(time.Hour)})
 			db, err := sql.Open("sqlite", "file:"+e.database)
 			if err != nil {
 				t.Fatal(err)
@@ -676,7 +679,7 @@ func mustExec(t *testing.T, db *sql.DB, statements ...string) {
 // records.
 func TestLifecycleAuditFailure(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 	code, staged, body := e.stage(harness, e.cpaCandidate(), `"r1"`, "stage-audit-failure")

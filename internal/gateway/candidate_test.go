@@ -25,14 +25,14 @@ func (e *env) candidateList(s adminSession) []candidateRecord {
 // change of an API's destination.
 func TestCandidateStagingChangesNothingEnforced(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 	before := e.status()
 	aliceToken := issuer.tokenFor(t, "alice")
 
 	// The candidate moves API a from upstream A to upstream B.
-	moved := e.protectedPolicy(alice, bob)
+	moved := e.protectedPolicy()
 	moved.APIs[0].Upstream = "B"
 	code, staged, body := e.stage(harness, moved, `"r1"`, "stage-moved-api-1")
 	if code != http.StatusCreated {
@@ -99,30 +99,29 @@ func TestCandidateStagingChangesNothingEnforced(t *testing.T) {
 // candidates are refused, nothing is stored, and the refusal is recorded.
 func TestCandidateRefusals(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 	before := e.status()
 
-	duplicateID := e.protectedPolicy(alice, bob)
+	duplicateID := e.protectedPolicy()
 	duplicateID.Operations = append(duplicateID.Operations, Operation{ID: "read-a", API: "a", Method: "GET", Target: "/z/*", Access: "deny", Auth: "none"})
-	duplicateRoute := e.protectedPolicy(alice, bob)
+	duplicateRoute := e.protectedPolicy()
 	duplicateRoute.Operations = append(duplicateRoute.Operations, Operation{ID: "read-a-again", API: "b", Method: "GET", Target: "/a/*", Access: "deny", Auth: "none"})
-	badTarget := e.protectedPolicy(alice, bob)
+	badTarget := e.protectedPolicy()
 	badTarget.Operations[0].Target = "/a/../admin/*"
-	badMethod := e.protectedPolicy(alice, bob)
+	badMethod := e.protectedPolicy()
 	badMethod.Operations[0].Method = "CONNECT"
-	remoteName := e.protectedPolicy(alice, bob)
+	remoteName := e.protectedPolicy()
 	remoteName.Upstreams[0].Dial = "example.com:80"
-	remoteAddress := e.protectedPolicy(alice, bob)
+	remoteAddress := e.protectedPolicy()
 	remoteAddress.Upstreams[0].Dial = "10.0.0.1:80"
-	unknownUpstream := e.protectedPolicy(alice, bob)
+	unknownUpstream := e.protectedPolicy()
 	unknownUpstream.Upstreams = unknownUpstream.Upstreams[1:] // API a and d still name A
-	roleStillHeld := e.protectedPolicy(alice, bob)
+	roleStillHeld := e.protectedPolicy()
 	roleStillHeld.Roles = []Role{{ID: "READER"}} // alice still holds WRITER
-	roleStillHeld.Permits = roleStillHeld.Permits[:1]
-	roleStillHeld.Permits = append(roleStillHeld.Permits, Permit{Role: "READER", Operation: "read-b"})
-	futureSchema := mustJSON(e.protectedPolicy(alice, bob))
+	roleStillHeld.Permits = []Permit{{Role: "WRITER", Operation: "read-a"}}
+	futureSchema := mustJSON(e.protectedPolicy())
 	futureSchema = []byte(strings.Replace(string(futureSchema), fmt.Sprintf(`"schema_version":%d`, schemaVersion), `"schema_version":99`, 1))
 
 	cases := []struct {
@@ -138,7 +137,7 @@ func TestCandidateRefusals(t *testing.T) {
 		{"host name destination", remoteName, "INVALID_UPSTREAM", "upstreams[0].dial"},
 		{"non-loopback destination", remoteAddress, "INVALID_UPSTREAM", "upstreams[0].dial"},
 		{"removed upstream still referenced", unknownUpstream, "UNKNOWN_REFERENCE", "apis[0].upstream"},
-		{"removed role still held", roleStillHeld, "UNKNOWN_REFERENCE", "subjects[0].roles[0]"},
+		{"removed role still referenced by permit", roleStillHeld, "UNKNOWN_REFERENCE", "permits[0].role"},
 		{"unsupported schema version", json.RawMessage(futureSchema), "SCHEMA_VERSION_UNSUPPORTED", "schema_version"},
 	}
 	for i, tc := range cases {
@@ -150,7 +149,7 @@ func TestCandidateRefusals(t *testing.T) {
 		}
 	}
 
-	valid := e.protectedPolicy(alice, bob)
+	valid := e.protectedPolicy()
 	code, body, _ := e.as(harness, http.MethodPost, "/admin/candidates", string(mustJSON(map[string]any{"policy": valid})), "Idempotency-Key", "no-precondition-01")
 	if code != http.StatusPreconditionRequired {
 		t.Errorf("no If-Match: %d %s", code, body)
@@ -165,7 +164,7 @@ func TestCandidateRefusals(t *testing.T) {
 			t.Errorf("If-Match %s: %d %s", stale, code, body)
 		}
 	}
-	oversized := e.protectedPolicy(alice, bob)
+	oversized := e.protectedPolicy()
 	oversized.Upstreams[0].ID = strings.Repeat("u", 90<<10)
 	if code, _, _ := e.stage(harness, oversized, `"r1"`, "oversized-candidate"); code != http.StatusRequestEntityTooLarge {
 		t.Errorf("oversized candidate: %d", code)
@@ -197,11 +196,11 @@ func TestCandidateRefusals(t *testing.T) {
 // withdrawn, once, and a retried submission returns the same candidate.
 func TestCandidateLifecycle(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.protectedPolicy(alice, bob), seedOptions{})
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 
-	policy := e.protectedPolicy(alice)
+	policy := e.protectedPolicy()
 	code, first, body := e.stage(harness, policy, `"r1"`, "lifecycle-candidate")
 	if code != http.StatusCreated {
 		t.Fatalf("staging: %d %s", code, body)
@@ -210,7 +209,7 @@ func TestCandidateLifecycle(t *testing.T) {
 	if code != http.StatusCreated || again.Candidate.ID != first.Candidate.ID || again.Receipt.Transition != first.Receipt.Transition {
 		t.Fatalf("retried submission: %d %s", code, body)
 	}
-	if code, _, body := e.stage(harness, e.protectedPolicy(bob), `"r1"`, "lifecycle-candidate"); code != http.StatusUnprocessableEntity || !strings.Contains(body, "TRANSITION_ID_REUSED") {
+	if code, _, body := e.stage(harness, withoutRole(e.protectedPolicy(), "WRITER"), `"r1"`, "lifecycle-candidate"); code != http.StatusUnprocessableEntity || !strings.Contains(body, "TRANSITION_ID_REUSED") {
 		t.Fatalf("key reused for another body: %d %s", code, body)
 	}
 	if list := e.candidateList(harness); len(list) != 1 {

@@ -13,7 +13,6 @@ import (
 	"net"
 	"net/http"
 	"path"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -63,10 +62,16 @@ func (c *Controller) startAdmin() error {
 	c.route(mux, "GET /admin/policy", permRead, c.handlePolicy)
 	c.route(mux, "GET /admin/revisions", permRead, c.handleRevisions)
 	c.route(mux, "GET /admin/revisions/{id}", permRead, c.handleRevision)
-	c.route(mux, "GET /admin/subjects", permRead, c.handleSubjects)
-	c.route(mux, "GET /admin/subjects/{id}", permRead, c.handleSubject)
-	c.route(mux, "PUT /admin/subjects/{id}", permManageSubjects, c.handlePutSubject)
-	c.route(mux, "DELETE /admin/subjects/{id}", permManageSubjects, c.handleDeleteSubject)
+	c.route(mux, "GET /admin/keys", permRead, c.handleKeys)
+	c.route(mux, "POST /admin/keys/reload", permManagePolicy, c.handleReloadKeys)
+	c.route(mux, "GET /admin/blocked-accounts", permRead, c.handleBlockedAccounts)
+	c.route(mux, "PUT /admin/blocked-accounts/{subject}", permManageSubjects, c.handleBlockAccount)
+	c.route(mux, "DELETE /admin/blocked-accounts/{subject}", permManageSubjects, c.handleUnblockAccount)
+	c.route(mux, "GET /admin/administrators", permRead, c.handleAdministrators)
+	c.route(mux, "GET /admin/events", permRead, c.handleEvents)
+	c.route(mux, "GET /admin/events/stream", permRead, c.handleEventStream)
+	c.route(mux, "GET /admin/traffic", permRead, c.handleTraffic)
+	c.route(mux, "POST /admin/candidates/{id}/impact", permRead, c.handleImpact)
 	c.route(mux, "GET /admin/candidates", permRead, c.handleCandidates)
 	c.route(mux, "GET /admin/candidates/{id}", permRead, c.handleCandidate)
 	c.route(mux, "POST /admin/candidates", permManagePolicy, c.handlePostCandidate)
@@ -563,7 +568,7 @@ func (c *Controller) handleStatus(w http.ResponseWriter, r *http.Request, who ca
 		"state":          state,
 		"admission":      c.admission(),
 		"audit_failed":   c.audit.failed.Load(),
-		"jwt_key_sha256": c.verifier.fingerprint,
+		"jwt_key_sha256": c.verifier.Load().fingerprint,
 	}
 	if g := c.current.Load(); g != nil {
 		status["revision"] = g.Revision
@@ -659,90 +664,6 @@ func (c *Controller) handleRevision(w http.ResponseWriter, r *http.Request, who 
 	default:
 		writeJSON(w, http.StatusOK, revision)
 	}
-}
-
-func (c *Controller) handleSubjects(w http.ResponseWriter, r *http.Request, who caller) {
-	after, limit, ok := page(w, r)
-	if !ok {
-		return
-	}
-	confirmed, p, ok := c.confirmedPolicy(w, r)
-	if !ok {
-		return
-	}
-	subjects := slices.SortedFunc(slices.Values(p.Subjects), func(a, b Subject) int { return strings.Compare(a.ID, b.ID) })
-	start, _ := slices.BinarySearchFunc(subjects, after, func(s Subject, id string) int { return strings.Compare(s.ID, id) })
-	if start < len(subjects) && after != "" && subjects[start].ID == after {
-		start++
-	}
-	items := subjects[start:min(start+limit, len(subjects))]
-	result := list{Items: items}
-	if len(items) == limit && start+limit < len(subjects) {
-		result.Next = items[len(items)-1].ID
-	}
-	w.Header().Set("ETag", policyETag(confirmed.ID))
-	writeJSON(w, http.StatusOK, result)
-}
-
-func (c *Controller) handleSubject(w http.ResponseWriter, r *http.Request, who caller) {
-	confirmed, p, ok := c.confirmedPolicy(w, r)
-	if !ok {
-		return
-	}
-	index := slices.IndexFunc(p.Subjects, func(s Subject) bool { return s.ID == r.PathValue("id") })
-	if index < 0 {
-		adminError(w, http.StatusNotFound, "not_found", "")
-		return
-	}
-	w.Header().Set("ETag", policyETag(confirmed.ID))
-	writeJSON(w, http.StatusOK, p.Subjects[index])
-}
-
-// handlePutSubject creates or replaces one subject's trusted membership and
-// publishes the new effective generation.
-func (c *Controller) handlePutSubject(w http.ResponseWriter, r *http.Request, who caller) {
-	id := r.PathValue("id")
-	if !isSubjectID(id) {
-		adminError(w, http.StatusBadRequest, "bad_request", "id")
-		return
-	}
-	expected, ok := ifMatch(w, r)
-	if !ok {
-		return
-	}
-	key, ok := idempotencyKey(w, r)
-	if !ok {
-		return
-	}
-	var body struct {
-		Status string   `json:"status"`
-		Roles  []string `json:"roles"`
-	}
-	if !decodeBody(w, r, maxAdminBody, &body) {
-		return
-	}
-	subject := Subject{ID: id, Status: body.Status, Roles: body.Roles}
-	if subject.Roles == nil {
-		subject.Roles = []string{}
-	}
-	t := adminTransition(who, key, "membership.put", "subject "+id, expected, subject)
-	outcome, status := c.ChangeMembership(r.Context(), t, id, &subject)
-	c.writePolicyOutcome(w, r, outcome, status)
-}
-
-func (c *Controller) handleDeleteSubject(w http.ResponseWriter, r *http.Request, who caller) {
-	id := r.PathValue("id")
-	expected, ok := ifMatch(w, r)
-	if !ok {
-		return
-	}
-	key, ok := idempotencyKey(w, r)
-	if !ok {
-		return
-	}
-	t := adminTransition(who, key, "membership.delete", "subject "+id, expected, nil)
-	outcome, status := c.ChangeMembership(r.Context(), t, id, nil)
-	c.writePolicyOutcome(w, r, outcome, status)
 }
 
 // writePolicyOutcome returns the receipt with the policy ETag the client
