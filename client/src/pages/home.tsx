@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Basket, CaretRight, ForkKnife, MagnifyingGlass } from '@phosphor-icons/react'
+import { Basket, CaretRight, ForkKnife, MagnifyingGlass, Storefront as ShopIcon } from '@phosphor-icons/react'
 import { rm } from '../lib/format'
 import { describe } from '../lib/messages'
 import { useQuery } from '../lib/query'
@@ -25,10 +25,10 @@ function Storefront() {
   const martCount = mart.data?.items.length
   return (
     <>
-      <section className="mt-8 grid gap-6 lg:grid-cols-[1fr_400px]">
-        <div className="flex flex-col items-start justify-center rounded-[28px] bg-brand-soft px-6 py-9 sm:px-12 sm:py-11">
+      <section className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_400px]">
+        <div className="flex flex-col items-start justify-center rounded-[28px] bg-brand-soft px-[22px] py-9 sm:px-12 sm:py-11">
           <h1 className="max-w-[16ch] text-[40px] leading-[1.02] font-extrabold tracking-[-0.035em] text-ink sm:text-[52px]">What can we fetch for you?</h1>
-          <nav aria-label="Sections" className="mt-8 inline-flex rounded-2xl bg-surface p-1.5 shadow-card">
+          <nav aria-label="Sections" className="mt-8 inline-flex max-w-full flex-wrap rounded-2xl bg-surface p-1.5 shadow-card">
             <SectionLink to="/food" icon={<ForkKnife size={22} weight="bold" />} label="Food" count={foodCount === undefined ? null : `${foodCount} restaurants`} />
             <SectionLink to="/mart" icon={<Basket size={22} weight="bold" />} label="Mart" count={martCount === undefined ? null : `${martCount} stores`} />
           </nav>
@@ -63,8 +63,8 @@ function Storefront() {
 // The two sections are equal destinations, so neither looks selected.
 function SectionLink({ to, icon, label, count }: { to: string; icon: ReactNode; label: string; count: string | null }) {
   return (
-    <Link to={to} className="group flex items-center gap-3 rounded-xl px-5 py-3 text-ink transition-colors hover:bg-brand hover:text-on-brand sm:px-6 sm:py-3.5">
-      <span className="flex size-10 items-center justify-center rounded-lg bg-brand-soft text-brand transition-colors group-hover:bg-transparent group-hover:text-on-brand" aria-hidden="true">{icon}</span>
+    <Link to={to} className="group flex items-center gap-[12px] rounded-xl px-[16px] py-3 text-ink transition-colors hover:bg-brand hover:text-on-brand sm:px-6 sm:py-3.5">
+      <span className="flex size-[40px] shrink-0 items-center justify-center rounded-lg bg-brand-soft text-brand transition-colors group-hover:bg-transparent group-hover:text-on-brand" aria-hidden="true">{icon}</span>
       <span className="text-left">
         <span className="block text-[15px] font-bold">{label}</span>
         <span className="block min-h-4 text-xs text-ink-3 group-hover:text-on-brand/80">{count}</span>
@@ -103,6 +103,7 @@ function SearchResults({ q }: { q: string }) {
   const results = useQuery<List<SearchHit>>(tooShort ? null : `/inventory/search?q=${encodeURIComponent(q)}`)
   const problem = results.answer && results.answer.kind !== 'ok' ? describe(results.answer) : null
   const hits = results.data?.items ?? []
+  const shops = [...new Map(hits.map((hit) => [hit.merchant.id, hit.merchant])).values()]
   return (
     <section className="mt-8">
       <h1 className="text-[32px] font-extrabold tracking-[-0.03em]">Results for “{q}”</h1>
@@ -112,7 +113,7 @@ function SearchResults({ q }: { q: string }) {
         <ProblemNotice className="mt-6" problem={problem} />
       ) : !results.data ? (
         <Loading label="Searching">
-          <div className="mt-6 grid gap-4 sm:grid-cols-2">{[0, 1, 2, 3].map((n) => <Skeleton key={n} className="h-28" />)}</div>
+          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">{[0, 1, 2, 3].map((n) => <Skeleton key={n} className="h-28" />)}</div>
         </Loading>
       ) : hits.length === 0 ? (
         <Empty
@@ -124,8 +125,17 @@ function SearchResults({ q }: { q: string }) {
         />
       ) : (
         <>
-          <p className="mt-1 text-ink-2" role="status">{hits.length === 1 ? 'One item' : `${hits.length} items`} from {new Set(hits.map((h) => h.merchant.id)).size === 1 ? 'one shop' : `${new Set(hits.map((h) => h.merchant.id)).size} shops`}</p>
-          <ul className="mt-6 grid gap-4 sm:grid-cols-2">
+          <p className="mt-1 text-ink-2" role="status">{hits.length === 1 ? 'One item' : `${hits.length} items`} from {shops.length === 1 ? 'one shop' : `${shops.length} shops`}</p>
+          <nav aria-label="Shops in these results" className="mt-5 flex flex-wrap gap-2">
+            {shops.map((shop) => (
+              <Link key={shop.id} to={`/store/${shop.id}`} className="inline-flex max-w-full items-center gap-2 rounded-full bg-surface px-4 py-2 text-sm font-bold text-ink shadow-card ring-1 ring-line hover:shadow-raised">
+                <ShopIcon size={16} className="shrink-0 text-brand" aria-hidden="true" />
+                <span className="truncate">{shop.name}</span>
+                <CaretRight size={14} className="shrink-0 text-ink-3" aria-hidden="true" />
+              </Link>
+            ))}
+          </nav>
+          <ul className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
             {hits.map(({ item, merchant }) => (
               <li key={item.id}>
                 <Link to={`/item/${item.id}`} className="flex items-center gap-4 rounded-2xl bg-surface p-4 shadow-card hover:shadow-raised">

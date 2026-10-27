@@ -8,7 +8,7 @@ import { OrderBadge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { BarChart } from '../ui/chart'
 import { cx } from '../ui/cx'
-import { Empty, Loading, ProblemNotice, Skeleton } from '../ui/notice'
+import { Empty, Loading, ProblemNotice, RefreshProblem, Skeleton } from '../ui/notice'
 import { Photo } from '../ui/photo'
 import { Tabs, WorkspaceTitle } from './staff'
 
@@ -34,7 +34,7 @@ function Reports() {
     <div className="flex flex-col gap-6">
       <Panel query={summary} label="Loading the summary" height="h-28">
         {(s) => (
-          <section aria-label="Summary" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <section aria-label="Summary" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Figure label="Revenue" value={rm(s.revenue_sen)} note={`${day(s.from)} to ${day(s.to)}`} lead />
             <Figure label="Orders" value={s.orders.toLocaleString('en-MY')} note={`Average ${rm(s.average_order_sen)}`} />
             <Figure label="Customers" value={s.customers.toLocaleString('en-MY')} note="Ordered at least once" />
@@ -42,7 +42,7 @@ function Reports() {
           </section>
         )}
       </Panel>
-      <div className="grid items-start gap-6 xl:grid-cols-[1.6fr_1fr]">
+      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[1.6fr_1fr]">
         <Panel query={sales} label="Loading sales" height="h-80">
           {(s) => {
             const months = [...new Set(s.months.map((m) => m.month))].sort()
@@ -103,7 +103,14 @@ function Figure({ label, value, note, lead = false }: { label: string; value: st
 }
 
 function Panel<T>({ query, label, height, children }: { query: ReturnType<typeof useQuery<T>>; label: string; height: string; children: (data: T) => React.ReactNode }) {
-  if (query.data) return <>{children(query.data)}</>
+  if (query.data) {
+    return (
+      <>
+        <RefreshProblem query={query} className="mb-4" />
+        {children(query.data)}
+      </>
+    )
+  }
   const problem = query.answer ? describe(query.answer) : null
   if (problem) return <ProblemNotice problem={problem} action={<Button size="sm" variant="secondary" onClick={query.reload}>Try again</Button>} />
   return <Loading label={label}><Skeleton className={cx(height, 'rounded-3xl')} /></Loading>
@@ -129,7 +136,7 @@ function AllOrders() {
           {(list) => list.items.length === 0 ? (
             <Empty icon={<Receipt size={26} weight="bold" />} title="No orders with this status" body="Try another filter." />
           ) : (
-            <div className="overflow-x-auto rounded-3xl bg-surface shadow-card">
+            <div className="overflow-x-auto rounded-3xl bg-surface shadow-card" role="region" aria-label="All orders, scrolls sideways" tabIndex={0}>
               <table className="w-full min-w-[760px] text-left text-sm tabular-nums">
                 <thead className="border-b border-line text-xs text-ink-3">
                   <tr><th className="px-5 py-3 font-semibold">Order</th><th className="px-3 py-3 font-semibold">Placed</th><th className="px-3 py-3 font-semibold">Shop</th><th className="px-3 py-3 font-semibold">Customer</th><th className="px-3 py-3 font-semibold">Status</th><th className="px-3 py-3 font-semibold">Rider</th><th className="px-5 py-3 text-right font-semibold">Total</th></tr>

@@ -10,7 +10,7 @@ import type { List, Order, Ticket } from '../lib/types'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { SelectField, TextArea, TextField } from '../ui/field'
-import { Empty, Loading, ProblemNotice, Skeleton } from '../ui/notice'
+import { Empty, Loading, ProblemNotice, RefreshProblem, Skeleton } from '../ui/notice'
 
 export const ticketTone = { open: 'warn', answered: 'brand', resolved: 'ok' } as const
 export const ticketStatus = { open: 'Waiting for Fetch', answered: 'Fetch replied', resolved: 'Resolved' } as const
@@ -19,10 +19,11 @@ export function HelpPage() {
   const tickets = useQuery<List<Ticket>>('/support/mine', { poll: 20_000 })
   const problem = tickets.answer && !tickets.data ? describe(tickets.answer) : null
   return (
-    <div className="mt-8 grid items-start gap-8 lg:grid-cols-[1fr_440px]">
+    <div className="mt-8 grid grid-cols-1 items-start gap-8 lg:grid-cols-[1fr_440px]">
       <section aria-labelledby="tickets-heading">
         <h1 className="text-[36px] leading-none font-extrabold tracking-[-0.035em]">Help</h1>
         <h2 id="tickets-heading" className="mt-8 text-lg font-extrabold tracking-[-0.015em]">Your requests</h2>
+        <RefreshProblem query={tickets} className="mt-3" />
         {problem ? (
           <ProblemNotice className="mt-3" problem={problem} action={<button type="button" onClick={tickets.reload} className="text-sm font-bold text-brand hover:underline">Try again</button>} />
         ) : !tickets.data ? (

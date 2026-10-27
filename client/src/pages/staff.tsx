@@ -29,7 +29,7 @@ export function WorkspaceTitle({ title, subtitle, children }: { title: string; s
 export function Tabs({ tabs, current, href }: { tabs: { id: string; label: string }[]; current: string; href: (id: string) => string }) {
   return (
     <nav aria-label="Views" className="mt-6">
-      <ul className="inline-flex rounded-xl bg-sunken p-1 ring-1 ring-line">
+      <ul className="inline-flex max-w-full flex-wrap rounded-xl bg-sunken p-1 ring-1 ring-line">
         {tabs.map((tab) => (
           <li key={tab.id}>
             <Link to={href(tab.id)} replace aria-current={current === tab.id ? 'page' : undefined} className={cx('block rounded-lg px-4 py-2 text-sm font-semibold', current === tab.id ? 'bg-surface text-ink shadow-card' : 'text-ink-2 hover:text-ink')}>

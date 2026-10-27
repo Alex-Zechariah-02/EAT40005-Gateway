@@ -21,7 +21,8 @@ interface Held<T> {
 
 // useQuery reads one path through the gateway as the current person. A
 // change of person starts again from nothing. With poll, it reads again every
-// poll milliseconds while the tab is visible, never two at once.
+// poll milliseconds while the tab is visible, never two at once, until the
+// service answers 404.
 export function useQuery<T>(path: string | null, options: { poll?: number } = {}): Query<T> {
   const { generation } = useSession()
   const key = `${generation}|${path ?? ''}`
@@ -33,6 +34,7 @@ export function useQuery<T>(path: string | null, options: { poll?: number } = {}
     if (!path) return
     const controller = new AbortController()
     let busy = false
+    let timer: ReturnType<typeof setInterval> | undefined
     const load = () => {
       if (busy) return
       busy = true
@@ -40,6 +42,10 @@ export function useQuery<T>(path: string | null, options: { poll?: number } = {}
       void call<T>({ method: 'GET', path, signal: controller.signal }).then((answer) => {
         busy = false
         if (answer.kind === 'cancelled') return
+        // A service that says the thing does not exist leaves nothing to
+        // follow, and the page keeps showing one Ref. The gateway's own 404
+        // (no route under the policy in force) can pass, so it is asked again.
+        if (answer.kind === 'refused' && answer.status === 404 && answer.service) clearInterval(timer)
         setHeld((h) => ({
           key,
           answer,
@@ -49,7 +55,7 @@ export function useQuery<T>(path: string | null, options: { poll?: number } = {}
       })
     }
     load()
-    const timer = poll
+    timer = poll
       ? setInterval(() => {
           if (document.visibilityState === 'visible') load()
         }, poll)

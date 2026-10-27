@@ -1,22 +1,70 @@
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process'
-import { cpSync, existsSync, mkdtempSync, readFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { request as httpRequest } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
+// Folders this test process creates under the system's temporary folder,
+// removed when it ends. One that a program still holds open is left to the
+// system's own temporary-file cleanup rather than failing the run.
+const temporary: string[] = []
+process.on('exit', () => {
+  for (const dir of temporary) {
+    try {
+      rmSync(dir, { recursive: true, force: true })
+    } catch {
+      // Still in use; see above.
+    }
+  }
+})
+function temporaryDir(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix))
+  temporary.push(dir)
+  return dir
+}
+
 // The end-to-end tests drive the real programs as an operator would: the
-// gateway repository's demo tool sets up and runs the gateway and its three
-// fixture APIs, issues test tokens and resets the fixtures. The tests read the
-// fixtures' own receipts and the gateway's audit events as evidence
-// independent of what the browser shows.
+// repository's demo tool sets up and runs the gateway and the services behind
+// it, issues test tokens and reads the gateway's events. The tests read the
+// services' own receipts and the gateway's records as evidence independent of
+// what the browser shows.
 
 export const adminURL = 'http://127.0.0.1:9440'
 export const siteURL = 'http://127.0.0.2:9480'
+// The Fetch services' and Fetch Accounts' control listeners (receipts, state,
+// reset).
 export const controls: Record<string, string> = {
-  orders: 'http://127.0.0.1:9601',
-  inventory: 'http://127.0.0.1:9602',
+  inventory: 'http://127.0.0.1:9601',
+  orders: 'http://127.0.0.1:9602',
   reports: 'http://127.0.0.1:9603',
+  support: 'http://127.0.0.1:9604',
+  accounts: 'http://127.0.0.1:9605',
 }
+
+// The data plane's content policy for the app's page and every asset.
+export const uiPolicy =
+  "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+
+// The app's page routes; the gateway serves index.html for each.
+export const pageRoutes = [
+  '/',
+  '/food',
+  '/mart',
+  '/store/MER-001',
+  '/item/ITM-001',
+  '/cart',
+  '/checkout',
+  '/my-orders',
+  '/my-orders/ORD-1001',
+  '/help',
+  '/help/TKT-1001',
+  '/signin',
+  '/merchant',
+  '/rider',
+  '/support',
+  '/ops',
+  '/lab',
+]
 
 const exe = process.platform === 'win32' ? '.exe' : ''
 
@@ -39,38 +87,58 @@ function shell(commandLine: string, cwd: string) {
   if (result.status !== 0) throw new Error(`${commandLine}: ${result.stderr || result.stdout}`)
 }
 
-// gatewayIdentity names the gateway source the programs are built from: its
-// commit and whether the worktree held changes.
-export function gatewayIdentity(): { commit: string; clean: boolean } {
-  const commit = run('git', ['rev-parse', 'HEAD'], repository()).trim()
-  const clean = run('git', ['status', '--porcelain', '--untracked-files=no'], repository()).trim() === ''
-  return { commit, clean }
+// gatewayIdentity names the gateway source the programs are built from: the
+// last commit, exported clean, so uncommitted work in the checkout
+// never reaches the programs under test.
+export function gatewayIdentity(): { commit: string } {
+  if (!builtCommit) throw new Error('build() has not run')
+  return { commit: builtCommit }
 }
 
-// build compiles the gateway programs into a directory outside both
-// repositories. The fault-injection gateway runs only inside these tests, to
-// show how the client reports a gateway that cannot record events; it is
-// never deployed.
+// builtCommit is the commit the programs were last built from, resolved once
+// so the evidence names exactly what was tested even if a commit lands
+// during the run.
+let builtCommit = ''
+
+// exportHead writes the given commit's files to a new temporary folder with
+// git archive and returns it.
+function exportHead(commit: string): string {
+  const source = mkdtempSync(join(tmpdir(), 'client-e2e-src-'))
+  run('git', ['archive', '--format=tar', '-o', join(source, 'head.tar'), commit], repository())
+  // A relative archive name: GNU tar reads "C:\..." as a remote host.
+  run('tar', ['-xf', 'head.tar'], source)
+  return source
+}
+
+// build compiles the gateway programs from the last commit into a directory
+// outside the repository. The fault-injection gateway runs only inside these
+// tests, to show how the app reports a gateway that cannot record events; it
+// is never deployed.
 export function build(): string {
-  const bin = mkdtempSync(join(tmpdir(), 'client-e2e-bin-'))
+  const commit = run('git', ['rev-parse', 'HEAD'], repository()).trim()
+  const source = exportHead(commit)
+  const bin = temporaryDir('client-e2e-bin-')
   const programs = [
     { name: 'gateway', args: ['./cmd/gateway'] },
-    { name: 'fixture', args: ['./cmd/fixture'] },
+    { name: 'services', args: ['./cmd/services'] },
+    { name: 'accounts', args: ['./cmd/accounts'] },
     { name: 'demo', args: ['./cmd/demo'] },
     { name: 'gateway-fault', args: ['-tags', 'faultinject', './cmd/gateway'] },
   ]
-  for (const program of programs) run('go', ['build', '-o', join(bin, program.name + exe), ...program.args], repository())
+  for (const program of programs) run('go', ['build', '-o', join(bin, program.name + exe), ...program.args], source)
+  rmSync(source, { recursive: true, force: true })
+  builtCommit = commit
   return bin
 }
 
 // webRoot lays out the frontend directory the demo tool needs, with this
-// repository's build as demo/ and a dashboard build as admin/. The dashboard
+// application's build as demo/ and a dashboard build as admin/. The dashboard
 // build is DASHBOARD_DIST when given, or else a fresh build of the
 // repository's dashboard folder.
 export function webRoot(): string {
   const client = resolve('dist')
-  if (!existsSync(join(client, 'index.html'))) throw new Error('build the client first (npm run build)')
-  const root = mkdtempSync(join(tmpdir(), 'client-e2e-web-'))
+  if (!existsSync(join(client, 'index.html'))) throw new Error('build the app first (npm run build)')
+  const root = temporaryDir('client-e2e-web-')
   cpSync(client, join(root, 'demo'), { recursive: true })
   cpSync(process.env.DASHBOARD_DIST ?? buildApplication('dashboard'), join(root, 'admin'), { recursive: true })
   return root
@@ -108,7 +176,7 @@ export class Demo {
     readonly bin: string,
     readonly web: string,
   ) {
-    const parent = mkdtempSync(join(tmpdir(), 'client-e2e-'))
+    const parent = temporaryDir('client-e2e-')
     this.dir = join(parent, 'demo')
   }
 
@@ -134,7 +202,7 @@ export class Demo {
     if (options.fault) env.GATEWAY_FAULT = options.fault
     const child = spawn(
       join(this.bin, 'demo' + exe),
-      ['run', '-dir', this.dir, '-gateway', join(this.bin, gateway + exe), '-fixture', join(this.bin, 'fixture' + exe), '-stdin'],
+      ['run', '-dir', this.dir, '-gateway', join(this.bin, gateway + exe), '-services', join(this.bin, 'services' + exe), '-accounts', join(this.bin, 'accounts' + exe), '-stdin'],
       { stdio: 'pipe', env },
     )
     this.process = child
@@ -170,30 +238,10 @@ export class Demo {
     return this.output
   }
 
-  // enrol adds an administrator with the operator command, which needs the
-  // gateway stopped, and returns the one-time secret.
-  async enrol(name: string, permissions: string): Promise<string> {
-    await this.stop()
-    const result = spawnSync(
-      join(this.bin, 'gateway' + exe),
-      ['enrol', '--config', join(this.dir, 'gateway.json'), '--admin', name, '--permissions', permissions],
-      { encoding: 'utf8' },
-    )
-    if (result.status !== 0) throw new Error(`enrol failed: ${result.stderr}`)
-    await this.start()
-    return enrolmentSecret(result.stdout)
-  }
-
   token(subject: string, ttl = '15m'): string {
     const result = this.tool('token', '-dir', this.dir, '-subject', subject, '-ttl', ttl)
     if (result.status !== 0) throw new Error(`token failed: ${result.stderr}`)
     return result.stdout.trim()
-  }
-
-  reset(): string {
-    const result = this.tool('reset', '-dir', this.dir)
-    if (result.status !== 0) throw new Error(`reset failed: ${result.stdout}${result.stderr}`)
-    return result.stdout
   }
 
   // events returns the gateway's request events, each as a field map.
@@ -218,9 +266,9 @@ export class Demo {
   private async control<T>(service: string, method: string, path: string): Promise<T> {
     const response = await fetch(controls[service] + path, {
       method,
-      headers: { Authorization: `Bearer ${this.file('fixture.secret').trim()}` },
+      headers: { Authorization: `Bearer ${this.file('service.secret').trim()}` },
     })
-    if (!response.ok) throw new Error(`fixture ${service} ${path}: ${response.status}`)
+    if (!response.ok) throw new Error(`service ${service} ${path}: ${response.status}`)
     return (await response.json()) as T
   }
 
@@ -247,19 +295,21 @@ function enrolmentSecret(output: string): string {
 }
 
 // raw sends one HTTP request exactly as given, including a Host header, which
-// fetch does not allow.
+// fetch does not allow. It returns the body as text and as the exact bytes.
 export function raw(
   method: string,
   url: string,
   headers: Record<string, string> = {},
   body?: string,
-): Promise<{ status: number; headers: Record<string, string | string[] | undefined>; body: string }> {
+): Promise<{ status: number; headers: Record<string, string | string[] | undefined>; body: string; bytes: Buffer }> {
   return new Promise((done, fail) => {
     const req = httpRequest(url, { method, headers }, (res) => {
-      let text = ''
-      res.setEncoding('utf8')
-      res.on('data', (chunk: string) => (text += chunk))
-      res.on('end', () => done({ status: res.statusCode ?? 0, headers: res.headers, body: text }))
+      const chunks: Buffer[] = []
+      res.on('data', (chunk: Buffer) => chunks.push(chunk))
+      res.on('end', () => {
+        const bytes = Buffer.concat(chunks)
+        done({ status: res.statusCode ?? 0, headers: res.headers, body: bytes.toString('utf8'), bytes })
+      })
     })
     req.on('error', fail)
     if (body !== undefined) req.write(body)
@@ -268,10 +318,10 @@ export function raw(
 }
 
 // AdminApi is controlled test tooling that acts as an administrator through
-// the gateway's Admin API, so the client tests can establish and change the
-// policy the client meets. It speaks the API's protocol as a browser would:
-// the session cookie, the admin Origin and the session's CSRF token on every
-// change. The client itself never calls the Admin API.
+// the gateway's Admin API, so the app's tests can establish and change the
+// policy the app meets. It speaks the API's protocol as a browser would: the
+// session cookie, the admin Origin and the session's CSRF token on every
+// change. The app itself never calls the Admin API.
 export class AdminApi {
   private cookie = ''
   private csrf = ''
@@ -348,20 +398,20 @@ export class AdminApi {
     })
   }
 
-  async createOverride(override: Record<string, unknown>): Promise<number> {
-    const current = await this.expect('GET', '/admin/overrides', 200)
-    const reply = await this.expect('POST', '/admin/overrides', 201, JSON.stringify(override), {
-      'If-Match': current.etag!,
-      'Idempotency-Key': crypto.randomUUID(),
-    })
-    return reply.body.override
+  // block puts an account on the gateway's blocked list; unblock takes it off.
+  async block(subject: string, reason: string) {
+    await this.expect('PUT', `/admin/blocked-accounts/${encodeURIComponent(subject)}`, 200, JSON.stringify({ reason }), { 'Idempotency-Key': crypto.randomUUID() })
   }
 
-  async revokeOverride(id: number) {
-    await this.expect('DELETE', `/admin/overrides/${id}`, 200, undefined, { 'Idempotency-Key': crypto.randomUUID() })
+  async unblock(subject: string) {
+    await this.expect('DELETE', `/admin/blocked-accounts/${encodeURIComponent(subject)}`, 200, undefined, { 'Idempotency-Key': crypto.randomUUID() })
   }
 
-  async override(id: number): Promise<{ status: string; expires_at: string }> {
-    return (await this.expect('GET', `/admin/overrides/${id}`, 200)).body
+  // baseline establishes the demonstration's confirmed policy: deny-all as the
+  // first policy, then the baseline through a confirmed trial.
+  async baseline(demo: Demo) {
+    await this.genesis(await this.stage(demo.file('deny-all.json')))
+    await this.activate(await this.stage(demo.file('baseline.json')), 600)
+    await this.resolve('confirm')
   }
 }

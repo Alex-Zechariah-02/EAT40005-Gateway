@@ -10,7 +10,7 @@ import { StockBadge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { BarChart } from '../ui/chart'
 import { cx } from '../ui/cx'
-import { Empty, Loading, ProblemNotice, Skeleton } from '../ui/notice'
+import { Empty, Loading, ProblemNotice, RefreshProblem, Skeleton } from '../ui/notice'
 import { Photo } from '../ui/photo'
 import { ActionButton, Column, OrderCard, Tabs, WorkspaceTitle, useAction } from './staff'
 
@@ -46,7 +46,7 @@ function OrdersBoard() {
   const action = useAction(orders.reload)
   const problem = orders.answer && !orders.data ? describe(orders.answer) : null
   if (problem) return <ProblemNotice problem={problem} action={<Button size="sm" variant="secondary" onClick={orders.reload}>Try again</Button>} />
-  if (!orders.data) return <Loading label="Loading orders"><div className="grid gap-4 lg:grid-cols-3">{[0, 1, 2].map((n) => <Skeleton key={n} className="h-64 rounded-3xl" />)}</div></Loading>
+  if (!orders.data) return <Loading label="Loading orders"><div className="grid grid-cols-1 gap-4 lg:grid-cols-3">{[0, 1, 2].map((n) => <Skeleton key={n} className="h-64 rounded-3xl" />)}</div></Loading>
   const by = (status: Order['status']) => orders.data!.items.filter((o) => o.status === status)
   const placed = by('placed')
   const accepted = by('accepted')
@@ -54,7 +54,8 @@ function OrdersBoard() {
   const cardProblem = (key: string) => (action.problem?.key === key ? action.problem.problem : null)
   return (
     <>
-      <div className="grid items-start gap-4 lg:grid-cols-3">
+      <RefreshProblem query={orders} className="mb-4" />
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
         <Column title="New" hint="Accept to start preparing." count={placed.length}>
           {placed.length === 0 && <p className="px-2 pb-2 text-sm text-ink-3">No new orders. New ones appear here within seconds.</p>}
           {placed.map((o) => (
@@ -72,7 +73,7 @@ function OrdersBoard() {
           {ready.map((o) => <OrderCard key={o.id} order={o} view="shop" />)}
         </Column>
       </div>
-      <p className="mt-4 text-xs text-ink-3">Updates every few seconds. {orders.answer?.kind !== 'ok' && orders.data ? 'The last check failed; showing the previous list.' : ''}</p>
+      <p className="mt-4 text-xs text-ink-3">Updates every few seconds.</p>
     </>
   )
 }
@@ -116,7 +117,7 @@ function MenuRow({ item, section, onChanged }: { item: Item; section: 'food' | '
     setDelta('')
   }
   return (
-    <li className="grid items-center gap-4 rounded-2xl bg-surface p-4 shadow-card md:grid-cols-[minmax(0,1.4fr)_auto_auto_auto]">
+    <li className="grid grid-cols-1 items-center gap-4 rounded-2xl bg-surface p-4 shadow-card md:grid-cols-[minmax(0,1.4fr)_auto_auto_auto]">
       <div className="flex min-w-0 items-center gap-3">
         <Photo id={item.id} section={section} dim={!item.available} className="size-14 shrink-0 rounded-xl" />
         <div className="min-w-0">

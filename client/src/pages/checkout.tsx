@@ -110,7 +110,7 @@ function Checkout({ basket }: { basket: Basket }) {
   const lines = useMemo(() => basket.lines, [basket])
 
   return (
-    <form onSubmit={submit} noValidate className="mt-8 grid items-start gap-8 lg:grid-cols-[1fr_400px]" aria-labelledby="checkout-heading">
+    <form onSubmit={submit} noValidate className="mt-8 grid grid-cols-1 items-start gap-8 lg:grid-cols-[1fr_400px]" aria-labelledby="checkout-heading">
       <div className="flex min-w-0 flex-col gap-6">
         <div>
           <h1 id="checkout-heading" className="text-[36px] leading-none font-extrabold tracking-[-0.035em]">Checkout</h1>
@@ -120,7 +120,7 @@ function Checkout({ basket }: { basket: Basket }) {
         <fieldset disabled={locked} className="rounded-3xl bg-surface p-6 shadow-card">
           <legend className="sr-only">Delivery address</legend>
           <h2 className="text-lg font-extrabold tracking-[-0.015em]" aria-hidden="true">Deliver to</h2>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <TextField className="sm:col-span-2" label="Street address" autoComplete="address-line1" value={address.line1} onChange={(e) => change('line1', e.target.value)} error={errors.line1} maxLength={100} />
             <TextField className="sm:col-span-2" label="Unit, floor or building" optional autoComplete="address-line2" value={address.line2} onChange={(e) => change('line2', e.target.value)} error={errors.line2} maxLength={100} />
             <TextField label="Postcode" inputMode="numeric" autoComplete="postal-code" value={address.postcode} onChange={(e) => change('postcode', e.target.value.replace(/\D/g, '').slice(0, 5))} error={errors.postcode} hint="5 digits" className="sm:max-w-40" />
@@ -146,7 +146,7 @@ function Checkout({ basket }: { basket: Basket }) {
         <fieldset disabled={locked} className="rounded-3xl bg-surface p-6 shadow-card">
           <legend className="sr-only">Payment</legend>
           <h2 className="text-lg font-extrabold tracking-[-0.015em]" aria-hidden="true">Payment</h2>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <PaymentOption value="cash" current={payment} onChange={setPayment} icon={<Money size={22} />} title="Cash on delivery" detail="Pay the rider when your order arrives." />
             <PaymentOption
               value="wallet"

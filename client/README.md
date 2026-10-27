@@ -48,4 +48,10 @@ npm audit
 
 ## Browser tests
 
-Browser tests in `e2e/` exercise the shop against the real gateway and services. They build the gateway programs from a clean export of the last commit.
+`npm run e2e` runs the browser tests in `e2e/` against the real gateway. They build the gateway programs from a clean export of the last commit (`git archive HEAD`), so uncommitted work never reaches the programs under test, and run them with the repository's demo tool on fixed loopback ports (`127.0.0.2:9480`, `127.0.0.1:9440`, `127.0.0.1:9450` and the services' ports), so run one suite at a time. Build the app first (`npm run build`).
+
+- `site.spec.ts` checks the app as the gateway serves it before any policy exists: the page at `/` and every page route, each asset byte for byte with its fixed type, the content policy and security headers, each listener on its own loopback host, the bundled typeface, the gateway's refusal shown with the reference of the very answer, same-origin requests only, the tab's storage, the built files free of secrets and development hosts, and accessibility at phone, tablet and desktop widths.
+- `flows.spec.ts` signs in as every Fetch role through Fetch Accounts, with the baseline policy confirmed, and checks each step against the services' own receipts: ordering with cash and the wallet, an order moved through every status by the shop, a rider and the customer, menu, price and stock changes, refused cancels and out-of-stock orders with their references, support tickets, operations reports, a lost checkout answer that is never resent by itself, a blocked account, the security lab, a policy trial and its rollback, refused refreshes and other customers' orders shown with their references, the per-tab session, accessibility when signed in, a service that is down and a gateway that cannot record.
+- `dev.spec.ts` checks that the development server sends API paths to the gateway; it is a development observation, not acceptance.
+
+The tests also build `../dashboard` for the admin listener, unless `DASHBOARD_DIST` names a built dashboard to use instead. Optional: `E2E_EVIDENCE` names a file for JSON-lines evidence (statuses, references and receipts, never secrets), and `E2E_SHOTS` a directory for screenshots.

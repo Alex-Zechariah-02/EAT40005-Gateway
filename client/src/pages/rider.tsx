@@ -3,7 +3,7 @@ import { useQuery } from '../lib/query'
 import { useSession } from '../lib/session'
 import type { Jobs } from '../lib/types'
 import { Button } from '../ui/button'
-import { Loading, ProblemNotice, Skeleton } from '../ui/notice'
+import { Loading, ProblemNotice, RefreshProblem, Skeleton } from '../ui/notice'
 import { ActionButton, Column, OrderCard, WorkspaceTitle, useAction } from './staff'
 
 // The rider job board: ready orders any rider may take, and the rider's
@@ -19,12 +19,13 @@ export function RiderPage() {
     <>
       <WorkspaceTitle title="Jobs" subtitle={`Signed in as ${session!.user.name}. The board updates every few seconds.`} />
       <div className="mt-6">
+        <RefreshProblem query={jobs} className="mb-4" />
         {problem ? (
           <ProblemNotice problem={problem} action={<Button size="sm" variant="secondary" onClick={jobs.reload}>Try again</Button>} />
         ) : !jobs.data ? (
-          <Loading label="Loading jobs"><div className="grid gap-4 lg:grid-cols-2">{[0, 1].map((n) => <Skeleton key={n} className="h-72 rounded-3xl" />)}</div></Loading>
+          <Loading label="Loading jobs"><div className="grid grid-cols-1 gap-4 lg:grid-cols-2">{[0, 1].map((n) => <Skeleton key={n} className="h-72 rounded-3xl" />)}</div></Loading>
         ) : (
-          <div className="grid items-start gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
             <Column title="Your deliveries" hint="Hand these to the customer, then mark them delivered." count={jobs.data.mine.length}>
               {jobs.data.mine.length === 0 && <p className="px-2 pb-2 text-sm text-ink-3">No deliveries in progress. Take a job from the board.</p>}
               {jobs.data.mine.map((o) => (

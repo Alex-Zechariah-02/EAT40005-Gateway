@@ -1,12 +1,12 @@
 import { resolve } from 'node:path'
 import { createServer, type ViteDevServer } from 'vite'
 import { expect, test, type BrowserContext } from '@playwright/test'
-import { AdminApi, build, Demo, webRoot } from './env'
-import { record, shot, useSlot } from './pages'
+import { build, Demo, webRoot } from './env'
+import { record, shot } from './pages'
 
 // Development observation only. Production acceptance runs on the native
-// Gateway with its unchanged content policy in the other suites.
-test.describe.serial('Client development server observation', () => {
+// gateway with its unchanged content policy in the other suites.
+test.describe.serial('Fetch app development server observation', () => {
   let demo: Demo
   let vite: ViteDevServer
   let context: BrowserContext
@@ -16,36 +16,39 @@ test.describe.serial('Client development server observation', () => {
     await demo?.stop()
   })
 
-  test('localhost shop reads real stock through the development proxy', async ({ browser }) => {
+  test('the development server sends API paths to the gateway, never to a service, and shows its answer', async ({ browser }) => {
     demo = new Demo(build(), webRoot())
-    const secret = demo.setup()
+    demo.setup()
     await demo.start()
-    const api = new AdminApi()
-    const password = 'controlled client development password 42'
-    await api.enrol('admin', secret, password)
-    await api.signIn('admin', password)
-    await api.genesis(await api.stage(demo.file('deny-all.json')))
-    await api.activate(await api.stage(demo.file('baseline.json')), 300)
-    await api.resolve('confirm')
     vite = await createServer({ configFile: resolve('vite.config.ts') })
     await vite.listen()
     expect(vite.config.server.host).toBe('localhost')
     expect(vite.config.server.port).toBe(5174)
     expect(vite.config.server.strictPort).toBe(true)
+
     context = await browser.newContext({ viewport: { width: 1440, height: 900 } })
     const page = await context.newPage()
-    await page.goto('http://localhost:5174/demo/')
-    await useSlot(page, 'Staff', demo.token('staff-01'))
-    const before = (await demo.receipts('inventory')).length
-    await page.evaluate(() => {
-      location.hash = '#/product/ITM-001'
+    const answers: { path: string; status: number; ref: string | undefined }[] = []
+    page.on('response', (response) => {
+      const path = new URL(response.url()).pathname
+      if (path.startsWith('/inventory/')) answers.push({ path, status: response.status(), ref: response.headers()['x-request-id'] })
     })
-    await expect(page.getByText('In stock: 40', { exact: true })).toBeVisible()
-    const receipts = (await demo.receipts('inventory')).slice(before)
-    expect(receipts).toHaveLength(1)
-    expect(receipts[0]).toMatchObject({ operation: 'inventory.get', status: 200, subject: 'staff-01' })
-    expect(page.url()).toBe('http://localhost:5174/demo/#/product/ITM-001')
-    await shot(page, 'client-dev-stock-1440')
-    record('client-development-only', { proxyRead: receipts[0], port: 5174, productionAcceptance: false })
+    await page.goto('http://localhost:5174/', { waitUntil: 'networkidle' })
+    await expect(page.getByRole('heading', { level: 1, name: 'What can we fetch for you?' })).toBeVisible()
+    // A first start may reload the page once its dependencies are prepared,
+    // so the reads are awaited through the reference the page shows.
+    const shown = page.getByText(/^Ref [0-9a-f]{32}$/).first()
+    await expect(shown).toBeVisible({ timeout: 30_000 })
+    const ref = (await shown.textContent())!.replace(/^Ref\s*/, '')
+    // Each API read was answered by the gateway, which recorded it under its
+    // reference; the page shows one of them.
+    expect(answers.map((a) => a.ref)).toContain(ref)
+    for (const answer of answers) {
+      expect(answer.ref, answer.path).toMatch(/^[0-9a-f]{32}$/)
+      expect(demo.events(answer.ref).length, answer.path).toBeGreaterThan(0)
+    }
+    for (const count of Object.values(await demo.counts())) expect(count).toBe(0)
+    await shot(page, 'client-dev-1440')
+    record('client-development-only', { answers, port: 5174, productionAcceptance: false })
   })
 })

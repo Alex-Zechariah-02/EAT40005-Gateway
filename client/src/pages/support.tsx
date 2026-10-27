@@ -7,7 +7,7 @@ import type { List, Order, Ticket } from '../lib/types'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { cx } from '../ui/cx'
-import { Empty, Loading, ProblemNotice, RefTag, Skeleton } from '../ui/notice'
+import { Empty, Loading, ProblemNotice, RefTag, RefreshProblem, Skeleton } from '../ui/notice'
 import { ticketStatus, ticketTone } from './help'
 import { OrderCard, Tabs, WorkspaceTitle, useAction } from './staff'
 import { Thread } from './ticket'
@@ -35,8 +35,9 @@ export function SupportPage() {
     <>
       <WorkspaceTitle title="Tickets" subtitle="Customer requests, newest first." />
       <Tabs tabs={[{ id: 'open', label: 'Waiting' }, { id: 'answered', label: 'Answered' }, { id: 'resolved', label: 'Resolved' }, { id: 'all', label: 'All' }]} current={filter} href={(id) => (id === 'open' ? '/support' : `/support?status=${id}`)} />
-      <div className="mt-6 grid items-start gap-6 lg:grid-cols-[380px_1fr]">
+      <div className="mt-6 grid grid-cols-1 items-start gap-6 lg:grid-cols-[380px_1fr]">
         <section aria-label="Ticket queue">
+          <RefreshProblem query={queue} className="mb-3" />
           {problem ? (
             <ProblemNotice problem={problem} action={<Button size="sm" variant="secondary" onClick={queue.reload}>Try again</Button>} />
           ) : !queue.data ? (
@@ -83,6 +84,7 @@ function TicketDetail({ id, onChanged }: { id: string; onChanged: () => void }) 
   const t = ticket.data.ticket
   return (
     <div className="flex flex-col gap-4">
+      <RefreshProblem query={ticket} />
       <div className="rounded-3xl bg-surface p-6 shadow-card">
         <Thread
           ticket={t}

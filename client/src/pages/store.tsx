@@ -6,7 +6,7 @@ import { useQuery } from '../lib/query'
 import { Link } from '../lib/router'
 import type { Category, List, MerchantPage } from '../lib/types'
 import { ButtonLink } from '../ui/button'
-import { Empty, Loading, ProblemNotice, Skeleton } from '../ui/notice'
+import { AnswerLine, Empty, Loading, ProblemNotice, Skeleton } from '../ui/notice'
 import { Photo } from '../ui/photo'
 import { BasketPanel, ItemRow, categoryName, useAdd, useQuote } from './parts'
 
@@ -19,7 +19,7 @@ export function StorePage({ id }: { id: string }) {
 
   if (problem) {
     return problem.status === 404 ? (
-      <Empty className="mt-10" icon={<Storefront size={26} weight="bold" />} title="This shop isn’t on Fetch" body="It may have closed or the link may be old." action={<ButtonLink to="/">Browse shops</ButtonLink>} />
+      <Empty className="mt-10" icon={<Storefront size={26} weight="bold" />} title="This shop isn’t on Fetch" body="It may have closed or the link may be old." action={<ButtonLink to="/">Browse shops</ButtonLink>} footer={<AnswerLine problem={problem} className="mt-5 justify-center" />} />
     ) : (
       <ProblemNotice className="mt-10" problem={problem} action={<button type="button" onClick={page.reload} className="text-sm font-bold text-brand hover:underline">Try again</button>} />
     )
@@ -77,7 +77,7 @@ function Store({ data, categories }: { data: MerchantPage; categories?: Category
         </ul>
       </nav>
 
-      <div className="mt-6 grid items-start gap-8 lg:mt-8 lg:grid-cols-[200px_1fr_360px]">
+      <div className="mt-6 grid grid-cols-1 items-start gap-8 lg:mt-8 lg:grid-cols-[200px_1fr_360px]">
         <nav aria-label="Menu sections" className="sticky top-24 hidden flex-col text-sm font-semibold lg:flex">
           {menu.map((g) => (
             <a key={g.group} href={`#${slug(g.group)}`} className="flex justify-between rounded-lg px-3 py-2.5 text-ink-2 hover:bg-sunken hover:text-ink">

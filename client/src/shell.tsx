@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import { Menu } from '@base-ui/react/menu'
 import { Popover } from '@base-ui/react/popover'
 import {
@@ -66,7 +66,7 @@ function ShopHeader({ user }: { user: User | null }) {
   const { path } = useLocation()
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">
-      <div className="mx-auto flex h-18 max-w-[1320px] items-center gap-4 px-4 sm:px-8 lg:gap-8">
+      <div className="mx-auto flex h-18 max-w-[1320px] items-center gap-2 px-4 sm:gap-4 sm:px-8 lg:gap-8">
         <Logo />
         <div className="hidden min-w-0 flex-1 items-center rounded-full bg-sunken ring-1 ring-line md:flex">
           <AddressPicker />
@@ -105,7 +105,7 @@ function StaffHeader({ user }: { user: User }) {
   const mine = workspaces.filter((w) => hasRole(user, w.role))
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">
-      <div className="mx-auto flex h-16 max-w-[1320px] items-center gap-6 px-4 sm:px-8">
+      <div className="mx-auto flex min-h-16 max-w-[1320px] flex-wrap items-center gap-x-6 gap-y-1 px-4 py-2 sm:px-8">
         <Logo to={user.home} suffix="for partners" />
         <nav aria-label="Workspaces" className="flex items-center gap-1">
           {mine.map((w) => (
@@ -187,7 +187,10 @@ function AccountMenu({ user }: { user: User }) {
   )
 }
 
+// SearchBox is drawn twice, in the wide and the narrow header, so each copy
+// has its own id for its label.
 function SearchBox() {
+  const id = useId()
   const { path, params } = useLocation()
   const [text, setText] = useState(path === '/' ? params.get('q') ?? '' : '')
   const submit = (event: FormEvent) => {
@@ -196,10 +199,10 @@ function SearchBox() {
     navigate(q ? `/?q=${encodeURIComponent(q)}` : '/')
   }
   return (
-    <form role="search" onSubmit={submit} className="flex h-11 min-w-0 flex-1 items-center gap-3 px-4 text-ink-3">
+    <form role="search" onSubmit={submit} className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-full px-4 text-ink-3 focus-within:outline-2 focus-within:-outline-offset-2 focus-within:outline-brand">
       <MagnifyingGlass size={18} aria-hidden="true" />
-      <label htmlFor="site-search" className="sr-only">Search dishes, shops or groceries</label>
-      <input id="site-search" type="search" value={text} onChange={(e) => setText(e.target.value)} maxLength={40} placeholder="Search dishes, shops or groceries" className="h-full min-w-0 flex-1 bg-transparent text-[15px] text-ink outline-none" />
+      <label htmlFor={id} className="sr-only">Search dishes, shops or groceries</label>
+      <input id={id} type="search" value={text} onChange={(e) => setText(e.target.value)} maxLength={40} placeholder="Search dishes, shops or groceries" className="h-full min-w-0 flex-1 bg-transparent text-[15px] text-ink outline-none" />
     </form>
   )
 }

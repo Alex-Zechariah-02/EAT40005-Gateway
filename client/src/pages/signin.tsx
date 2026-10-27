@@ -65,7 +65,7 @@ export function SignInPage() {
   }
 
   return (
-    <div className="mx-auto mt-10 grid max-w-[1040px] items-start gap-8 lg:grid-cols-[1fr_1.1fr]">
+    <div className="mx-auto mt-10 grid max-w-[1040px] grid-cols-1 items-start gap-8 lg:grid-cols-[1fr_1.1fr]">
       <section className="rounded-[28px] bg-surface p-8 shadow-raised" aria-labelledby="signin-heading">
         <h1 id="signin-heading" className="text-[32px] leading-none font-extrabold tracking-[-0.035em]">Sign in to Fetch</h1>
         <p className="mt-2 text-ink-2">
@@ -89,7 +89,7 @@ export function SignInPage() {
         <p className="mt-1 text-sm text-ink-2">
           Every account’s password is <span className="rounded bg-sunken px-1.5 py-0.5 font-bold text-ink ring-1 ring-line">{demoPassword}</span>. Choose one to fill the form.
         </p>
-        <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+        <ul className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
           {demoAccounts.map((account) => (
             <li key={account.email}>
               <button type="button" onClick={() => choose(account.email)} aria-pressed={email === account.email} className="flex w-full flex-col items-start rounded-2xl bg-surface p-3.5 text-left shadow-card transition-shadow hover:shadow-raised aria-pressed:ring-2 aria-pressed:ring-brand">

@@ -243,7 +243,7 @@ const groups: Group[] = [
         title: 'Flood checkout as me (12 orders)',
         request: '12 POST /orders in a row with empty bodies, as the signed-in customer (limit: 10 a minute)',
         token: true,
-        expected: (user) => needs('CUSTOMER', user, gatewayRefuses(429, 'Rate check: from the 11th; the first ten are refused for their empty body'), 'only customers place orders'),
+        expected: (user) => needs('CUSTOMER', user, gatewayRefuses(429, 'Rate check: once 10 orders in a minute are reached, counting any sent earlier; until then each is refused for its empty body'), 'only customers place orders'),
         run: async (token, signal) => {
           const answers: Answer<unknown>[] = []
           for (let n = 0; n < 12 && !signal.aborted; n++) answers.push(await send<unknown>({ method: 'POST', path: '/orders', token, body: {}, signal }))
@@ -324,9 +324,9 @@ export function LabPage() {
     <>
       <WorkspaceTitle
         title="Security lab"
-        subtitle="Each button sends one real request through the gateway. Expected is what the Fetch policy should do; Observed is what the gateway answered. This page decides nothing."
+        subtitle="Each button sends one real request through the gateway. Expected is what Fetch’s baseline policy should do; Observed is what the gateway answered. This page decides nothing."
       >
-        <div className="flex items-center gap-3 rounded-2xl bg-surface px-4 py-3 shadow-card">
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-surface px-4 py-3 shadow-card">
           <span className="flex size-9 items-center justify-center rounded-full bg-brand-soft text-brand" aria-hidden="true">
             <Flask size={18} weight="bold" />
           </span>
@@ -400,7 +400,7 @@ function AttackCard(props: { attack: Attack; user: User | null; result?: Result;
           Send
         </Button>
       </div>
-      <dl className="mt-4 grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3 gap-y-2 text-sm">
+      <dl className="mt-4 grid grid-cols-1 gap-x-3 gap-y-1 text-sm sm:grid-cols-[6.5rem_minmax(0,1fr)] sm:gap-y-2">
         <dt className="text-ink-3">Expected</dt>
         <dd className="text-ink-2">
           <span className="font-semibold text-ink">{expectedWords(expected)}</span> · {expected.why}

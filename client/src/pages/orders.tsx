@@ -6,7 +6,7 @@ import { Link } from '../lib/router'
 import type { List, Order } from '../lib/types'
 import { OrderBadge } from '../ui/badge'
 import { ButtonLink } from '../ui/button'
-import { Empty, Loading, ProblemNotice, Skeleton } from '../ui/notice'
+import { Empty, Loading, ProblemNotice, RefreshProblem, Skeleton } from '../ui/notice'
 import { Photo } from '../ui/photo'
 
 export function OrdersPage() {
@@ -18,6 +18,7 @@ export function OrdersPage() {
   return (
     <div className="mx-auto mt-8 max-w-[860px]">
       <h1 className="text-[36px] leading-none font-extrabold tracking-[-0.035em]">My orders</h1>
+      <RefreshProblem query={orders} report className="mt-6" />
       {problem ? (
         <ProblemNotice className="mt-6" problem={problem} report action={<button type="button" onClick={orders.reload} className="text-sm font-bold text-brand hover:underline">Try again</button>} />
       ) : !orders.data ? (
@@ -46,9 +47,9 @@ function OrderList({ title, orders }: { title: string; orders: Order[] }) {
           const count = order.items.reduce((sum, line) => sum + line.quantity, 0)
           return (
             <li key={order.id}>
-              <Link to={`/my-orders/${order.id}`} className="flex items-center gap-4 rounded-2xl bg-surface p-4 shadow-card transition-shadow hover:shadow-raised">
+              <Link to={`/my-orders/${order.id}`} className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl bg-surface p-4 shadow-card transition-shadow hover:shadow-raised">
                 <Photo id={order.merchant} className="size-16 shrink-0 rounded-xl" />
-                <span className="min-w-0 flex-1">
+                <span className="min-w-0 flex-1 basis-40">
                   <span className="flex flex-wrap items-center gap-2">
                     <span className="font-bold text-ink">{order.merchant_name}</span>
                     <OrderBadge status={order.status} />
@@ -56,7 +57,7 @@ function OrderList({ title, orders }: { title: string; orders: Order[] }) {
                   <span className="mt-1 block truncate text-sm text-ink-2">{order.items.map((l) => `${l.quantity} × ${l.name}`).join(', ')}</span>
                   <span className="mt-1 block text-xs text-ink-3">{when(order.created_at)} · {order.id} · {count === 1 ? '1 item' : `${count} items`}</span>
                 </span>
-                <span className="font-bold tabular-nums">{rm(order.total_sen)}</span>
+                <span className="ml-auto font-bold tabular-nums">{rm(order.total_sen)}</span>
                 <CaretRight size={18} className="text-ink-3" aria-hidden="true" />
               </Link>
             </li>

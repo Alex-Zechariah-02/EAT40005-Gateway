@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { CheckCircle, ChefHat, Lifebuoy, MapPin, Moped, Package, Receipt, XCircle } from '@phosphor-icons/react'
 import { outcomeOfWrite } from '../lib/api'
 import { rm, statusNames, time, when } from '../lib/format'
@@ -10,7 +10,7 @@ import type { Order, OrderStatus } from '../lib/types'
 import { Button, ButtonLink } from '../ui/button'
 import { cx } from '../ui/cx'
 import { ConfirmDialog } from '../ui/dialog'
-import { Empty, Loading, ProblemNotice, Skeleton } from '../ui/notice'
+import { AnswerLine, Empty, Loading, ProblemNotice, RefreshProblem, Skeleton } from '../ui/notice'
 import { Photo } from '../ui/photo'
 
 const steps: { status: OrderStatus; label: string; icon: React.ReactNode }[] = [
@@ -32,7 +32,7 @@ export function OrderPage({ id }: { id: string }) {
   const problem = page.answer && !page.data ? describe(page.answer) : null
   if (problem) {
     return problem.status === 404 ? (
-      <Empty className="mt-10" icon={<Receipt size={26} weight="bold" />} title="We couldn’t find this order" body="It may belong to another account, or the link may be wrong." action={<ButtonLink to="/my-orders">See my orders</ButtonLink>} />
+      <Empty className="mt-10" icon={<Receipt size={26} weight="bold" />} title="We couldn’t find this order" body="It may belong to another account, or the link may be wrong." action={<ButtonLink to="/my-orders">See my orders</ButtonLink>} footer={<AnswerLine problem={problem} report className="mt-5 justify-center" />} />
     ) : (
       <ProblemNotice className="mt-10" problem={problem} report action={<button type="button" onClick={page.reload} className="text-sm font-bold text-brand hover:underline">Try again</button>} />
     )
@@ -40,14 +40,14 @@ export function OrderPage({ id }: { id: string }) {
   if (!page.data) {
     return (
       <Loading label="Loading your order">
-        <div className="mx-auto mt-8 flex max-w-[860px] flex-col gap-4"><Skeleton className="h-12 w-80" /><Skeleton className="h-40" /><Skeleton className="h-56" /></div>
+        <div className="mx-auto mt-8 flex max-w-[860px] flex-col gap-4"><Skeleton className="h-12 w-80 max-w-full" /><Skeleton className="h-40" /><Skeleton className="h-56" /></div>
       </Loading>
     )
   }
-  return <OrderView order={page.data.order} justPlaced={params.get('placed') === '1'} onChanged={page.reload} stale={page.answer?.kind !== 'ok'} />
+  return <OrderView order={page.data.order} justPlaced={params.get('placed') === '1'} onChanged={page.reload} refresh={<RefreshProblem query={page} report className="mt-4" />} />
 }
 
-function OrderView({ order, justPlaced, onChanged, stale }: { order: Order; justPlaced: boolean; onChanged: () => void; stale: boolean }) {
+function OrderView({ order, justPlaced, onChanged, refresh }: { order: Order; justPlaced: boolean; onChanged: () => void; refresh: ReactNode }) {
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState<Problem | null>(null)
@@ -80,10 +80,10 @@ function OrderView({ order, justPlaced, onChanged, stale }: { order: Order; just
           <p className="mt-2 text-ink-2">From <Link to={`/store/${order.merchant}`} className="font-semibold text-brand hover:underline">{order.merchant_name}</Link> · placed {when(order.created_at)}</p>
         </div>
       </div>
-      {stale && <p className="mt-2 text-xs text-ink-3">Showing the last status Fetch sent. Checking again shortly.</p>}
+      {refresh}
 
       {!cancelled ? (
-        <ol className="mt-8 grid gap-3 sm:grid-cols-5" aria-label="Order progress">
+        <ol className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-5" aria-label="Order progress">
           {steps.map((step, index) => {
             const at = reached.get(step.status)
             const current = order.status === step.status
@@ -106,7 +106,7 @@ function OrderView({ order, justPlaced, onChanged, stale }: { order: Order; just
 
       {problem && <ProblemNotice className="mt-6" problem={problem} report />}
 
-      <div className="mt-8 grid items-start gap-6 lg:grid-cols-[1fr_320px]">
+      <div className="mt-8 grid grid-cols-1 items-start gap-6 lg:grid-cols-[1fr_320px]">
         <section className="rounded-3xl bg-surface p-6 shadow-card" aria-labelledby="items-heading">
           <h2 id="items-heading" className="text-lg font-extrabold tracking-[-0.015em]">Items</h2>
           <ul className="mt-4 flex flex-col gap-3">

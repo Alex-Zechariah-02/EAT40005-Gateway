@@ -27,7 +27,7 @@ export function BasketPage() {
   const subtotal = basketSubtotal(basket)
   const fee = quote?.delivery_fee_sen ?? null
   return (
-    <div className="mt-8 grid items-start gap-8 lg:grid-cols-[1fr_380px]">
+    <div className="mt-8 grid grid-cols-1 items-start gap-8 lg:grid-cols-[1fr_380px]">
       <section aria-labelledby="basket-heading">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -41,14 +41,14 @@ export function BasketPage() {
         </div>
         <ul className="mt-6 flex flex-col gap-3">
           {basket.lines.map((line) => (
-            <li key={line.item} className="flex items-center gap-4 rounded-2xl bg-surface p-4 shadow-card">
+            <li key={line.item} className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-2xl bg-surface p-4 shadow-card">
               <Photo id={line.item} className="size-16 shrink-0 rounded-xl" />
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1 basis-40">
                 <Link to={`/item/${line.item}`} className="font-bold hover:underline">{line.name}</Link>
                 <p className="text-sm text-ink-3 tabular-nums">{rm(line.price_sen)} each</p>
               </div>
               <QuantityStepper name={line.name} value={line.quantity} max={maxQuantity} onChange={(q) => setQuantity(line.item, q)} />
-              <p className="w-24 text-right font-bold tabular-nums">{rm(line.price_sen * line.quantity)}</p>
+              <p className="ml-auto w-24 text-right font-bold tabular-nums">{rm(line.price_sen * line.quantity)}</p>
             </li>
           ))}
         </ul>

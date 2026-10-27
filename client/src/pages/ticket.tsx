@@ -11,7 +11,7 @@ import { Badge } from '../ui/badge'
 import { Button, ButtonLink } from '../ui/button'
 import { cx } from '../ui/cx'
 import { TextArea } from '../ui/field'
-import { Empty, Loading, ProblemNotice, RefTag, Skeleton } from '../ui/notice'
+import { AnswerLine, Empty, Loading, ProblemNotice, RefTag, RefreshProblem, Skeleton } from '../ui/notice'
 import { ticketStatus, ticketTone } from './help'
 
 export function TicketPage({ id }: { id: string }) {
@@ -19,13 +19,18 @@ export function TicketPage({ id }: { id: string }) {
   const problem = page.answer && !page.data ? describe(page.answer) : null
   if (problem) {
     return problem.status === 404 ? (
-      <Empty className="mt-10" icon={<ChatsCircle size={26} weight="bold" />} title="We couldn’t find this request" body="It may belong to another account." action={<ButtonLink to="/help">See your requests</ButtonLink>} />
+      <Empty className="mt-10" icon={<ChatsCircle size={26} weight="bold" />} title="We couldn’t find this request" body="It may belong to another account." action={<ButtonLink to="/help">See your requests</ButtonLink>} footer={<AnswerLine problem={problem} className="mt-5 justify-center" />} />
     ) : (
       <ProblemNotice className="mt-10" problem={problem} action={<button type="button" onClick={page.reload} className="text-sm font-bold text-brand hover:underline">Try again</button>} />
     )
   }
   if (!page.data) return <Loading label="Loading your request"><div className="mx-auto mt-8 flex max-w-[760px] flex-col gap-4"><Skeleton className="h-12 w-72" /><Skeleton className="h-40" /></div></Loading>
-  return <Thread ticket={page.data.ticket} onChanged={page.reload} viewer="customer" />
+  return (
+    <>
+      <RefreshProblem query={page} className="mx-auto mt-8 max-w-[760px]" />
+      <Thread ticket={page.data.ticket} onChanged={page.reload} viewer="customer" />
+    </>
+  )
 }
 
 // Thread shows a ticket's messages and a reply box; customers and support

@@ -8,7 +8,7 @@ import { Link } from '../lib/router'
 import type { ItemPage as ItemAnswer } from '../lib/types'
 import { StockBadge } from '../ui/badge'
 import { Button, ButtonLink } from '../ui/button'
-import { Empty, Loading, ProblemNotice, Skeleton } from '../ui/notice'
+import { AnswerLine, Empty, Loading, ProblemNotice, Skeleton } from '../ui/notice'
 import { Photo } from '../ui/photo'
 import { QuantityStepper } from '../ui/stepper'
 import { unavailableReason, useAdd } from './parts'
@@ -18,7 +18,7 @@ export function ItemPage({ id }: { id: string }) {
   const problem = page.answer && !page.data ? describe(page.answer) : null
   if (problem) {
     return problem.status === 404 ? (
-      <Empty className="mt-10" icon={<ForkKnife size={26} weight="bold" />} title="This item isn’t on Fetch" body="It may have been taken off the menu." action={<ButtonLink to="/">Browse shops</ButtonLink>} />
+      <Empty className="mt-10" icon={<ForkKnife size={26} weight="bold" />} title="This item isn’t on Fetch" body="It may have been taken off the menu." action={<ButtonLink to="/">Browse shops</ButtonLink>} footer={<AnswerLine problem={problem} className="mt-5 justify-center" />} />
     ) : (
       <ProblemNotice className="mt-10" problem={problem} action={<button type="button" onClick={page.reload} className="text-sm font-bold text-brand hover:underline">Try again</button>} />
     )
@@ -26,7 +26,7 @@ export function ItemPage({ id }: { id: string }) {
   if (!page.data) {
     return (
       <Loading label="Loading the item">
-        <div className="mt-10 grid gap-10 lg:grid-cols-2"><Skeleton className="aspect-square w-full rounded-[28px]" /><div className="flex flex-col gap-4"><Skeleton className="h-12 w-3/4" /><Skeleton className="h-20 w-full" /></div></div>
+        <div className="mt-10 grid grid-cols-1 gap-10 lg:grid-cols-2"><Skeleton className="aspect-square w-full rounded-[28px]" /><div className="flex flex-col gap-4"><Skeleton className="h-12 w-3/4" /><Skeleton className="h-20 w-full" /></div></div>
       </Loading>
     )
   }
@@ -49,7 +49,7 @@ function ItemView({ data }: { data: ItemAnswer }) {
           <li aria-current="page" className="text-ink-2">{item.name}</li>
         </ol>
       </nav>
-      <div className="mt-6 grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-14">
+      <div className="mt-6 grid grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-14">
         <Photo id={item.id} section={merchant.section} dim={!!reason} className="aspect-square w-full rounded-[28px]" />
         <div className="lg:pt-4">
           <p className="text-sm font-semibold text-ink-3">{item.group}</p>
@@ -67,7 +67,7 @@ function ItemView({ data }: { data: ItemAnswer }) {
           ) : (
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <QuantityStepper name={item.name} value={quantity} max={maxQuantity} onChange={(q) => setQuantity(Math.max(1, q))} />
-              <Button size="lg" onClick={() => add(item, quantity)} className="min-w-56">
+              <Button size="lg" onClick={() => add(item, quantity)} className="w-full sm:w-auto sm:min-w-56">
                 {added === item.id ? <><Check size={18} weight="bold" />Added to basket</> : `Add to basket · ${rm(item.price_sen * quantity)}`}
               </Button>
               <span className="sr-only" role="status">{added === item.id ? `${item.name} added to your basket` : ''}</span>

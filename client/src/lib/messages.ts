@@ -29,7 +29,7 @@ const gateway: Record<string, [string, string]> = {
   unsupported_media_type: ['Fetch couldn’t accept this request.', 'It wasn’t sent in a form Fetch understands.'],
   payload_too_large: ['This is too long to send.', 'Shorten it and try again.'],
   unauthenticated: ['You need to sign in.', 'Sign in, then try again.'],
-  forbidden: ['Your account can’t do this.', 'This needs a different kind of Fetch account.'],
+  forbidden: ['Your account can’t do this right now.', 'Fetch isn’t allowing it for your account at the moment. If you think it should, tell Fetch support.'],
   account_blocked: ['This account is blocked.', 'Fetch has paused this account. Contact Fetch if you think this is a mistake.'],
   not_found: ['This isn’t available.', 'It may have moved. Go back and try another way.'],
   method_not_allowed: ['This action isn’t available here.', 'Go back and try another way.'],
