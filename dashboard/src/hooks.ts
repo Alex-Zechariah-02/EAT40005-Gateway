@@ -107,24 +107,23 @@ export function inactive(): boolean {
   return Date.now() - lastInput >= inactiveAfterMs
 }
 
-// usePoll rereads every ms while the page is visible, and at once when it
-// becomes visible again; ms null stops it. Unless keepAwake (a trial or
-// temporary rule is active), it skips its reads while the page is inactive.
+// usePoll rereads every ms while the page is visible (ms null: no timer),
+// and at once whenever the page becomes visible again, so a tab coming back
+// to the front never goes on showing what it read before it was hidden.
+// Unless keepAwake (a trial or temporary rule is active), it skips its reads
+// while the page is inactive.
 export function usePoll(refresh: () => void, ms: number | null, keepAwake: boolean) {
   const latest = useRef(refresh)
   latest.current = refresh
   const awake = useRef(keepAwake)
   awake.current = keepAwake
   useEffect(() => {
-    if (ms === null) return
     const due = () => document.visibilityState === 'visible' && (awake.current || !inactive())
-    const timer = setInterval(() => {
-      if (due()) latest.current()
-    }, ms)
     const onVisible = () => {
       if (due()) latest.current()
     }
     document.addEventListener('visibilitychange', onVisible)
+    const timer = ms === null ? undefined : setInterval(onVisible, ms)
     return () => {
       clearInterval(timer)
       document.removeEventListener('visibilitychange', onVisible)

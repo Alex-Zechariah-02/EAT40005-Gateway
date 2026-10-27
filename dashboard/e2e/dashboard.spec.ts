@@ -1690,6 +1690,81 @@ test.describe.serial('dashboard', () => {
     await expect(admin.getByText(/no match does not prove a request never arrived/)).toBeVisible()
   })
 
+  test('returning to a hidden tab rereads the gateway at once, even on a page that does not poll', async () => {
+    await go(admin, 'Changes')
+    await admin.waitForTimeout(1500)
+    const setVisibility = (state: 'hidden' | 'visible') =>
+      admin.evaluate((value) => {
+        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => value })
+        document.dispatchEvent(new Event('visibilitychange'))
+      }, state)
+    try {
+      const start = adminRequests.length
+      await setVisibility('hidden')
+      await admin.waitForTimeout(2000)
+      expect(adminRequests.slice(start)).toEqual([])
+      const shownAt = Date.now()
+      await setVisibility('visible')
+      await expect.poll(() => adminRequests.slice(start).map((url) => new URL(url).pathname)).toContain('/admin/status')
+      const reread = Date.now() - shownAt
+      expect(reread).toBeLessThan(2000)
+      record('tab-return', { rereadMs: reread })
+    } finally {
+      await admin.evaluate(() => delete (document as unknown as Record<string, unknown>).visibilityState)
+    }
+  })
+
+  test('a session ending during a trial says the gateway still enforces its deadline, and a trial that outlives the session is flagged', async () => {
+    const confirmed = (await status()).confirmed
+    await propose(admin, { role: 'CUSTOMER', operation: 'reports.summary' })
+    const revision = await activate(admin, 86_400)
+    // The session's lifetime (8 hours here) ends long before this deadline.
+    await expect(admin.getByText(new RegExp(`^Your session ends at .+, before revision ${revision}'s trial deadline\\.$`))).toBeVisible()
+
+    // The session ends elsewhere; this page finds out at its next read
+    // (every 3 s during a trial) and says what continues without it.
+    const tab = await adminContext.newPage()
+    await tab.goto(adminURL + '/')
+    await expect(tab.getByText('Signed in as admin')).toBeAttached()
+    await tab.getByRole('button', { name: 'Sign out' }).click()
+    await expect(tab.getByRole('heading', { name: 'Sign in' })).toBeVisible()
+    await tab.close()
+    await expect(
+      admin.getByText(new RegExp(`Revision ${revision} was on trial when this page last read the gateway: unless someone confirms it, the gateway rolls back to revision ${confirmed} at `)),
+    ).toBeVisible({ timeout: 15_000 })
+    await shot(admin, '45-session-ended-during-trial')
+    // Signed in again, the trial is still on: the session's end changed
+    // nothing at the gateway.
+    await signIn(admin, 'admin', password)
+    expect((await status()).provisional).toBe(revision)
+    await resolve(admin, 'rollback')
+  })
+
+  test('a status answer saying the stored policy could not be read is shown as not known, never as no policy', async () => {
+    // A display check of the contract field only: the gateway's own answer
+    // is proven by its Go test, because a failing store read cannot be
+    // caused safely in this deployment. The real status answer is fetched
+    // and given the form the gateway sends when that read fails.
+    await admin.route('**/admin/status', async (route) => {
+      const response = await route.fetch()
+      const body = (await response.json()) as Record<string, unknown>
+      delete body.confirmed
+      delete body.provisional
+      delete body.deadline
+      body.stored_authority = 'unreadable'
+      await route.fulfill({ response, json: body })
+    })
+    try {
+      await go(admin, 'Overview')
+      await expect(strip(admin)).toContainText('Not known')
+      await expect(strip(admin)).not.toContainText('None yet')
+      await expect(admin.getByText('The gateway could not read its stored policy.', { exact: true })).toBeVisible()
+      await shot(admin, '46-stored-policy-unreadable')
+    } finally {
+      await admin.unroute('**/admin/status')
+    }
+  })
+
   test('an unreachable gateway, a restart and a read-only administrator are shown truthfully', async ({ browser }) => {
     const confirmed = (await status()).confirmed
     // An override that expires while the gateway is stopped, and a read the
@@ -1825,6 +1900,36 @@ test.describe.serial('dashboard', () => {
     expect(admitted.receipts).toHaveLength(1)
     await expect.poll(() => auditEvents().filter((e) => e.kind === 'audit.recovered' && Date.parse(String(e.time)) >= startedAt).length).toBe(1)
     record('audit-failure', { refused: [refused.status, again.status], recovered: admitted.receipts[0] })
+  })
+
+  test('a change committed while its audit record cannot be written is shown as applied with a problem, never as refused', async () => {
+    const subject = 'cust-005'
+    // The gateway commits a block but cannot write its outcome record.
+    await demo.stop()
+    await demo.start({ fault: 'audit-fail-published' })
+    await admin.reload()
+    await signIn(admin, 'admin', password)
+    await go(admin, 'Accounts')
+    await admin.getByLabel('Account ID').fill(subject)
+    await admin.getByLabel('Reason').fill('audit pending test')
+    await admin.getByRole('button', { name: 'Block now' }).click()
+    const notice = admin.getByRole('alert').filter({ hasText: 'outcome_audit_pending' })
+    await expect(notice).toContainText('Applied, with a problem (HTTP 503)')
+    await expect(notice).toContainText('The change was committed but its audit record is pending')
+    await expect(admin.getByText(/^Refused \(HTTP/)).toHaveCount(0)
+    const blocked = await adminCall('GET', '/admin/blocked-accounts')
+    expect((blocked.body.items as { subject: string }[]).map((b) => b.subject)).toContain(subject)
+    await shot(admin, '44-applied-audit-pending')
+
+    // A normal restart records the missing outcome; the block is removed
+    // again for the tests that follow.
+    await demo.stop()
+    await demo.start()
+    await admin.reload()
+    await signIn(admin, 'admin', password)
+    expect(await status()).toMatchObject({ state: 'normal', admission: 'ready', audit_failed: false })
+    expect((await adminCall('DELETE', `/admin/blocked-accounts/${subject}`, undefined, { 'Idempotency-Key': crypto.randomUUID() })).status).toBe(200)
+    record('audit-pending-shown-applied', { subject, status: blocked.status })
   })
 
   test('a restore from a backup is shown as recovery required, and a deny-all recovery base established in the dashboard makes the gateway ready again', async () => {

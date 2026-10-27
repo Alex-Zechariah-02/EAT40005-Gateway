@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -235,6 +236,38 @@ func TestHistoryEntryByIdempotencyKey(t *testing.T) {
 			entry.Outcome != want.outcome || entry.Actor != harnessAdmin {
 			t.Errorf("lookup %s: %d %+v, want %s %s", want.key, code, entry, want.kind, want.outcome)
 		}
+	}
+}
+
+// STORE_ERROR says only that this request did not complete. When the record
+// of an earlier, committed attempt cannot be read, a resend of the same
+// change is answered store_error while that change stays in force, so the
+// Dashboard must never describe store_error as "nothing changed". Once the
+// store can be read, the resend returns the recorded receipt.
+func TestStoreErrorOnResendDoesNotMeanNothingChanged(t *testing.T) {
+	e := newEnv(t)
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
+	c, _ := e.own(e.controllerConfig())
+	const reason = "store error test"
+	request := struct {
+		Reason string `json:"reason"`
+	}{reason}
+	block := adminTransition(caller{admin: administrator{Name: harnessAdmin}}, "store-error-resend-01", "account.block", "cust-500", sql.NullInt64{}, request)
+	receipt, status := c.changeBlock(t.Context(), block, reason)
+	if status != http.StatusOK {
+		t.Fatalf("block: %d %s", status, receipt)
+	}
+	// A cancelled request makes the read of the earlier record fail.
+	cancelled, cancel := context.WithCancel(t.Context())
+	cancel()
+	if body, status := c.changeBlock(cancelled, block, reason); status != http.StatusServiceUnavailable || string(body) != `{"error":"store_error"}` {
+		t.Fatalf("resend with an unreadable record: %d %s", status, body)
+	}
+	if _, inForce := (*c.blocked.Load())["cust-500"]; !inForce {
+		t.Fatal("the committed block is no longer in force")
+	}
+	if body, status := c.changeBlock(t.Context(), block, reason); status != http.StatusOK || string(body) != string(receipt) {
+		t.Fatalf("resend with a readable record: %d %s, want the receipt %s", status, body, receipt)
 	}
 }
 
