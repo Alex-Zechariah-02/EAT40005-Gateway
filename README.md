@@ -33,7 +33,7 @@ A policy can pass all checks and still cause problems when it is in use. Adminis
 - Request lookup and live events use an in-memory window of the latest 10,000 API outcomes. Event streams have bounded queues, disclose dropped events and stop with the administrator's session. Traffic summaries and a separate loopback Prometheus listener expose bounded operational measurements without token, subject or address labels.
 - Local commands set up the first administrator, add or reset administrators, make and restore checked database backups, and upgrade a database made by an earlier version. A restored backup serves nothing until an administrator confirms a new policy that allows nothing, and a provisional policy in the backup never comes back.
 - A web dashboard for administrators (in `dashboard/`) is served by the admin listener itself, so it uses the same sign-in, origin and CSRF checks as the admin API. It shows the confirmed policy, any provisional policy and its deadline, the temporary overrides in force and the change history. It stages and activates new policies, confirms or rolls them back and creates or revokes overrides. Each change is shown as done only when the gateway's receipt arrives, and a request with no answer is shown as having an unknown outcome.
-- A demonstration website for ordinary API callers (in `client/`) is served by the gateway on a second loopback address, so the administrator's session cookie never reaches it. It is a small shop with customer, staff and manager views, and every call it makes goes through the gateway to the three test APIs with a test token pasted by the operator. Its inspector page shows permitted and refused requests, the rate limit and the request checks.
+- Fetch, the demonstration application in `client/`, is served on a second loopback address, so the administrator's session cookie never reaches it. Customers, merchants, riders, support agents and operations staff sign in through Fetch Accounts. Application calls go through the gateway to Inventory, Orders, Reports, Support and Accounts. Business ownership, stock, wallet and order transitions stay in those services.
 
 ## Build and test
 
@@ -42,8 +42,8 @@ You need Go 1.26 or newer. `go.mod` names Go 1.27.3 as the toolchain, because it
 - `cmd/gateway` runs the gateway from one strict JSON configuration file. It has the commands `run`, `install`, `enrol`, `backup`, `restore` and `migrate`, each with `--config <file>`. The local commands `install`, `enrol`, `backup`, `restore` and `migrate` run while the gateway is stopped.
 - `cmd/services -service inventory|orders|reports|support -secret-file <service.secret>` runs a Fetch business API, with independent authenticated receipts, state and reset. Defaults honor `EAT_PORT_OFFSET`; `-listen` and `-control` select explicit loopback addresses. Orders uses `-inventory <http-origin>` and Reports uses `-orders <http-origin>` for authenticated internal calls.
 - `cmd/accounts -secret-file <service.secret> -signing-settings <accounts.json>` runs Fetch Accounts. Signing settings contain `kid` and an absolute `private_key_file`. Only Accounts signs application tokens, which last 15 minutes. Account and signing secrets stay in the private demonstration state.
-- `cmd/testfixture` preserves the three earlier controlled APIs for gateway regression tests. It has no application compatibility mode. The existing controlled-demo commands below still use this test tool until the Fetch stack is connected.
-- `cmd/demo` sets up and runs the local demonstration with `cmd/gateway`. `up` does all of it with one command (see below). `setup` writes `gateway.json`, policies and a signing key into a new identified directory and installs the first administrator. `run` starts the three test APIs and the gateway, reports protected admission separately from listening, and stops them gracefully. `token` issues a short-lived test token for a test caller. `reset` restores the identified test APIs' data, and `events` prints request events from the active audit file. Rotated files are retained but are not searched by this command.
+- `cmd/testfixture` preserves the three earlier controlled APIs for gateway regression tests. The Fetch demonstration does not build or run it.
+- `cmd/demo` builds, sets up and runs the full local stack with `up`. `setup` writes `gateway.json`, complete baseline and deny-all policies, `service.secret`, a signing key pair and `accounts.json` into a new identified private directory, then installs the first administrator. `run` starts the five services and gateway, reports protected admission separately from listening, and stops its own children gracefully. `token` is an optional client of Accounts for a seeded subject; it cannot change the fixed 15-minute lifetime. `reset` restores every service's seed and clears its receipts. `events` prints request events from the active audit file; retained rotated files are not searched.
 
 ```
 go build -trimpath -o <out-dir>/gateway.exe ./cmd/gateway
@@ -62,7 +62,7 @@ The dashboard is in `dashboard/` and the website in `client/` (React and TypeScr
 
 ```
 demo setup -dir <new-dir> -web <web-dir> -gateway <out-dir>/gateway.exe
-demo run -dir <new-dir> -gateway <out-dir>/gateway.exe -fixture <out-dir>/testfixture.exe
+demo run -dir <new-dir> -gateway <out-dir>/gateway.exe -services <out-dir>/services.exe -accounts <out-dir>/accounts.exe
 ```
 
 The dashboard is at `http://127.0.0.1:9440/` and the website at `http://127.0.0.2:9480/`. Metrics are at `http://127.0.0.1:9450/metrics` on a separate loopback listener. `EAT_PORT_OFFSET` shifts the demonstration ports; for example, `1000` selects data port 10480, admin port 10440 and metrics port 10450.
@@ -75,7 +75,27 @@ With Go and Node.js installed, run from the repository root:
 go run ./cmd/demo up
 ```
 
-Each run builds the gateway, the test APIs, the dashboard and the website from the current sources, starts them and prints an hour-long shop token for the Customer, Staff and Manager slots. The first run also asks you to choose a password for the dashboard administrator `root`. It then sets up the starting policy through the Admin API, as an administrator would in the dashboard. Later runs keep that administrator, the policy and the data. Programs, builds and state are kept in `EAT40005-demo` in the user cache folder (`%LOCALAPPDATA%` on Windows); `-home <dir>` chooses another folder. `-fresh` deletes the earlier state and starts over. Press Ctrl+C to stop everything.
+Each run builds the gateway, services, Accounts and both websites from the current sources. It prints all fourteen fictional demo accounts; their shared public password is `FetchDemo2026!`. The first run asks you to choose a separate password for the Dashboard administrator `root`, then establishes deny-all genesis and confirms the Fetch baseline through the Admin API. Later runs keep the administrator and policy; service business data starts from its deterministic seed on restart. Programs, builds and state are kept in `EAT40005-demo` in the user cache folder (`%LOCALAPPDATA%` on Windows); `-home <dir>` chooses another folder. `-fresh` replaces identified earlier state and creates a fresh version 4 deployment; it never migrates a version 3 policy. Press Ctrl+C to stop everything. `-stdin` also stops when standard input closes, after any password prompts.
+
+At the default offset, Inventory, Orders, Reports, Support and Accounts listen on `127.0.0.1:9501` through `9505`, with protected control listeners on `9601` through `9605`. Orders reserves Inventory stock and Reports reads Orders history through fixed `/internal/` endpoints with `X-Service-Key` from `service.secret`. Those endpoints have no gateway routes. Every service response carries `X-Service`; gateway refusals do not. The controls expose `/state`, `/receipts` and `/reset` with a separate bearer secret. Keep the state directory and all service/control listeners private to the local demonstration.
+
+While the stack is running, these commands use its identified `state` directory:
+
+```
+go run ./cmd/demo reset -dir <home>/state
+go run ./cmd/demo attack -dir <home>/state -scenario flood-search -from 127.0.0.50 -count 65
+go run ./cmd/demo attack -dir <home>/state -scenario flood-login -from 127.0.0.51 -count 12
+go run ./cmd/demo attack -dir <home>/state -scenario flood-orders -from 127.0.0.52 -count 12
+go run ./cmd/demo keys rotate -dir <home>/state
+go run ./cmd/demo keys retire -dir <home>/state -kid <old-key-id>
+go run ./cmd/demo policy export -dir <home>/state -out <new-policy-file>
+go run ./cmd/demo policy stage -dir <home>/state -file <policy-file>
+go run ./cmd/demo events -dir <home>/state -last 20
+```
+
+Key and policy commands prompt for the `root` Dashboard password and use its session, Origin and CSRF protections. Rotation writes a new pair locally, adds public trust and reloads it before switching Accounts; the old key remains trusted until retirement. The current Accounts key cannot be retired. A failed or unconfirmed reload leaves Accounts signing unchanged and reports the uncertainty. Retirement removes public trust but retains key files for the operator. Policy export writes only to a new file. Policy staging validates a complete candidate against the current confirmed revision and does not activate it. No command automatically repeats a write without an answer.
+
+Flood commands send bounded serial traffic from the chosen IPv4 loopback address and print response counts. Search and login exercise per-address quotas; checkout exercises the signed-in customer's quota and creates real synthetic cash orders until it is limited. Reset afterwards for another demonstration. Money uses integer sen, wallets start at 10000 sen and checkout keys replay the first exact result without repeating the charge or reservation. Business state is in memory; policy, administrators, blocks and change receipts remain in the gateway's single SQLite controller.
 
 The gateway rejects a Caddy JSON configuration file and never converts one by itself. Keep the gateway stopped when running local operator commands; a deployment lock prevents two processes from sharing a database. Successful operator commands exit 0; refusals and failures exit 1. `install` and `enrol` print a one-time secret intentionally: keep that output private. On Windows, file modes do not establish confidentiality. Existing deployment and backup directories need operator-managed DACLs. New demonstration directories receive a protected DACL for the current user, SYSTEM and administrators; this does not isolate them from a privileged host administrator.
 

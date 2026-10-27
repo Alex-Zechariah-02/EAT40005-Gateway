@@ -25,8 +25,8 @@ import (
 // across real restarts. The binaries include: the gateway and the fixture
 // APIs, each also with fault-injection points compiled in, and the demo tool.
 var binaries struct {
-	plain, fault, fixture, fixtureFault, demo string
-	race                                      bool
+	plain, fault, fixture, fixtureFault, demo, services, accounts string
+	race                                                          bool
 }
 
 // issuer signs the tokens of every test. Its public key is the trust anchor
@@ -43,6 +43,8 @@ func TestMain(m *testing.M) {
 	binaries.fixture = filepath.Join(dir, "fixture.exe")
 	binaries.fixtureFault = filepath.Join(dir, "fixture-fault.exe")
 	binaries.demo = filepath.Join(dir, "demo.exe")
+	binaries.services = filepath.Join(dir, "services.exe")
+	binaries.accounts = filepath.Join(dir, "accounts.exe")
 	// GATEWAY_TEST_RACE builds the gateway and fixture processes with the
 	// race detector, which requires cgo and a C toolchain.
 	var race []string
@@ -56,6 +58,8 @@ func TestMain(m *testing.M) {
 		{binaries.fixture, "", "../../cmd/testfixture"},
 		{binaries.fixtureFault, "faultinject", "../../cmd/testfixture"},
 		{binaries.demo, "", "../../cmd/demo"},
+		{binaries.services, "", "../../cmd/services"},
+		{binaries.accounts, "", "../../cmd/accounts"},
 	}
 	for _, build := range builds {
 		args := append([]string{"build", "-tags", build.tags, "-o", build.out}, race...)

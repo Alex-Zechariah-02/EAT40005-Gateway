@@ -37,7 +37,7 @@ func demoCommand(t *testing.T, args ...string) (string, int) {
 
 func startDemo(t *testing.T, dir string) (*exec.Cmd, io.WriteCloser, <-chan error, *logBuffer) {
 	t.Helper()
-	cmd := exec.Command(binaries.demo, "run", "-dir", dir, "-gateway", binaries.plain, "-fixture", binaries.fixture, "-stdin")
+	cmd := exec.Command(binaries.demo, "run", "-dir", dir, "-gateway", binaries.plain, "-services", binaries.services, "-accounts", binaries.accounts, "-stdin")
 	output := &logBuffer{}
 	cmd.Stdout, cmd.Stderr = output, output
 	input, err := cmd.StdinPipe()
@@ -99,8 +99,8 @@ func TestNativeDemoCommands(t *testing.T) {
 	for _, args := range [][]string{
 		{"unknown"},
 		{"token", "-dir", dir, "-subject", "has spaces"},
-		{"token", "-dir", dir, "-subject", "staff-01", "-ttl", "0s"},
-		{"token", "-dir", dir, "-subject", "staff-01", "-ttl", "2h"},
+		{"token", "-dir", dir, "-subject", "cust-001", "-ttl", "0s"},
+		{"token", "-dir", dir, "-subject", "cust-001", "-ttl", "2h"},
 		{"reset", "-dir", parent},
 		{"run", "-dir", dir},
 		{"setup", "-dir", filepath.Join(parent, "failed"), "-web", web, "-gateway", filepath.Join(parent, "absent.exe")},
@@ -121,7 +121,7 @@ func TestNativeDemoCommands(t *testing.T) {
 		if !strings.Contains(output.String(), "protected admission: bootstrap_locked") {
 			t.Fatalf("listener startup mistaken for admission readiness: %s", output)
 		}
-		tokenOutput, code := demoCommand(t, "token", "-dir", dir, "-subject", "staff-01")
+		tokenOutput, code := demoCommand(t, "token", "-dir", dir, "-subject", "cust-001")
 		if code != 0 {
 			t.Fatal("demo token failed")
 		}
@@ -145,7 +145,7 @@ func TestNativeDemoCommands(t *testing.T) {
 		case <-time.After(15 * time.Second):
 			t.Fatal("demo did not reap its children")
 		}
-		for _, addr := range []string{"127.0.0.1:9440", "127.0.0.2:9480", "127.0.0.1:9501", "127.0.0.1:9502", "127.0.0.1:9503", "127.0.0.1:9601", "127.0.0.1:9602", "127.0.0.1:9603"} {
+		for _, addr := range []string{"127.0.0.1:9440", "127.0.0.2:9480", "127.0.0.1:9501", "127.0.0.1:9502", "127.0.0.1:9503", "127.0.0.1:9601", "127.0.0.1:9602", "127.0.0.1:9603", "127.0.0.1:9504", "127.0.0.1:9505", "127.0.0.1:9604", "127.0.0.1:9605", "127.0.0.1:9450"} {
 			addr = demoTestAddress(t, addr)
 			if dialable(addr) {
 				t.Fatalf("demo round %d leaked listener %s", round, addr)
@@ -183,16 +183,16 @@ func TestNativeDemoCommands(t *testing.T) {
 		t.Fatal("gateway crash did not stop the demonstration")
 	}
 	input.Close()
-	for _, addr := range []string{"127.0.0.1:9440", "127.0.0.2:9480", "127.0.0.1:9501", "127.0.0.1:9502", "127.0.0.1:9503", "127.0.0.1:9601", "127.0.0.1:9602", "127.0.0.1:9603"} {
+	for _, addr := range []string{"127.0.0.1:9440", "127.0.0.2:9480", "127.0.0.1:9501", "127.0.0.1:9502", "127.0.0.1:9503", "127.0.0.1:9601", "127.0.0.1:9602", "127.0.0.1:9603", "127.0.0.1:9504", "127.0.0.1:9505", "127.0.0.1:9604", "127.0.0.1:9605", "127.0.0.1:9450"} {
 		addr = demoTestAddress(t, addr)
 		if dialable(addr) {
 			t.Fatalf("crashed demo leaked listener %s", addr)
 		}
 	}
-	if _, code := demoCommand(t, "run", "-dir", dir, "-gateway", filepath.Join(parent, "absent.exe"), "-fixture", binaries.fixture); code != 1 {
+	if _, code := demoCommand(t, "run", "-dir", dir, "-gateway", filepath.Join(parent, "absent.exe"), "-services", binaries.services, "-accounts", binaries.accounts); code != 1 {
 		t.Fatal("partial demo startup did not report a failure")
 	}
-	for _, addr := range []string{"127.0.0.1:9501", "127.0.0.1:9502", "127.0.0.1:9503", "127.0.0.1:9601", "127.0.0.1:9602", "127.0.0.1:9603"} {
+	for _, addr := range []string{"127.0.0.1:9501", "127.0.0.1:9502", "127.0.0.1:9503", "127.0.0.1:9601", "127.0.0.1:9602", "127.0.0.1:9603", "127.0.0.1:9504", "127.0.0.1:9505", "127.0.0.1:9604", "127.0.0.1:9605", "127.0.0.1:9450"} {
 		addr = demoTestAddress(t, addr)
 		if dialable(addr) {
 			t.Fatalf("partial startup leaked fixture listener %s", addr)

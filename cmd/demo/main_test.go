@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"slices"
 	"testing"
-
-	fixture "github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/services/testfixture"
 )
 
 // decoded is the part of a policy document these tests compare.
@@ -42,46 +40,19 @@ func decode(t *testing.T, policy map[string]any) decoded {
 	return d
 }
 
-// The demonstration policy states the fixture catalogue's truth: the same
+// The demonstration policy matches the Fetch baseline: the same
 // operations, each permitted to exactly the roles the catalogue intends, the
-// same subjects with the same roles, and one upstream per fixture at the
+// same token roles and permits, and one upstream per service at the
 // address the run command starts it on.
 func TestBaselineMatchesCatalogue(t *testing.T) {
-	c, err := fixture.LoadCatalogue()
-	if err != nil {
-		t.Fatal(err)
-	}
+	checkFetchBaseline(t)
 	p := decode(t, baselinePolicy())
-
-	if len(p.Operations) != len(c.Operations) {
-		t.Fatalf("%d operations, catalogue has %d", len(p.Operations), len(c.Operations))
-	}
-	for i, want := range c.Operations {
-		got := p.Operations[i]
-		if got.ID != want.ID || got.API != want.API || got.Method != want.Method || got.Target != want.Target || got.Auth != want.Auth || got.Access != "allow" {
-			t.Errorf("operation %d: %+v, catalogue %+v", i, got, want)
-		}
-		var roles []string
-		for _, permit := range p.Permits {
-			if permit.Operation == want.ID {
-				roles = append(roles, permit.Role)
-			}
-		}
-		if !slices.Equal(slices.Sorted(slices.Values(roles)), slices.Sorted(slices.Values(want.Roles))) {
-			t.Errorf("%s permitted to %v, catalogue intends %v", want.ID, roles, want.Roles)
-		}
-	}
-
-	if p.SchemaVersion != 4 {
-		t.Errorf("schema version %d", p.SchemaVersion)
-	}
 	if _, exists := baselinePolicy()["subjects"]; exists {
 		t.Fatal("v4 contains policy membership")
 	}
-
-	for i, f := range fixtures {
-		if p.Upstreams[i].ID != f.name+"-svc" || p.Upstreams[i].Dial != f.listen {
-			t.Errorf("upstream %d: %+v, fixture %+v", i, p.Upstreams[i], f)
+	for i, service := range fetchServices {
+		if p.Upstreams[i].ID != service.name+"-svc" || p.Upstreams[i].Dial != service.listen {
+			t.Errorf("upstream %d does not match its service", i)
 		}
 	}
 }

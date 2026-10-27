@@ -21,16 +21,12 @@ import (
 	"syscall"
 	"time"
 	"unicode/utf8"
+
+	"github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/services"
 )
 
-// The administrator up enrols, and the shop slots it prints tokens for.
+// The administrator enrolled by the one-command launcher.
 const upAdmin = "root"
-
-var shopSlots = []struct{ slot, subject string }{
-	{"Customer", "cust-001"},
-	{"Staff", "staff-01"},
-	{"Manager", "mgr-01"},
-}
 
 // The two frontends: their folders in this repository, and the folders of the
 // web directory the gateway serves them from.
@@ -40,10 +36,10 @@ var websites = []struct{ page, folder string }{
 }
 
 // up runs the whole local demonstration with one command. It builds the
-// gateway, the fixtures and both websites from the current sources, creates
+// gateway, the fetchServices and both websites from the current sources, creates
 // the demonstration the first time and then establishes its baseline policy
-// through the Admin API, prints shop tokens and runs everything until
-// interrupted. Later runs reuse the same administrator, policy and data.
+// through the Admin API, prints the public demo accounts and runs everything until
+// interrupted. Later runs reuse the administrator and policy; services restart from seed.
 func up(args []string) error {
 	set := flag.NewFlagSet("up", flag.ContinueOnError)
 	home := set.String("home", defaultHome(), "folder for the built programs, websites and demonstration state")
@@ -92,7 +88,7 @@ func up(args []string) error {
 		}
 	}
 
-	gateway, fixtureBinary, err := buildPrograms(repository, bin)
+	programs, err := buildPrograms(repository, bin)
 	if err != nil {
 		return err
 	}
@@ -102,7 +98,7 @@ func up(args []string) error {
 	secret := ""
 	if firstRun {
 		var install bytes.Buffer
-		if err := createDemo(state, web, gateway, upAdmin, &install); err != nil {
+		if err := createDemo(state, web, programs.gateway, upAdmin, &install); err != nil {
 			return err
 		}
 		if secret, err = enrolmentSecret(install.String()); err != nil {
@@ -118,7 +114,7 @@ func up(args []string) error {
 	ready := make(chan struct{})
 	finished := make(chan error, 1)
 	go func() {
-		finished <- runDemo(running, state, gateway, fixtureBinary, func() { close(ready) })
+		finished <- runDemo(running, state, programs.gateway, programs.services, programs.accounts, func() { close(ready) })
 	}()
 	select {
 	case <-ready:
@@ -179,7 +175,11 @@ func removeState(state string) error {
 		return nil
 	}
 	if err := checkDemo(state); err != nil {
-		return fmt.Errorf("not deleting %s: %w", state, err)
+		// Earlier native state is never run or migrated. An explicit -fresh
+		// may replace it only when its original directory/file binding holds.
+		if oldErr := checkEarlierDemoForFresh(state); oldErr != nil {
+			return fmt.Errorf("not deleting %s: %w", state, errors.Join(err, oldErr))
+		}
 	}
 	if err := os.RemoveAll(state); err != nil {
 		return err
@@ -228,24 +228,26 @@ func executable(name string) string {
 	return name
 }
 
-// buildPrograms builds the gateway and fixture programs into bin, every
+// buildPrograms builds the gateway, services and Accounts programs into bin, every
 // time, so the demonstration always runs the current sources.
-func buildPrograms(repository, bin string) (string, string, error) {
+type builtPrograms struct{ gateway, services, accounts string }
+
+func buildPrograms(repository, bin string) (builtPrograms, error) {
 	if err := os.MkdirAll(bin, 0o700); err != nil {
-		return "", "", err
+		return builtPrograms{}, err
 	}
 	var built []string
-	for _, name := range []string{"gateway", "testfixture"} {
+	for _, name := range []string{"gateway", "services", "accounts"} {
 		fmt.Println("Building the", name, "program...")
 		output := filepath.Join(bin, executable(name))
 		build := exec.Command("go", "build", "-trimpath", "-o", output, "./cmd/"+name)
 		build.Dir = repository
 		if log, err := build.CombinedOutput(); err != nil {
-			return "", "", fmt.Errorf("building %s: %w\n%s", name, err, log)
+			return builtPrograms{}, fmt.Errorf("building %s: %w\n%s", name, err, log)
 		}
 		built = append(built, output)
 	}
-	return built[0], built[1], nil
+	return builtPrograms{built[0], built[1], built[2]}, nil
 }
 
 // buildWebsites builds the Dashboard and the shop in their folders of this
@@ -353,21 +355,17 @@ func prepareGateway(state string, firstRun bool, secret, password string) error 
 	return admin.establishBaseline(state)
 }
 
-// printSignIns prints an hour-long token for each shop slot.
+// printSignIns prints only the deliberately public fictional demo credentials.
 func printSignIns(state string) error {
-	var expires time.Time
-	var lines []string
-	for _, s := range shopSlots {
-		token, until, err := mintToken(state, s.subject, maxTokenTTL)
-		if err != nil {
-			return err
+	fmt.Println("\nFetch demo accounts (all fictional). Password: FetchDemo2026!")
+	fmt.Printf("%-14s %-22s %-24s %-20s %-8s %s\n", "Subject", "Name", "Email", "Roles", "Merchant", "Home")
+	for _, user := range services.Users() {
+		merchant := ""
+		if user.Merchant != nil {
+			merchant = *user.Merchant
 		}
-		expires = until
-		lines = append(lines, fmt.Sprintf("%s (%s):\n%s", s.slot, s.subject, token))
+		fmt.Printf("%-14s %-22s %-24s %-20s %-8s %s\n", user.ID, user.Name, user.Email, strings.Join(user.Roles, ","), merchant, user.Home)
 	}
-	fmt.Printf("\nShop sign-ins, valid until %s. Paste each into the shop's Sign-ins dialog:\n\n", expires.Format("15:04"))
-	fmt.Println(strings.Join(lines, "\n\n"))
-	fmt.Printf("\nNew tokens later: go run ./cmd/demo token -dir \"%s\" -subject cust-001 -ttl 1h\n", state)
 	return nil
 }
 
@@ -384,7 +382,7 @@ type adminClient struct {
 const adminSessionCookie = "__Host-gateway-admin"
 
 func newAdminClient() *adminClient {
-	return &adminClient{client: &http.Client{Timeout: 30 * time.Second}}
+	return &adminClient{client: &http.Client{Timeout: 30 * time.Second, Transport: &http.Transport{Proxy: nil, DisableKeepAlives: true}, CheckRedirect: refuseRedirect}}
 }
 
 // send makes one request and requires the wanted status. It never resends: a

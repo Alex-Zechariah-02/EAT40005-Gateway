@@ -1,11 +1,8 @@
 // Command demo prepares and runs the local demonstration of the gateway. It
-// writes the demonstration configuration and policies, acts as the external
-// token issuer for the controlled test subjects, runs the three fixture APIs
-// and the gateway, resets the fixtures' synthetic data and prints the
-// gateway's security events. Its operator commands never sign in as an
-// administrator. Only "up", on a deployment that has no policy yet, acts as
-// the administrator whose password the person running it types, and then
-// only through the gateway's public Admin API, as the dashboard would.
+// writes private demonstration configuration, runs Fetch Accounts, the four
+// business APIs and the gateway, resets synthetic data and prints security
+// events. Policy and key commands use the protected Admin API as the signed-in
+// operator. Application tokens are issued only by Fetch Accounts.
 package main
 
 import (
@@ -32,36 +29,37 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-jose/go-jose/v4"
-
 	"github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/demoports"
-	fixture "github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/services/testfixture"
+	"github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/services"
 )
 
 // The demonstration addresses. The administrator dashboard and the data plane
 // are on different loopback hosts because browsers scope cookies by host, not
 // port: the administrator's session cookie must never accompany a data-plane
-// request, which the gateway would forward to a fixture.
+// request forwarded to a business service.
 var (
-	adminListen = "127.0.0.1:9440"
-	dataListen  = "127.0.0.2:9480"
+	adminListen   = "127.0.0.1:9440"
+	dataListen    = "127.0.0.2:9480"
+	metricsListen = "127.0.0.1:9450"
 )
 
 const (
 	issuerName  = "fetch-accounts"
 	audience    = "fetch-gateway"
-	maxTokenTTL = time.Hour
+	maxTokenTTL = 15 * time.Minute
 )
 
-// fixtureService is one fixture API and its control listener.
-type fixtureService struct {
+// demoService is one Fetch API and its control listener.
+type demoService struct {
 	name, listen, control string
 }
 
-var fixtures = []fixtureService{
-	{"orders", "127.0.0.1:9501", "127.0.0.1:9601"},
-	{"inventory", "127.0.0.1:9502", "127.0.0.1:9602"},
+var fetchServices = []demoService{
+	{"inventory", "127.0.0.1:9501", "127.0.0.1:9601"},
+	{"orders", "127.0.0.1:9502", "127.0.0.1:9602"},
 	{"reports", "127.0.0.1:9503", "127.0.0.1:9603"},
+	{"support", "127.0.0.1:9504", "127.0.0.1:9604"},
+	{"accounts", "127.0.0.1:9505", "127.0.0.1:9605"},
 }
 
 // Resolve the process's environment once. Invalid offsets stop the command
@@ -69,9 +67,9 @@ var fixtures = []fixtureService{
 var portSetupError = applyDemoPortOffset()
 
 func applyDemoPortOffset() error {
-	addresses := []*string{&adminListen, &dataListen}
-	for i := range fixtures {
-		addresses = append(addresses, &fixtures[i].listen, &fixtures[i].control)
+	addresses := []*string{&adminListen, &dataListen, &metricsListen}
+	for i := range fetchServices {
+		addresses = append(addresses, &fetchServices[i].listen, &fetchServices[i].control)
 	}
 	for _, address := range addresses {
 		value, err := demoports.Offset(*address)
@@ -88,7 +86,8 @@ const (
 	configFile     = "gateway.json"
 	privateKeyFile = "issuer-key.pem"
 	publicKeyFile  = "issuer.pem"
-	secretFile     = "fixture.secret"
+	secretFile     = "service.secret"
+	signingFile    = "accounts.json"
 	auditFile      = "audit.log"
 	databaseFile   = "state.db"
 	baselineFile   = "baseline.json"
@@ -98,9 +97,14 @@ const (
 const usage = `usage:
   demo up     [-home H] [-fresh] [-stdin]
   demo setup  -dir D -web W -gateway G [-admin NAME]
-  demo run    -dir D -gateway G -fixture F [-stdin]
+  demo run    -dir D -gateway G -services S -accounts A [-stdin]
   demo token  -dir D -subject ID [-ttl 15m]
   demo reset  -dir D
+  demo attack -dir D -scenario flood-search|flood-login|flood-orders [-from 127.0.0.50] [-count N]
+  demo keys rotate -dir D
+  demo keys retire -dir D -kid K
+  demo policy export -dir D -out F
+  demo policy stage -dir D -file F
   demo events -dir D [-request ID] [-last N]`
 
 func main() {
@@ -119,6 +123,9 @@ func main() {
 		"token":  token,
 		"reset":  reset,
 		"events": events,
+		"attack": attack,
+		"keys":   keys,
+		"policy": policy,
 	}
 	command, ok := commands[os.Args[1]]
 	if !ok {
@@ -144,7 +151,7 @@ func parse(set *flag.FlagSet, args []string) (string, error) {
 }
 
 // setup creates a new demonstration directory: a signing key pair whose
-// private half stays in this directory, the fixture control secret, the
+// private half stays in this directory, the service control secret, the
 // gateway configuration and two policy documents for the administrator to
 // stage. It then runs the gateway's install command, which prints the first
 // administrator's one-time enrolment secret. An existing directory is never
@@ -169,7 +176,7 @@ func setup(args []string) (err error) {
 	if err := createDemo(dir, webDir, *gateway, *admin, os.Stdout); err != nil {
 		return err
 	}
-	fmt.Printf("demonstration directory %s is ready; start it with: demo run -dir %s -gateway %s -fixture <fixture binary>\n", dir, dir, *gateway)
+	fmt.Printf("demonstration directory %s is ready; start it with: demo run -dir %s -gateway %s -services <services binary> -accounts <accounts binary>\n", dir, dir, *gateway)
 	return nil
 }
 
@@ -210,6 +217,7 @@ func createDemo(dir, webDir, gateway, admin string, out io.Writer) (err error) {
 		privateKeyFile: pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: private}),
 		publicKeyFile:  pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: public}),
 		secretFile:     []byte(hex.EncodeToString(secret)),
+		signingFile:    indented(map[string]string{"kid": "fetch-2026-10-a", "private_key_file": filepath.Join(dir, privateKeyFile)}),
 		configFile:     indented(gatewayConfig(dir, webDir)),
 		baselineFile:   indented(baseline),
 		denyAllFile:    indented(denyAll(baseline)),
@@ -246,10 +254,11 @@ func gatewayConfig(dir, web string) map[string]any {
 	return map[string]any{
 		"version": 1,
 		"gateway": map[string]any{
-			"database":     filepath.Join(dir, databaseFile),
-			"audit_log":    filepath.Join(dir, auditFile),
-			"admin_listen": adminListen,
-			"admin_ui":     filepath.Join(web, "admin"),
+			"database":       filepath.Join(dir, databaseFile),
+			"audit_log":      filepath.Join(dir, auditFile),
+			"admin_listen":   adminListen,
+			"metrics_listen": metricsListen,
+			"admin_ui":       filepath.Join(web, "admin"),
 			"jwt": map[string]any{
 				"issuer":   issuerName,
 				"audience": audience,
@@ -272,83 +281,6 @@ func gatewayConfig(dir, web string) map[string]any {
 	}
 }
 
-// Request body schemas of the two fixture writes: the request shape each
-// fixture accepts. Business rules (known items, ownership, ranges the fixture
-// checks itself) stay with the fixtures.
-const (
-	ordersCreateSchema = `{"type":"object","additionalProperties":false,"required":["customer","item","quantity"],"properties":{` +
-		`"customer":{"type":"string","minLength":1,"maxLength":64},` +
-		`"item":{"type":"string","minLength":1,"maxLength":64},` +
-		`"quantity":{"type":"integer"}}}`
-	inventoryAdjustSchema = `{"type":"object","additionalProperties":false,"required":["delta"],"properties":{` +
-		`"delta":{"type":"integer","minimum":-100,"maximum":100}}}`
-)
-
-// baselinePolicy is the demonstration's confirmed policy: the three fixtures,
-// their operations, the catalogue roles and permits and the controlled
-// subjects. The summary report has a tight rate limit so that a short burst
-// of requests shows the limiter.
-func baselinePolicy() map[string]any {
-	rate := func(count int) map[string]any {
-		return map[string]any{"algorithm": "sliding-window", "count": count, "window_seconds": 60, "key": "subject"}
-	}
-	body := func(schema string) map[string]any {
-		return map[string]any{"max_bytes": 1024, "schema": json.RawMessage(schema)}
-	}
-	operation := func(id, api, method, target, auth string) map[string]any {
-		op := map[string]any{"id": id, "api": api, "method": method, "target": target, "access": "allow", "auth": auth}
-		if auth == "required" {
-			op["rate"] = rate(100)
-		}
-		return op
-	}
-	ordersCreate := operation("orders.create", "orders", "POST", "/orders", "required")
-	ordersCreate["body"] = body(ordersCreateSchema)
-	inventoryAdjust := operation("inventory.adjust", "inventory", "PATCH", "/inventory/items/*", "required")
-	inventoryAdjust["body"] = body(inventoryAdjustSchema)
-	reportsSummary := operation("reports.summary", "reports", "GET", "/reports/summary", "required")
-	reportsSummary["rate"] = rate(5)
-
-	var upstreams, apis []map[string]any
-	for _, f := range fixtures {
-		upstreams = append(upstreams, map[string]any{"id": f.name + "-svc", "dial": f.listen})
-		apis = append(apis, map[string]any{"id": f.name, "upstream": f.name + "-svc"})
-	}
-	permit := func(role, operation string) map[string]any {
-		return map[string]any{"role": role, "operation": operation}
-	}
-	return map[string]any{
-		"schema_version": 4,
-		"profile":        "core",
-		"upstreams":      upstreams,
-		"apis":           apis,
-		"operations": []map[string]any{
-			operation("orders.list", "orders", "GET", "/orders", "required"),
-			operation("orders.get", "orders", "GET", "/orders/*", "required"),
-			ordersCreate,
-			operation("inventory.health", "inventory", "GET", "/inventory/health", "none"),
-			operation("inventory.get", "inventory", "GET", "/inventory/items/*", "required"),
-			inventoryAdjust,
-			operation("reports.sales", "reports", "GET", "/reports/sales", "required"),
-			reportsSummary,
-		},
-		"roles": []map[string]any{{"id": "CUSTOMER"}, {"id": "STAFF"}, {"id": "MANAGER"}},
-		"permits": []map[string]any{
-			permit("STAFF", "orders.list"),
-			permit("MANAGER", "orders.list"),
-			permit("CUSTOMER", "orders.get"),
-			permit("STAFF", "orders.get"),
-			permit("CUSTOMER", "orders.create"),
-			permit("STAFF", "inventory.get"),
-			permit("MANAGER", "inventory.get"),
-			permit("STAFF", "inventory.adjust"),
-			permit("MANAGER", "reports.sales"),
-			permit("STAFF", "reports.summary"),
-			permit("MANAGER", "reports.summary"),
-		},
-	}
-}
-
 // denyAll is the baseline with every operation denied and no permits.
 func denyAll(baseline map[string]any) map[string]any {
 	policy := maps.Clone(baseline)
@@ -363,23 +295,24 @@ func denyAll(baseline map[string]any) map[string]any {
 	return policy
 }
 
-// run starts the three fixtures and the gateway, reports when all of them
+// run starts the five Fetch services and the gateway, reports when all of them
 // accept connections, and stops them all on interrupt, when the gateway
-// exits, or with -stdin when standard input closes. A fixture that stops is
+// exits, or with -stdin when standard input closes. A service that stops is
 // reported and left stopped, so the gateway's answer for an unavailable API
 // can be shown. Process output goes to log files in the demonstration
 // directory.
 func run(args []string) (runErr error) {
 	set := flag.NewFlagSet("run", flag.ContinueOnError)
 	gateway := set.String("gateway", "", "gateway binary")
-	fixtureBinary := set.String("fixture", "", "fixture binary")
+	serviceBinary := set.String("services", "", "Fetch services binary")
+	accountsBinary := set.String("accounts", "", "Fetch Accounts binary")
 	stdin := set.Bool("stdin", false, "also stop when standard input closes")
 	dir, err := parse(set, args)
 	if err != nil {
 		return err
 	}
-	if *gateway == "" || *fixtureBinary == "" {
-		return errors.New("-gateway and -fixture are required")
+	if *gateway == "" || *serviceBinary == "" || *accountsBinary == "" {
+		return errors.New("-gateway, -services and -accounts are required")
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -389,13 +322,13 @@ func run(args []string) (runErr error) {
 			stop()
 		}()
 	}
-	return runDemo(ctx, dir, *gateway, *fixtureBinary, nil)
+	return runDemo(ctx, dir, *gateway, *serviceBinary, *accountsBinary, nil)
 }
 
 // runDemo is run's work: it stops everything when ctx ends. ready, if not
 // nil, is called once every process listens and the gateway has reported
 // its admission status.
-func runDemo(ctx context.Context, dir, gateway, fixtureBinary string, ready func()) (runErr error) {
+func runDemo(ctx context.Context, dir, gateway, serviceBinary, accountsBinary string, ready func()) (runErr error) {
 	if err := checkDemo(dir); err != nil {
 		return err
 	}
@@ -409,7 +342,7 @@ func runDemo(ctx context.Context, dir, gateway, fixtureBinary string, ready func
 		name string
 		err  error
 	}
-	exited := make(chan processExit, len(fixtures)+1)
+	exited := make(chan processExit, len(fetchServices)+1)
 	var processes []*exec.Cmd
 	var gatewayLogStart int64
 	running := 0
@@ -470,8 +403,21 @@ func runDemo(ctx context.Context, dir, gateway, fixtureBinary string, ready func
 
 	secret := filepath.Join(dir, secretFile)
 	var addresses []string
-	for _, f := range fixtures {
-		if err := start(f.name, fixtureBinary, "-service", f.name, "-listen", f.listen, "-control", f.control, "-secret-file", secret); err != nil {
+	for _, f := range fetchServices {
+		binary := serviceBinary
+		args := []string{"-listen", f.listen, "-control", f.control, "-secret-file", secret}
+		switch f.name {
+		case "accounts":
+			binary = accountsBinary
+			args = append(args, "-signing-settings", filepath.Join(dir, signingFile))
+		case "orders":
+			args = append(args, "-service", f.name, "-inventory", "http://"+fetchServices[0].listen)
+		case "reports":
+			args = append(args, "-service", f.name, "-orders", "http://"+fetchServices[1].listen)
+		default:
+			args = append(args, "-service", f.name)
+		}
+		if err := start(f.name, binary, args...); err != nil {
 			return err
 		}
 		addresses = append(addresses, f.listen, f.control)
@@ -479,7 +425,7 @@ func runDemo(ctx context.Context, dir, gateway, fixtureBinary string, ready func
 	if err := start("gateway", gateway, "run", "--config", filepath.Join(dir, configFile)); err != nil {
 		return err
 	}
-	addresses = append(addresses, adminListen, dataListen)
+	addresses = append(addresses, adminListen, dataListen, metricsListen)
 
 	deadline := time.Now().Add(30 * time.Second)
 	for _, address := range addresses {
@@ -523,8 +469,8 @@ func runDemo(ctx context.Context, dir, gateway, fixtureBinary string, ready func
 	fmt.Printf("  dashboard: http://%s/\n  website:   http://%s/\n", adminListen, dataListen)
 	for i, p := range processes {
 		name := "gateway"
-		if i < len(fixtures) {
-			name = fixtures[i].name
+		if i < len(fetchServices) {
+			name = fetchServices[i].name
 		}
 		fmt.Printf("  %-9s process %d\n", name, p.Process.Pid)
 	}
@@ -542,15 +488,15 @@ func runDemo(ctx context.Context, dir, gateway, fixtureBinary string, ready func
 			if result.name == "gateway" {
 				return fmt.Errorf("the gateway exited (%v); see %s", result.err, filepath.Join(dir, "gateway.log"))
 			}
-			fmt.Printf("fixture %s stopped (%v); the gateway now answers its requests with 502\n", result.name, result.err)
+			fmt.Printf("service %s stopped (%v); its gateway requests can now fail\n", result.name, result.err)
 		}
 	}
 }
 
 // checkPortsFree refuses a second demonstration on the same addresses.
 func checkPortsFree() error {
-	addresses := []string{adminListen, dataListen}
-	for _, service := range fixtures {
+	addresses := []string{adminListen, dataListen, metricsListen}
+	for _, service := range fetchServices {
 		addresses = append(addresses, service.listen, service.control)
 	}
 	for _, address := range addresses {
@@ -570,27 +516,23 @@ func dialable(address string) bool {
 	return true
 }
 
-// token prints one RS256 access token for a controlled subject, signed with
-// the demonstration's private key. A negative -ttl gives a token that has
-// already expired, for demonstrating its rejection.
+// token obtains a demo account token from Fetch Accounts. It never reads a
+// private key or changes token claims or lifetime.
 func token(args []string) error {
 	set := flag.NewFlagSet("token", flag.ContinueOnError)
-	subject := set.String("subject", "", "token subject")
-	ttl := set.Duration("ttl", 15*time.Minute, "lifetime, at most 1h; negative for an expired token")
+	subject := set.String("subject", "", "seeded demo account ID")
+	ttl := set.Duration("ttl", maxTokenTTL, "fixed 15-minute Accounts lifetime")
 	dir, err := parse(set, args)
 	if err != nil {
 		return err
 	}
-	if err := checkDemo(dir); err != nil {
+	if err = checkDemo(dir); err != nil {
 		return err
 	}
-	if !validSubject(*subject) {
-		return errors.New("-subject must be 1 to 128 printable ASCII characters without spaces")
+	if !validSubject(*subject) || *ttl != maxTokenTTL {
+		return errors.New("use a seeded subject and the fixed 15m lifetime")
 	}
-	if *ttl == 0 || *ttl > maxTokenTTL || *ttl < -maxTokenTTL {
-		return errors.New("-ttl must be non-zero and at most 1h either way")
-	}
-	compact, expires, err := mintToken(dir, *subject, *ttl)
+	compact, expires, err := accountToken(dir, *subject, *ttl)
 	if err != nil {
 		return err
 	}
@@ -599,61 +541,17 @@ func token(args []string) error {
 	return nil
 }
 
-// mintToken signs one access token for subject with the demonstration's
-// private key. The caller has checked the subject and lifetime.
-func mintToken(dir, subject string, ttl time.Duration) (string, time.Time, error) {
-	data, err := os.ReadFile(filepath.Join(dir, privateKeyFile))
-	if err != nil {
-		return "", time.Time{}, err
+func accountToken(dir, subject string, ttl time.Duration) (string, time.Time, error) {
+	if ttl != maxTokenTTL {
+		return "", time.Time{}, errors.New("Accounts tokens last 15m")
 	}
-	block, _ := pem.Decode(data)
-	if block == nil || block.Type != "PRIVATE KEY" {
-		return "", time.Time{}, errors.New("issuer key file holds no private key")
-	}
-	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-	if err != nil {
-		return "", time.Time{}, err
-	}
-	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: key}, (&jose.SignerOptions{}).WithType("JWT").WithHeader("kid", "fetch-2026-10-a"))
-	if err != nil {
-		return "", time.Time{}, err
-	}
-
-	now := time.Now()
-	expires := now.Add(ttl)
-	roles := []string{}
-	catalogue, err := fixture.LoadCatalogue()
-	if err != nil {
-		return "", time.Time{}, err
-	}
-	for _, account := range catalogue.Subjects {
-		if account.ID == subject && account.Status == "active" {
-			roles = account.Roles
-			break
+	for _, user := range services.Users() {
+		if user.ID == subject {
+			return accountLogin("http://"+fetchServices[4].listen, user.Email)
 		}
 	}
-	claims, err := json.Marshal(map[string]any{
-		"sub":   subject,
-		"iss":   issuerName,
-		"aud":   audience,
-		"iat":   now.Unix(),
-		"exp":   expires.Unix(),
-		"roles": roles,
-	})
-	if err != nil {
-		return "", time.Time{}, err
-	}
-	signed, err := signer.Sign(claims)
-	if err != nil {
-		return "", time.Time{}, err
-	}
-	compact, err := signed.CompactSerialize()
-	if err != nil {
-		return "", time.Time{}, err
-	}
-	return compact, expires, nil
+	return "", time.Time{}, errors.New("unknown demo account")
 }
-
 func validSubject(s string) bool {
 	if len(s) < 1 || len(s) > 128 {
 		return false
@@ -666,52 +564,36 @@ func validSubject(s string) bool {
 	return true
 }
 
-// reset restores each fixture's seed data through its control listener and
-// checks the resulting state hash against the catalogue.
+// reset restores each service's seed through its isolated protected control.
 func reset(args []string) error {
 	dir, err := parse(flag.NewFlagSet("reset", flag.ContinueOnError), args)
 	if err != nil {
 		return err
 	}
-	if err := checkDemo(dir); err != nil {
+	if err = checkDemo(dir); err != nil {
 		return err
 	}
 	secret, err := os.ReadFile(filepath.Join(dir, secretFile))
 	if err != nil {
 		return err
 	}
-	catalogue, err := fixture.LoadCatalogue()
-	if err != nil {
-		return err
-	}
-	seeds := map[string]string{}
-	for _, f := range catalogue.Fixtures {
-		seeds[f.Service] = f.SeedSHA256
-	}
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	failed := false
-	for _, f := range fixtures {
-		request, _ := http.NewRequest(http.MethodPost, "http://"+f.control+"/reset", http.NoBody)
+	client := &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{Proxy: nil}, CheckRedirect: refuseRedirect}
+	defer client.CloseIdleConnections()
+	for _, service := range fetchServices {
+		request, _ := http.NewRequest("POST", "http://"+service.control+"/reset", http.NoBody)
 		request.Header.Set("Authorization", "Bearer "+strings.TrimSpace(string(secret)))
 		response, err := client.Do(request)
 		if err != nil {
-			return fmt.Errorf("resetting %s: %w", f.name, err)
+			return fmt.Errorf("resetting %s: no answer; its reset outcome is unknown: %w", service.name, err)
 		}
-		var state fixture.State
-		err = json.NewDecoder(response.Body).Decode(&state)
+		var state services.State
+		decodeErr := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&state)
 		response.Body.Close()
-		if response.StatusCode != http.StatusOK || err != nil {
-			return fmt.Errorf("resetting %s: status %d", f.name, response.StatusCode)
+		hash, hashErr := hex.DecodeString(state.SHA256)
+		if response.StatusCode != 200 || decodeErr != nil || state.Service != service.name || hashErr != nil || len(hash) != 32 {
+			return fmt.Errorf("resetting %s: invalid reset answer, status %d", service.name, response.StatusCode)
 		}
-		result := "seed restored"
-		if state.Service != f.name || state.SHA256 != seeds[f.name] {
-			result, failed = "DOES NOT MATCH the catalogue seed", true
-		}
-		fmt.Printf("%-9s %s %s\n", f.name, state.SHA256, result)
-	}
-	if failed {
-		return errors.New("a fixture did not return to its seed")
+		fmt.Printf("%-9s %s seed restored\n", service.name, state.SHA256)
 	}
 	return nil
 }
