@@ -53,8 +53,8 @@ func TestMain(m *testing.M) {
 	builds := []struct{ out, tags, pkg string }{
 		{binaries.plain, "", "../../cmd/gateway"},
 		{binaries.fault, "faultinject", "../../cmd/gateway"},
-		{binaries.fixture, "", "../../cmd/fixture"},
-		{binaries.fixtureFault, "faultinject", "../../cmd/fixture"},
+		{binaries.fixture, "", "../../cmd/testfixture"},
+		{binaries.fixtureFault, "faultinject", "../../cmd/testfixture"},
 		{binaries.demo, "", "../../cmd/demo"},
 	}
 	for _, build := range builds {

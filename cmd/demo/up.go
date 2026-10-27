@@ -235,7 +235,7 @@ func buildPrograms(repository, bin string) (string, string, error) {
 		return "", "", err
 	}
 	var built []string
-	for _, name := range []string{"gateway", "fixture"} {
+	for _, name := range []string{"gateway", "testfixture"} {
 		fmt.Println("Building the", name, "program...")
 		output := filepath.Join(bin, executable(name))
 		build := exec.Command("go", "build", "-trimpath", "-o", output, "./cmd/"+name)

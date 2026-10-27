@@ -35,7 +35,7 @@ import (
 	"github.com/go-jose/go-jose/v4"
 
 	"github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/demoports"
-	"github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/fixture"
+	fixture "github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/services/testfixture"
 )
 
 // The demonstration addresses. The administrator dashboard and the data plane

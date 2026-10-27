@@ -37,15 +37,19 @@ A policy can pass all checks and still cause problems when it is in use. Adminis
 
 ## Build and test
 
-You need Go 1.26 or newer. `go.mod` names Go 1.27.3 as the toolchain, because it fixes security issues in the standard HTTP, TLS and certificate packages the gateway uses; an older `go` command downloads and uses it automatically. The repository follows the standard Go layout: the three programs live in `cmd/`, and the code they share is in `internal/gateway` (the gateway) and `internal/fixture` (the test APIs), which no other module can import. The two web applications are in `dashboard/` and `client/`.
+You need Go 1.26 or newer. `go.mod` names Go 1.27.3 as the toolchain, because it fixes security issues in the standard HTTP, TLS and certificate packages the gateway uses; an older `go` command downloads and uses it automatically. Programs live in `cmd/`, with shared code in `internal/gateway` and `internal/services`. The preserved controlled APIs for gateway regression tests live in `internal/services/testfixture`. The two web applications are in `dashboard/` and `client/`.
 
 - `cmd/gateway` runs the gateway from one strict JSON configuration file. It has the commands `run`, `install`, `enrol`, `backup`, `restore` and `migrate`, each with `--config <file>`. The local commands `install`, `enrol`, `backup`, `restore` and `migrate` run while the gateway is stopped.
-- `cmd/fixture` runs one of the three test APIs: Orders, Inventory or Reports.
+- `cmd/services -service inventory|orders|reports|support -secret-file <service.secret>` runs a Fetch business API, with independent authenticated receipts, state and reset. Defaults honor `EAT_PORT_OFFSET`; `-listen` and `-control` select explicit loopback addresses. Orders uses `-inventory <http-origin>` and Reports uses `-orders <http-origin>` for authenticated internal calls.
+- `cmd/accounts -secret-file <service.secret> -signing-settings <accounts.json>` runs Fetch Accounts. Signing settings contain `kid` and an absolute `private_key_file`. Only Accounts signs application tokens, which last 15 minutes. Account and signing secrets stay in the private demonstration state.
+- `cmd/testfixture` preserves the three earlier controlled APIs for gateway regression tests. It has no application compatibility mode. The existing controlled-demo commands below still use this test tool until the Fetch stack is connected.
 - `cmd/demo` sets up and runs the local demonstration with `cmd/gateway`. `up` does all of it with one command (see below). `setup` writes `gateway.json`, policies and a signing key into a new identified directory and installs the first administrator. `run` starts the three test APIs and the gateway, reports protected admission separately from listening, and stops them gracefully. `token` issues a short-lived test token for a test caller. `reset` restores the identified test APIs' data, and `events` prints request events from the active audit file. Rotated files are retained but are not searched by this command.
 
 ```
 go build -trimpath -o <out-dir>/gateway.exe ./cmd/gateway
-go build -trimpath -o <out-dir>/fixture.exe ./cmd/fixture
+go build -trimpath -o <out-dir>/services.exe ./cmd/services
+go build -trimpath -o <out-dir>/accounts.exe ./cmd/accounts
+go build -trimpath -o <out-dir>/testfixture.exe ./cmd/testfixture
 go build -trimpath -o <out-dir>/demo.exe ./cmd/demo
 go test ./... -count=1
 ```
@@ -58,7 +62,7 @@ The dashboard is in `dashboard/` and the website in `client/` (React and TypeScr
 
 ```
 demo setup -dir <new-dir> -web <web-dir> -gateway <out-dir>/gateway.exe
-demo run -dir <new-dir> -gateway <out-dir>/gateway.exe -fixture <out-dir>/fixture.exe
+demo run -dir <new-dir> -gateway <out-dir>/gateway.exe -fixture <out-dir>/testfixture.exe
 ```
 
 The dashboard is at `http://127.0.0.1:9440/` and the website at `http://127.0.0.2:9480/`. Metrics are at `http://127.0.0.1:9450/metrics` on a separate loopback listener. `EAT_PORT_OFFSET` shifts the demonstration ports; for example, `1000` selects data port 10480, admin port 10440 and metrics port 10450.

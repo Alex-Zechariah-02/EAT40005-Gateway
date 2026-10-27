@@ -1,4 +1,4 @@
-package fixture
+package testfixture
 
 import "net/http"
 

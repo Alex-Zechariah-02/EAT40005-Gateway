@@ -1,10 +1,10 @@
-// Package fixture implements the three controlled REST APIs that sit behind
+// Package testfixture implements the three controlled REST APIs that sit behind
 // the gateway in tests: orders, inventory and reports. Each serves synthetic
 // data held in memory and records an independent receipt for every request
 // that reaches it. Receipts, state and reset are available only on a separate
 // control listener that requires a secret. The orders API also enforces
 // object ownership with the subject and roles that the gateway forwards.
-package fixture
+package testfixture
 
 import (
 	"bytes"
@@ -208,7 +208,7 @@ func matchPattern(pattern, path string) (string, bool) {
 
 func (s *Service) write(w http.ResponseWriter, res result) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("X-Fixture-Service", s.name)
+	w.Header().Set("X-Service", s.name)
 	w.Header().Set("X-Fixture-Instance", s.instance)
 	w.WriteHeader(res.status)
 	json.NewEncoder(w).Encode(res.body)
@@ -260,6 +260,7 @@ func (s *Service) Control(secret []byte) http.Handler {
 		writeJSON(w, http.StatusOK, state)
 	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Service", s.name)
 		token, found := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if !found || subtle.ConstantTimeCompare([]byte(token), secret) != 1 {
 			writeJSON(w, http.StatusUnauthorized, errorBody("unauthenticated"))

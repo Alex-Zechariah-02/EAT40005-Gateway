@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/fixture"
+	fixture "github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/services/testfixture"
 )
 
 var fixtureNames = []string{"orders", "inventory", "reports"}
@@ -299,8 +299,8 @@ func runScenarios(t *testing.T, e *env, fixtures map[string]*fixtureProcess, c f
 		switch {
 		case resp.StatusCode != sc.Status:
 			t.Errorf("%s: status %d, want %d (%s)", sc.Name, resp.StatusCode, sc.Status, body)
-		case resp.Header.Get("X-Fixture-Service") != target.name:
-			t.Errorf("%s: answered by %q, want %s", sc.Name, resp.Header.Get("X-Fixture-Service"), target.name)
+		case resp.Header.Get("X-Service") != target.name:
+			t.Errorf("%s: answered by %q, want %s", sc.Name, resp.Header.Get("X-Service"), target.name)
 		case receipt.Operation != sc.Operation:
 			t.Errorf("%s: fixture ran %q, want %q", sc.Name, receipt.Operation, sc.Operation)
 		case receipt.Generation != generation || receipt.RequestID == "":

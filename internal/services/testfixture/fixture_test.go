@@ -1,4 +1,4 @@
-package fixture
+package testfixture
 
 import (
 	"bytes"
@@ -106,8 +106,8 @@ func TestScenariosInProcess(t *testing.T) {
 			t.Errorf("%s: effect %q, want %q", sc.Name, receipt.Effect, sc.Effect)
 		case len(sc.Response) > 0 && !sameJSON(t, rec.Body.Bytes(), sc.Response):
 			t.Errorf("%s: response %s, want %s", sc.Name, rec.Body, sc.Response)
-		case rec.Header().Get("X-Fixture-Service") != s.name:
-			t.Errorf("%s: served by %q", sc.Name, rec.Header().Get("X-Fixture-Service"))
+		case rec.Header().Get("X-Service") != s.name:
+			t.Errorf("%s: served by %q", sc.Name, rec.Header().Get("X-Service"))
 		}
 	}
 }
@@ -208,6 +208,9 @@ func TestControlRequiresSecret(t *testing.T) {
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusUnauthorized {
 			t.Fatalf("reset with token %q: %d", token, resp.StatusCode)
+		}
+		if resp.Header.Get("X-Service") != "orders" {
+			t.Error("control refusal has no service identity")
 		}
 	}
 	if len(s.receipts) != 1 {

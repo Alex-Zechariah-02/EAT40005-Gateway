@@ -5,7 +5,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/fixture"
+	fixture "github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/services/testfixture"
 )
 
 // decoded is the part of a policy document these tests compare.

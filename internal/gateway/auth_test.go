@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/fixture"
+	fixture "github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/services/testfixture"
 )
 
 // These tests run bearer authentication and role authorisation through the

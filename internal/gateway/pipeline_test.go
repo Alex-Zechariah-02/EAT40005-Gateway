@@ -39,8 +39,8 @@ func TestFiveControlsAdmitValidRequest(t *testing.T) {
 		target := fixtures[r.fixture]
 		before := target.state().SHA256
 		resp, body := e.exchange(r.method, r.path, "application/json", r.body, bearer(t, r.subject)...)
-		if resp.StatusCode != r.status || resp.Header.Get("X-Fixture-Service") != r.fixture {
-			t.Fatalf("%s %s: %d from %q (%s)", r.method, r.path, resp.StatusCode, resp.Header.Get("X-Fixture-Service"), body)
+		if resp.StatusCode != r.status || resp.Header.Get("X-Service") != r.fixture {
+			t.Fatalf("%s %s: %d from %q (%s)", r.method, r.path, resp.StatusCode, resp.Header.Get("X-Service"), body)
 		}
 		receipts := target.receipts()
 		receipt := receipts[len(receipts)-1]
