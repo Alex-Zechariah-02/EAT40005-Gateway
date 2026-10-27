@@ -4,7 +4,7 @@ import { usePaged, useResource } from './hooks'
 import { Badge, CodeBlock, Empty, PageHeader, Problem, ReadStamp, ReplyView, ShowMore, TableScroll, Time } from './ui'
 import type { ViewProps } from './views'
 
-type Area = 'policy' | 'overrides' | 'subjects' | 'administrators' | 'operator'
+type Area = 'policy' | 'overrides' | 'accounts' | 'keys' | 'administrators' | 'operator'
 
 // What each recorded kind of transition is, in words, and the area it
 // belongs to. A kind not listed is shown by its code.
@@ -21,8 +21,9 @@ const kinds: Record<string, { label: string; area: Area }> = {
   'tpo.create': { label: 'Override created', area: 'overrides' },
   'tpo.revoke': { label: 'Override revoked', area: 'overrides' },
   'tpo.expire': { label: 'Override expired', area: 'overrides' },
-  'membership.put': { label: 'Subject membership set', area: 'subjects' },
-  'membership.delete': { label: 'Subject removed', area: 'subjects' },
+  'account.block': { label: 'Account blocked', area: 'accounts' },
+  'account.unblock': { label: 'Account unblocked', area: 'accounts' },
+  'keys.reload': { label: 'Signing keys reloaded', area: 'keys' },
   'admin.enrol': { label: 'Administrator enrolled', area: 'administrators' },
   'admin.password': { label: 'Password changed', area: 'administrators' },
   'operator.install': { label: 'Installed by the operator', area: 'operator' },
@@ -35,7 +36,8 @@ const areas: { id: Area | 'all'; label: string }[] = [
   { id: 'all', label: 'All areas' },
   { id: 'policy', label: 'Policy lifecycle' },
   { id: 'overrides', label: 'Temporary overrides' },
-  { id: 'subjects', label: 'Subjects' },
+  { id: 'accounts', label: 'Blocked accounts' },
+  { id: 'keys', label: 'Signing keys' },
   { id: 'administrators', label: 'Administrators' },
   { id: 'operator', label: 'Operator' },
 ]

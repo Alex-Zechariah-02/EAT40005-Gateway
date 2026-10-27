@@ -311,44 +311,27 @@ function PolicyTables({ policy: p }: { policy: Policy }) {
 }
 
 // PermitMatrix shows which roles hold a permit for which operation, one row
-// per operation and one column per role, with the subjects holding each role.
-// A public operation needs neither a token nor a role.
+// per operation and one column per role. A public operation needs neither a
+// token nor a role.
 function PermitMatrix({ policy: p }: { policy: Policy }) {
   const permitted = (role: string, operation: string) => p.permits.some((permit) => permit.role === role && permit.operation === operation)
   return (
     <section className="section" aria-labelledby="permits-title">
       <h2 id="permits-title">Role permits</h2>
       <p className="section-lede">
-        {p.subjects
-          ? 'A subject may call an operation only when one of its roles holds a permit for it. Roles come from this policy, never from a token.'
-          : 'An account may call an operation only when a role from its sign-in token holds a permit for it. The gateway ignores roles this policy does not define.'}
+        An account may call an operation only when a role from its sign-in token holds a permit for it. The gateway ignores roles this policy does
+        not define.
       </p>
       <TableScroll label="Role permits">
         <table className="matrix">
           <thead>
             <tr>
               <th scope="col">Operation</th>
-              {p.roles.map((r) => {
-                if (!p.subjects) {
-                  return (
-                    <th scope="col" key={r.id}>
-                      {r.id}
-                    </th>
-                  )
-                }
-                const holders = p.subjects.filter((s) => s.roles.includes(r.id))
-                const active = holders.filter((s) => s.status === 'active').length
-                return (
-                  <th scope="col" key={r.id}>
-                    {r.id}
-                    <span className="matrix-holders">
-                      {holders.length === 0
-                        ? 'no subjects'
-                        : `${holders.length} ${holders.length === 1 ? 'subject' : 'subjects'}${active < holders.length ? `, ${holders.length - active} disabled` : ''}`}
-                    </span>
-                  </th>
-                )
-              })}
+              {p.roles.map((r) => (
+                <th scope="col" key={r.id}>
+                  {r.id}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -406,7 +389,8 @@ interface Rule {
   field: string
   place: 'body' | 'header'
   type: string
-  required: boolean
+  // 'each' marks the rule every element of an array must meet.
+  required: boolean | 'each'
   limits: string
 }
 
@@ -426,11 +410,22 @@ function limitsText(node: Schema): string {
   }
   range(node.minLength, node.maxLength, ' characters')
   range(node.minimum, node.maximum, '')
-  if (node.type === 'object' && node.additionalProperties === false) limits.push('no other members')
+  range(node.minItems, node.maxItems, ' items')
+  if (hasType(node, 'object') && node.additionalProperties === false) limits.push('no other members')
   return limits.join('; ')
 }
 
-// rules lists the members a schema declares, following nested objects.
+function typeText(node: Schema): string {
+  return Array.isArray(node.type) ? node.type.join(' or ') : String(node.type ?? 'any')
+}
+
+// hasType tells whether a schema node allows a type, named alone or in a list.
+function hasType(node: Schema, type: string): boolean {
+  return node.type === type || (Array.isArray(node.type) && node.type.includes(type))
+}
+
+// rules lists the members a schema declares, following nested objects and
+// the elements of arrays (written field[]).
 function rules(schema: unknown, place: Rule['place'], prefix = ''): Rule[] {
   if (!isSchema(schema) || !isSchema(schema.properties)) return []
   const required = Array.isArray(schema.required) ? schema.required : []
@@ -438,14 +433,20 @@ function rules(schema: unknown, place: Rule['place'], prefix = ''): Rule[] {
   for (const [name, node] of Object.entries(schema.properties)) {
     if (!isSchema(node)) continue
     const field = `${prefix}${name}`
-    list.push({
-      field,
-      place,
-      type: Array.isArray(node.type) ? node.type.join(' or ') : String(node.type ?? 'any'),
-      required: required.includes(name),
-      limits: limitsText(node),
-    })
-    list.push(...rules(node, place, `${field}.`))
+    list.push({ field, place, type: typeText(node), required: required.includes(name), limits: limitsText(node) })
+    list.push(...within(node, place, field))
+  }
+  return list
+}
+
+// within lists what a member's own schema declares: its object members and,
+// when it may be an array, its elements, which may be arrays in turn.
+function within(node: Schema, place: Rule['place'], field: string): Rule[] {
+  const list = rules(node, place, `${field}.`)
+  if (hasType(node, 'array') && isSchema(node.items)) {
+    const element = `${field}[]`
+    list.push({ field: element, place, type: typeText(node.items), required: 'each', limits: limitsText(node.items) })
+    list.push(...within(node.items, place, element))
   }
   return list
 }
@@ -488,7 +489,7 @@ function RequestRules({ operation: o }: { operation: Operation }) {
                 <td>
                   <code>{r.type}</code>
                 </td>
-                <td>{r.required ? 'required' : 'optional'}</td>
+                <td>{r.required === 'each' ? 'every element' : r.required ? 'required' : 'optional'}</td>
                 <td>{r.limits || <span className="muted">none</span>}</td>
               </tr>
             ))}

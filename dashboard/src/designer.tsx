@@ -76,7 +76,6 @@ export function Designer({
   const [refused, setRefused] = useState<{ box?: BoxKey; edge?: string; code: string }>()
   const [showChanges, setShowChanges] = useState(false)
   const [checkMessage, setCheckMessage] = useState('')
-  const [subjectRefusal, setSubjectRefusal] = useState(false)
   const review = useRef<HTMLButtonElement>(null)
   const positionsTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const submitted = useRef<Policy | null>(null)
@@ -177,7 +176,6 @@ export function Designer({
       setTab('canvas')
       setShowTrace(false)
     }
-    setSubjectRefusal(field.startsWith('subjects'))
   }, [phase])
 
   const select = useCallback((key: BoxKey, check?: string) => {
@@ -233,12 +231,7 @@ export function Designer({
         setJsonError(`${issue.field}: ${issue.message}`)
         return false
       }
-      const next = parsed as Policy
-      if (canonical(next.subjects) !== canonical(draft.document.subjects)) {
-        setJsonError('subjects: Subjects are read-only in the Designer. Change them on the Subjects page.')
-        return false
-      }
-      update(next)
+      update(parsed as Policy)
       setBuffers({})
       setJsonError('')
       return true
@@ -271,11 +264,7 @@ export function Designer({
   }
   const currentOperation = document?.operations.find((item) => item.id === what) ?? document?.operations[0]
   const steps = document && currentOperation ? trace(document, who, currentOperation) : []
-  const traceRoles = who.startsWith('role:')
-    ? [who.slice(5)]
-    : who.startsWith('subject:')
-      ? (document?.subjects?.find((subject) => subject.id === who.slice(8))?.roles ?? [])
-      : []
+  const traceRoles = who.startsWith('role:') ? [who.slice(5)] : []
   const tracePath: TracePath | undefined =
     showTrace && currentOperation
       ? { operation: currentOperation.id, roles: traceRoles, forward: steps.find((step) => step.name === 'Forward')?.state === 'passes' }
@@ -357,7 +346,7 @@ export function Designer({
             </div>
             <p className="designer-draft-state">
               {dirty
-                ? `Unsaved draft · ${changed.length} changes against r${draft.baseRevision}`
+                ? `Unsaved draft · ${changed.length} ${changed.length === 1 ? 'change' : 'changes'} against r${draft.baseRevision}`
                 : `No draft changes against r${draft.baseRevision}`}
             </p>
             <div className="designer-toolbar-actions">
@@ -479,9 +468,6 @@ export function Designer({
               </>
             )}
           />
-          {subjectRefusal ? (
-            <p className="notice tone-refused">A subject record is refused; subjects are edited on the Subjects page.</p>
-          ) : null}
           <div className="designer-tab-row">
             <div className="segmented" role="tablist" aria-label="Policy views">
               {(['canvas', 'form', 'json'] as Tab[]).map((choice, index, tabs) => (
@@ -718,15 +704,9 @@ function TracePanel({
       <Field id="designer-trace-who" label="Who">
         <select className="input" id="designer-trace-who" value={who} onChange={(event) => setWho(event.target.value)}>
           <option value="none">no token</option>
-          {(policy.subjects ?? []).map((subject) => (
-            <option value={`subject:${subject.id}`} key={subject.id}>
-              {subject.id}
-              {subject.status === 'disabled' ? ' (disabled)' : ''}
-            </option>
-          ))}
           {policy.roles.map((role) => (
             <option value={`role:${role.id}`} key={`role:${role.id}`}>
-              a holder of role {role.id}
+              a token with role {role.id}
             </option>
           ))}
         </select>

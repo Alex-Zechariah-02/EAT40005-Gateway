@@ -1,7 +1,6 @@
 import {
   Stack,
   FileText,
-  IdentificationCard,
   Files,
   HourglassMedium,
   Timer,
@@ -33,7 +32,6 @@ const icons = {
   lookup: MagnifyingGlass,
   apis: Plugs,
   policy: FileText,
-  subjects: IdentificationCard,
   accounts: UserMinus,
   candidates: GitDiff,
   provisional: HourglassMedium,

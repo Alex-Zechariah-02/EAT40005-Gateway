@@ -1,21 +1,44 @@
 import { spawn, spawnSync, type ChildProcess, type ChildProcessWithoutNullStreams } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { request as httpRequest } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
+// Folders this test process creates under the system's temporary folder,
+// removed when it ends. One that a program still holds open is left to the
+// system's own temporary-file cleanup rather than failing the run.
+const temporary: string[] = []
+process.on('exit', () => {
+  for (const dir of temporary) {
+    try {
+      rmSync(dir, { recursive: true, force: true })
+    } catch {
+      // Still in use; see above.
+    }
+  }
+})
+function temporaryDir(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix))
+  temporary.push(dir)
+  return dir
+}
+
 // The end-to-end tests drive the real programs as an operator would: the
-// gateway repository's demo tool sets up and runs the gateway and its three
-// fixture APIs, issues test tokens and resets the fixtures. The tests read the
-// fixtures' own receipts and the gateway's audit events as evidence
+// gateway repository's demo tool sets up and runs the gateway, the Fetch
+// services and Fetch Accounts, issues test tokens and resets the services. The
+// tests read the services' own receipts and the gateway's audit events as evidence
 // independent of what the browser shows.
 
 export const adminURL = 'http://127.0.0.1:9440'
 export const siteURL = 'http://127.0.0.2:9480'
+// The Fetch services' and Fetch Accounts' control listeners (receipts, state,
+// reset).
 export const controls: Record<string, string> = {
-  orders: 'http://127.0.0.1:9601',
-  inventory: 'http://127.0.0.1:9602',
+  inventory: 'http://127.0.0.1:9601',
+  orders: 'http://127.0.0.1:9602',
   reports: 'http://127.0.0.1:9603',
+  support: 'http://127.0.0.1:9604',
+  accounts: 'http://127.0.0.1:9605',
 }
 
 const exe = process.platform === 'win32' ? '.exe' : ''
@@ -43,15 +66,21 @@ function shell(commandLine: string, cwd: string) {
 // last commit, exported clean, so uncommitted work in the checkout
 // never reaches the programs under test.
 export function gatewayIdentity(): { commit: string } {
-  return { commit: run('git', ['rev-parse', 'HEAD'], repository()).trim() }
+  if (!builtCommit) throw new Error('build() has not run')
+  return { commit: builtCommit }
 }
 
-// exportHead writes the last commit's files to a new temporary folder with
+// builtCommit is the commit the programs were last built from, resolved once
+// so the evidence names exactly what was tested even if a commit lands
+// during the run.
+let builtCommit = ''
+
+// exportHead writes the given commit's files to a new temporary folder with
 // git archive and returns it.
-function exportHead(): string {
+function exportHead(commit: string): string {
   const source = mkdtempSync(join(tmpdir(), 'dashboard-e2e-src-'))
   const archive = join(source, 'head.tar')
-  run('git', ['archive', '--format=tar', '-o', archive, 'HEAD'], repository())
+  run('git', ['archive', '--format=tar', '-o', archive, commit], repository())
   // A relative archive name: GNU tar reads "C:\..." as a remote host.
   run('tar', ['-xf', 'head.tar'], source)
   return source
@@ -62,15 +91,19 @@ function exportHead(): string {
 // tests, to show how the dashboard reports a failing security event log; it
 // is never deployed.
 export function build(): string {
-  const source = exportHead()
-  const bin = mkdtempSync(join(tmpdir(), 'dashboard-e2e-bin-'))
+  const commit = run('git', ['rev-parse', 'HEAD'], repository()).trim()
+  const source = exportHead(commit)
+  const bin = temporaryDir('dashboard-e2e-bin-')
   const programs = [
     { name: 'gateway', args: ['./cmd/gateway'] },
-    { name: 'fixture', args: ['./cmd/fixture'] },
+    { name: 'services', args: ['./cmd/services'] },
+    { name: 'accounts', args: ['./cmd/accounts'] },
     { name: 'demo', args: ['./cmd/demo'] },
     { name: 'gateway-fault', args: ['-tags', 'faultinject', './cmd/gateway'] },
   ]
   for (const program of programs) run('go', ['build', '-o', join(bin, program.name + exe), ...program.args], source)
+  rmSync(source, { recursive: true, force: true })
+  builtCommit = commit
   return bin
 }
 
@@ -81,7 +114,7 @@ export function build(): string {
 export function webRoot(): string {
   const dashboard = resolve('dist')
   if (!existsSync(join(dashboard, 'index.html'))) throw new Error('build the dashboard first (npm run build)')
-  const root = mkdtempSync(join(tmpdir(), 'dashboard-e2e-web-'))
+  const root = temporaryDir('dashboard-e2e-web-')
   cpSync(dashboard, join(root, 'admin'), { recursive: true })
   cpSync(process.env.WEBSITE_DIST ?? buildApplication('client'), join(root, 'demo'), { recursive: true })
   return root
@@ -119,7 +152,7 @@ export class Demo {
     readonly bin: string,
     readonly web: string,
   ) {
-    const parent = mkdtempSync(join(tmpdir(), 'dashboard-e2e-'))
+    const parent = temporaryDir('dashboard-e2e-')
     this.dir = join(parent, 'demo')
   }
 
@@ -145,7 +178,7 @@ export class Demo {
     if (options.fault) env.GATEWAY_FAULT = options.fault
     const child = spawn(
       join(this.bin, 'demo' + exe),
-      ['run', '-dir', this.dir, '-gateway', join(this.bin, gateway + exe), '-fixture', join(this.bin, 'fixture' + exe), '-stdin'],
+      ['run', '-dir', this.dir, '-gateway', join(this.bin, gateway + exe), '-services', join(this.bin, 'services' + exe), '-accounts', join(this.bin, 'accounts' + exe), '-stdin'],
       { stdio: 'pipe', env },
     )
     this.process = child
@@ -223,9 +256,9 @@ export class Demo {
   private async control<T>(service: string, method: string, path: string): Promise<T> {
     const response = await fetch(controls[service] + path, {
       method,
-      headers: { Authorization: `Bearer ${this.file('fixture.secret').trim()}` },
+      headers: { Authorization: `Bearer ${this.file('service.secret').trim()}` },
     })
-    if (!response.ok) throw new Error(`fixture ${service} ${path}: ${response.status}`)
+    if (!response.ok) throw new Error(`service ${service} ${path}: ${response.status}`)
     return (await response.json()) as T
   }
 
@@ -259,7 +292,7 @@ function enrolmentSecret(output: string): string {
 // repository's build and listens on its own addresses.
 export class ShortSessions {
   static readonly url = 'http://127.0.0.1:9441'
-  readonly dir = mkdtempSync(join(tmpdir(), 'dashboard-e2e-sessions-'))
+  readonly dir = temporaryDir('dashboard-e2e-sessions-')
   private child: ChildProcess | null = null
 
   constructor(
@@ -284,6 +317,8 @@ export class ShortSessions {
         database: join(this.dir, 'state.db'),
         audit_log: join(this.dir, 'audit.log'),
         admin_listen: '127.0.0.1:9441',
+        // Beside the demonstration's own metrics listener (9450).
+        metrics_listen: '127.0.0.1:9451',
         admin_ui: demoConfig.gateway.admin_ui,
         admin_idle_timeout: `${this.idleSeconds}s`,
         admin_session_lifetime: `${this.lifetimeSeconds}s`,

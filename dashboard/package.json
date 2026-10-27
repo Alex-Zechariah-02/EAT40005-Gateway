@@ -4,7 +4,6 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:mock": "vite --mode mock",
     "check": "tsc -p . && tsc -p e2e",
     "build": "vite build",
     "e2e": "playwright test"

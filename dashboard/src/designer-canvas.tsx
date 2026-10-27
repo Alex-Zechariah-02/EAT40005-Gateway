@@ -19,7 +19,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/base.css'
 import type { ControlChange, Operation, Override, Policy } from './api'
-import { automaticLayout } from './designer-layout'
+import { automaticLayout, columnX } from './designer-layout'
 import {
   connectionReason,
   connect,
@@ -115,7 +115,6 @@ const PolicyBox = memo(function PolicyBox({ data }: NodeProps<PolicyNode>) {
   const key: BoxKey = `${data.kind}:${data.id}`
   const operation = data.kind === 'operation' ? data.policy.operations.find((item) => item.id === data.id) : undefined
   const upstream = data.kind === 'upstream' ? data.policy.upstreams.find((item) => item.id === data.id) : undefined
-  const subjects = data.kind === 'role' ? (data.policy.subjects ?? []).filter((subject) => subject.roles.includes(data.id)) : []
   const denied = data.overlays.find((override) => override.control === 'operation' && override.operation === data.id)
   return (
     <div
@@ -159,19 +158,6 @@ const PolicyBox = memo(function PolicyBox({ data }: NodeProps<PolicyNode>) {
           ) : null}
         </>
       )}
-      {subjects.length ? (
-        <div className="designer-subject-chips">
-          {subjects.map((subject) => (
-            <span
-              className={subject.status === 'disabled' ? 'designer-subject-chip designer-disabled-subject' : 'designer-subject-chip'}
-              key={subject.id}
-            >
-              {subject.id}
-              {subject.status === 'disabled' ? ' (disabled)' : ''}
-            </span>
-          ))}
-        </div>
-      ) : null}
       {data.issues.length ? <Badge tone="pending">Incomplete</Badge> : null}
       {data.refused ? <Badge tone="refused">Refused: {data.refused}</Badge> : null}
       {denied ? <Badge tone="refused">denied until {until(denied.expires_at)}</Badge> : null}
@@ -258,6 +244,7 @@ function CanvasGraph(props: CanvasProps) {
       if (!props.trace.forward || !operation) return false
       return kind === 'api' ? operation.api === id : props.policy.apis.find((api) => api.id === operation.api)?.upstream === id
     }
+    const headingX = columnX(props.policy)
     for (const kind of ['role', 'operation', 'api', 'upstream'] as BoxKind[]) {
       const items =
         kind === 'role'
@@ -296,7 +283,7 @@ function CanvasGraph(props: CanvasProps) {
       nodes.push({
         id: `column:${kind}`,
         type: 'heading',
-        position: { x: { role: 0, operation: 300, api: 740, upstream: 1020 }[kind], y: firstY - 18 - 16 },
+        position: { x: headingX[kind], y: firstY - 18 - 16 },
         data: { label: { role: 'Roles', operation: 'Operations', api: 'APIs', upstream: 'Upstreams' }[kind] },
         selectable: false,
         draggable: false,
@@ -467,7 +454,8 @@ function CanvasGraph(props: CanvasProps) {
           // The library's credit is given in the legend below the canvas, where
           // it cannot sit over a box's controls.
           proOptions={{ hideAttribution: true }}
-          minZoom={0.1}
+          // Low enough for Fit to show a policy of a few dozen operations whole.
+          minZoom={0.05}
           nodesFocusable
           edgesFocusable
           nodesDraggable={props.editable}

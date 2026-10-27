@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react'
 import type { Operation, Policy } from './api'
-import { addressRates, copy, deleteReason, rename, sections, splitKey, type BoxKey, type BoxKind, type Issue } from './designer-model'
+import { copy, deleteReason, rename, sections, splitKey, type BoxKey, type BoxKind, type Issue } from './designer-model'
 import { Badge, Confirm, Field, TableScroll, describedBy } from './ui'
 
 interface FormProps {
@@ -39,28 +39,6 @@ export function Issues({ issues, onSelect }: { issues: Issue[]; onSelect: (key: 
         <p className="hint">No drawing issue. Make a change, then stage it for the Gateway to validate.</p>
       )}
     </section>
-  )
-}
-
-// SubjectList shows a version 3 document's subjects; a version 4 document has
-// none, because roles come from the sign-in token.
-export function SubjectList({ policy, role }: { policy: Policy; role?: string }) {
-  if (!policy.subjects) {
-    return <p className="hint">Who holds this role comes from each person's sign-in token, issued by Fetch Accounts. The policy decides what the role may call.</p>
-  }
-  const subjects = role === undefined ? policy.subjects : policy.subjects.filter((subject) => subject.roles.includes(role))
-  return subjects.length ? (
-    <ul className="designer-subjects">
-      {subjects.map((subject) => (
-        <li key={subject.id}>
-          <span className={subject.status === 'disabled' ? 'designer-disabled-subject' : undefined}>{subject.id}</span>
-          {subject.status === 'disabled' ? ' (disabled)' : ''}
-          {role === undefined ? <span className="hint"> · {subject.roles.join(', ') || 'no roles'}</span> : null}
-        </li>
-      ))}
-    </ul>
-  ) : (
-    <p className="hint">No subjects hold this role. Subjects are changed on the Subjects page.</p>
   )
 }
 
@@ -223,9 +201,7 @@ export function ObjectForm({
           idText !== id && idProblem(idText)
             ? `${idProblem(idText)} The draft keeps the ID ${id || '(empty)'} until this is changed.`
             : kind === 'role'
-              ? policy.subjects
-                ? 'Changing a role ID changes its permits. Subject records stay unchanged; edit their membership on Subjects.'
-                : 'Changing a role ID changes its permits. Tokens that still carry the old name lose them.'
+              ? 'Changing a role ID changes its permits. Tokens that still carry the old name lose them.'
               : 'Changing an ID also changes its references in this draft.',
         )}
         {kind === 'upstream'
@@ -294,8 +270,8 @@ export function ObjectForm({
                     checked={operation.auth === auth.value}
                     disabled={!editable}
                     onChange={() => {
-                      const rateStays = addressRates(policy) && operation.rate?.key === 'client_address'
-                      if (auth.value === 'none' && ((operation.rate && !rateStays) || policy.permits.some((permit) => permit.operation === id)))
+                      const rateChanges = operation.rate && operation.rate.key !== 'client_address'
+                      if (auth.value === 'none' && (rateChanges || policy.permits.some((permit) => permit.operation === id)))
                         setMakingPublic(true)
                       else patch({ auth: auth.value })
                     }}
@@ -309,7 +285,7 @@ export function ObjectForm({
                 <input
                   type="checkbox"
                   checked={!!operation.rate}
-                  disabled={!editable || (operation.auth === 'none' && !addressRates(policy))}
+                  disabled={!editable}
                   onChange={(event) => {
                     const next = copy(policy)
                     const target = next.operations.find((entry) => entry.id === id)!
@@ -321,35 +297,29 @@ export function ObjectForm({
                 />{' '}
                 Rate limit
               </label>
-              <p className="hint">
-                {operation.auth === 'none' && !addressRates(policy)
-                  ? 'Public operations cannot have a rate limit in this schema version.'
-                  : 'Sliding window, per operation. Counters survive policy changes.'}
-              </p>
+              <p className="hint">Sliding window, per operation. Counters survive policy changes.</p>
             </div>
             {operation.rate ? (
               <>
-                {addressRates(policy) ? (
-                  <fieldset id={fieldId('rate-key')} className="designer-choice">
-                    <legend>Count requests</legend>
-                    {[
-                      { value: 'subject', label: 'Per account' },
-                      { value: 'client_address', label: 'Per client address' },
-                    ].map((key) => (
-                      <label key={key.value}>
-                        <input
-                          type="radio"
-                          name={fieldId('rate-key')}
-                          checked={operation.rate!.key === key.value}
-                          disabled={!editable || (key.value === 'subject' && operation.auth === 'none')}
-                          onChange={() => patch({ rate: { ...operation.rate!, key: key.value } })}
-                        />{' '}
-                        {key.label}
-                        {key.value === 'subject' && operation.auth === 'none' ? <span className="hint"> (needs a token)</span> : null}
-                      </label>
-                    ))}
-                  </fieldset>
-                ) : null}
+                <fieldset id={fieldId('rate-key')} className="designer-choice">
+                  <legend>Count requests</legend>
+                  {[
+                    { value: 'subject', label: 'Per account' },
+                    { value: 'client_address', label: 'Per client address' },
+                  ].map((key) => (
+                    <label key={key.value}>
+                      <input
+                        type="radio"
+                        name={fieldId('rate-key')}
+                        checked={operation.rate!.key === key.value}
+                        disabled={!editable || (key.value === 'subject' && operation.auth === 'none')}
+                        onChange={() => patch({ rate: { ...operation.rate!, key: key.value } })}
+                      />{' '}
+                      {key.label}
+                      {key.value === 'subject' && operation.auth === 'none' ? <span className="hint"> (needs a token)</span> : null}
+                    </label>
+                  ))}
+                </fieldset>
                 {input(
                   'rate-count',
                   'Request count',
@@ -436,8 +406,11 @@ export function ObjectForm({
       </div>
       {kind === 'role' ? (
         <>
-          <Subtitle className="designer-object-subtitle">Subjects (read-only)</Subtitle>
-          <SubjectList policy={policy} role={id} />
+          <Subtitle className="designer-object-subtitle">Who holds it</Subtitle>
+          <p className="hint">
+            Each person's sign-in token, issued by Fetch Accounts, carries their roles. The policy decides what a role may call; an account is
+            stopped on the Accounts page.
+          </p>
         </>
       ) : null}
       {kind === 'role' || operation ? (
@@ -484,9 +457,8 @@ export function ObjectForm({
             const next = copy(policy)
             const target = next.operations.find((entry) => entry.id === id)!
             target.auth = 'none'
-            // Version 4 keeps the limit and counts it per client address.
-            if (target.rate && addressRates(next)) target.rate.key = 'client_address'
-            else delete target.rate
+            // A public operation keeps its limit, counted per client address.
+            if (target.rate) target.rate.key = 'client_address'
             next.permits = next.permits.filter((permit) => permit.operation !== id)
             onChange(next)
             setMakingPublic(false)
@@ -494,7 +466,7 @@ export function ObjectForm({
         >
           <p>
             Making it public removes its {policy.permits.filter((permit) => permit.operation === id).length} permits
-            {operation?.rate ? (addressRates(policy) ? ' and counts its rate limit per client address' : ' and its rate limit') : ''}. Continue?
+            {operation?.rate ? ' and counts its rate limit per client address' : ''}. Continue?
           </p>
         </Confirm>
       ) : null}
@@ -557,14 +529,13 @@ const formSections = [
   ['api', 'APIs'],
   ['upstream', 'Upstreams'],
   ['permits', 'Permits'],
-  ['subjects', 'Subjects'],
 ] as const
 
 export function FormView(props: FormProps & { onAdd: (kind: BoxKind) => void }) {
   return (
     <div className="designer-form">
       <nav className="designer-form-nav" aria-label="Form sections">
-        {formSections.filter(([key]) => key !== 'subjects' || props.policy.subjects).map(([key, label]) => (
+        {formSections.map(([key, label]) => (
           <button
             className="btn btn-small"
             type="button"
@@ -609,13 +580,6 @@ export function FormView(props: FormProps & { onAdd: (kind: BoxKind) => void }) 
         <h2>Permits</h2>
         <Permits {...props} />
       </section>
-      {props.policy.subjects ? (
-        <section className="section" id="designer-form-subjects" tabIndex={-1}>
-          <h2>Subjects (read-only)</h2>
-          <p className="hint">Change subjects on the Subjects page. They are carried with this complete candidate document.</p>
-          <SubjectList policy={props.policy} />
-        </section>
-      ) : null}
     </div>
   )
 }

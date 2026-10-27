@@ -52,8 +52,8 @@ export interface RateRule {
   algorithm: string
   count: number
   window_seconds: number
-  // "subject" counts per account; "client_address" (schema version 4) per
-  // client address, the only key a public operation may use.
+  // "subject" counts per account; "client_address" per client address, the
+  // only key a public operation may use.
   key: string
 }
 
@@ -69,12 +69,8 @@ export interface Operation {
   rate?: RateRule
 }
 
-export interface Subject {
-  id: string
-  status: string
-  roles: string[]
-}
-
+// Policy is a schema version 4 document. It names no accounts: roles come
+// from the trusted issuer's tokens and blocking is a separate list.
 export interface Policy {
   schema_version: number
   profile: string
@@ -83,9 +79,6 @@ export interface Policy {
   operations: Operation[]
   roles: { id: string }[]
   permits: { role: string; operation: string }[]
-  // Schema version 3 only. Version 4 has no subjects: roles come from the
-  // trusted issuer's tokens and blocking is a separate list.
-  subjects?: Subject[]
 }
 
 export interface Revision {
@@ -187,8 +180,11 @@ export interface Page<T> {
 // Reply is what one call produced. "unknown" means the request may or may not
 // have reached the server: a mutation in that state must be checked before it
 // is described as applied or not applied.
+// An ok reply's date is the gateway's clock when it answered (its Date
+// header), so figures over a time window can be placed without trusting the
+// browser's clock.
 export type Reply<T> =
-  | { kind: 'ok'; status: number; body: T; etag: string | null }
+  | { kind: 'ok'; status: number; body: T; etag: string | null; date?: number }
   | { kind: 'refused'; status: number; error: string; field?: string; outcome?: Outcome; etag: string | null }
   | { kind: 'unknown'; message: string }
   | { kind: 'aborted' }
@@ -285,7 +281,8 @@ export async function request<T>(method: string, path: string, init: RequestInit
     }
   }
   if (response.ok) {
-    return { kind: 'ok', status: response.status, body: body as T, etag }
+    const date = Date.parse(response.headers.get('Date') ?? '')
+    return { kind: 'ok', status: response.status, body: body as T, etag, date: Number.isNaN(date) ? undefined : date }
   }
 
   const fields = (body ?? {}) as { error?: string; field?: string; reason?: string; outcome?: string }

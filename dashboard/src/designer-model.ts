@@ -33,13 +33,6 @@ export function canonical(value: unknown): string {
 export function boxKeys(policy: Policy): BoxKey[] {
   return (Object.keys(sections) as BoxKind[]).flatMap((kind) => policy[sections[kind]].map(({ id }) => `${kind}:${id}` as BoxKey))
 }
-// addressRates says whether the document may count a rate per client
-// address, which schema version 4 allows on any operation and requires on a
-// public one.
-export function addressRates(policy: Policy): boolean {
-  return policy.schema_version >= 4
-}
-
 export function splitKey(key: BoxKey): [BoxKind, string] {
   const colon = key.indexOf(':')
   return [key.slice(0, colon) as BoxKind, key.slice(colon + 1)]
@@ -70,19 +63,15 @@ function primitive(value: unknown, type: string): boolean {
 // These checks only keep the document drawable. Formats, ranges, schema
 // keywords and security semantics are validated exclusively by the Gateway.
 export function shapeIssue(value: unknown): Issue | null {
-  const root = members(
-    value,
-    {
-      schema_version: 'number',
-      profile: 'string',
-      upstreams: 'array',
-      apis: 'array',
-      operations: 'array',
-      roles: 'array',
-      permits: 'array',
-    },
-    { subjects: 'array' },
-  )
+  const root = members(value, {
+    schema_version: 'number',
+    profile: 'string',
+    upstreams: 'array',
+    apis: 'array',
+    operations: 'array',
+    roles: 'array',
+    permits: 'array',
+  })
   if (root) return { id: 'shape', field: '$', message: root }
   const policy = value as unknown as Policy
   const definitions: Record<string, [Record<string, string>, Record<string, string>?]> = {
@@ -94,7 +83,6 @@ export function shapeIssue(value: unknown): Issue | null {
     ],
     roles: [{ id: 'string' }],
     permits: [{ role: 'string', operation: 'string' }],
-    subjects: [{ id: 'string', status: 'string', roles: 'array' }],
   }
   for (const [section, [required, optional]] of Object.entries(definitions)) {
     const items = (policy[section as keyof Policy] as unknown[] | undefined) ?? []
@@ -113,8 +101,6 @@ export function shapeIssue(value: unknown): Issue | null {
             if (error) field += '.body'
           }
         }
-        if (section === 'subjects' && !(item.roles as unknown[]).every((role) => typeof role === 'string'))
-          error = 'roles must contain strings'
       }
       if (error) return { id: 'shape', field, message: error }
     }
@@ -154,11 +140,11 @@ export function localIssues(policy: Policy): Issue[] {
         message: 'Public operations cannot have a permit.',
         box: `operation:${operation.id}`,
       })
-    if (operation.auth === 'none' && operation.rate && !(addressRates(policy) && operation.rate.key === 'client_address'))
+    if (operation.auth === 'none' && operation.rate && operation.rate.key !== 'client_address')
       issues.push({
         id: 'public_rule',
         field: `operations[${index}].rate`,
-        message: addressRates(policy) ? 'A public operation can only be limited per client address.' : 'Public operations cannot have a rate.',
+        message: 'A public operation can only be limited per client address.',
         box: `operation:${operation.id}`,
       })
   })
@@ -185,7 +171,6 @@ function identities(policy: Policy): Map<string, unknown> {
     }
   }
   for (const permit of policy.permits) items.set(`permit:${permit.role}:${permit.operation}`, permit)
-  for (const subject of policy.subjects ?? []) items.set(`subject:${subject.id}`, subject)
   return items
 }
 export function changes(before: Policy, after: Policy): ControlChange[] {
@@ -247,8 +232,6 @@ export function rename(policy: Policy, key: BoxKey, id: string): Policy {
 }
 export function deleteReason(policy: Policy, key: BoxKey): string | null {
   const [kind, id] = splitKey(key)
-  if (kind === 'role' && policy.subjects?.some((subject) => subject.roles.includes(id)))
-    return 'Subjects hold this role. Change them on the Subjects page first.'
   if (kind === 'api' && policy.operations.some((operation) => operation.api === id)) return 'Re-route its operations first.'
   if (kind === 'upstream' && policy.apis.some((api) => api.upstream === id)) return 'Point its APIs at another upstream first.'
   return null

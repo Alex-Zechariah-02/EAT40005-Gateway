@@ -1,14 +1,11 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { adminStandIn } from './src/dev/stand-in'
 
 // The dashboard is served by the gateway's admin listener at /, which serves
-// only index.html and flat files under /assets/. In mock mode (development
-// only) a stand-in answers selected Admin API endpoints; everything else
-// still goes to the real gateway.
-export default defineConfig(({ mode }) => ({
+// only index.html and flat files under /assets/.
+export default defineConfig({
   base: '/',
-  plugins: mode === 'mock' ? [react(), adminStandIn()] : [react()],
+  plugins: [react()],
   server: {
     host: 'localhost',
     port: 5173,
@@ -34,4 +31,4 @@ export default defineConfig(({ mode }) => ({
     modulePreload: { polyfill: false },
     sourcemap: false,
   },
-}))
+})

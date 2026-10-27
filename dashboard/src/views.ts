@@ -11,7 +11,6 @@ export type View =
   | 'provisional'
   | 'overrides'
   | 'accounts'
-  | 'subjects'
   | 'history'
   | 'code'
   | 'team'

@@ -8,7 +8,6 @@ import { admissionText, Brand } from './state'
 import { SignIn } from './signin'
 import { Overview } from './overview'
 import { PolicyView } from './policy'
-import { Subjects } from './subjects'
 import { Candidates } from './candidates'
 import { Overrides } from './overrides'
 import { History } from './history'
@@ -70,7 +69,6 @@ const titles: Record<View, string> = {
   provisional: 'Changes',
   overrides: 'Temporary rules',
   accounts: 'Accounts',
-  subjects: 'Subjects',
   history: 'History',
   code: 'Policy as code',
   team: 'Team',
@@ -79,7 +77,7 @@ const titles: Record<View, string> = {
 
 // Views reached from another page rather than the navigation light up the
 // navigation item they belong to.
-const section: Partial<Record<View, View>> = { policy: 'designer', provisional: 'candidates', subjects: 'accounts' }
+const section: Partial<Record<View, View>> = { policy: 'designer', provisional: 'candidates' }
 
 // The open view is kept in the address fragment, so a reload or the
 // browser's back button returns to it. The fragment is never sent to the
@@ -354,7 +352,6 @@ function Shell(props: { admin: Admin; session: SessionInfo; signedOut: (message:
           {view === 'candidates' ? <Candidates {...viewProps} draft={draft} candidate={candidate} /> : null}
           {view === 'overrides' ? <Overrides {...viewProps} /> : null}
           {view === 'accounts' ? <AccountsView {...viewProps} /> : null}
-          {view === 'subjects' ? <Subjects {...viewProps} /> : null}
           {view === 'history' ? <History {...viewProps} /> : null}
           {view === 'code' ? <PolicyCode {...viewProps} /> : null}
           {view === 'team' ? <TeamView {...viewProps} /> : null}

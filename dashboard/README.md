@@ -11,7 +11,7 @@ The views are grouped by job.
 **Monitor**
 
 - **Overview:** the policy in force, any change on trial with its rollback countdown and Confirm and Roll back, the temporary rules in force, traffic in a chosen window, why requests were refused, the latest refusals with the check that decided each, figures per API, and a timeline of policy changes. A new or restored installation is told how to establish its first policy, and every page warns at the top while the gateway admits nothing.
-- **Live traffic:** every request as the gateway decides it, streamed as it happens, with a pause for inspection and a filter for refusals.
+- **Live traffic:** every request as the gateway decides it, streamed as it happens, with a pause for inspection and filters that show only changes (anything but reads) or only refusals. It keeps the latest 1,000 requests and draws the newest 200 that match.
 - **Request lookup:** find a request by the reference (Ref) a person quotes from an error, by account or by operation, and see each check it passed, the one that decided it and those it never reached. Every page header has the same Ref search.
 - **APIs:** each API's operations, who may call them, their rate limits and bodies, and its traffic figures.
 
@@ -60,14 +60,11 @@ The gateway serves the dashboard under a strict content policy (`default-src 'no
 
 ## Development
 
-- `npm run dev` serves the dashboard at `http://localhost:5173/` (strict port). `/admin` calls pass through a development proxy to a running gateway's admin listener at `127.0.0.1:9440`, rewriting Host and Origin to that listener.
-- `npm run dev:mock` does the same, but a development stand-in (`src/dev/stand-in.ts`) answers the traffic, event, impact, blocked-account, key and administrator endpoints when the gateway does not serve them yet. Every other `/admin` path still reaches the real gateway.
-
-Neither the proxy nor the stand-in is part of the production build, and neither is test evidence: the browser tests use the built files served by the real gateway.
+`npm run dev` serves the dashboard at `http://localhost:5173/` (strict port). `/admin` calls pass through a development proxy to a running gateway's admin listener at `127.0.0.1:9440`, rewriting Host and Origin to that listener. The proxy is not part of the production build and is not test evidence: the browser tests use the built files served by the real gateway.
 
 ## Browser tests
 
-The tests in `e2e/` build the gateway programs from a clean export of the last commit (`git archive HEAD`), so uncommitted work never reaches the programs under test, and drive a real gateway with its fixture APIs through the repository's demo tool. They check what the dashboard shows against the Admin API, the fixtures' own receipts and the gateway's security events, including the content policy, session cookie, CSRF, Origin and Host rules, unknown outcomes, storage and accessibility at phone, tablet and desktop widths. They run serially on fixed loopback ports (`127.0.0.1:9440`, `127.0.0.2:9480`, `127.0.0.1:9441`, `127.0.0.2:9481` and the fixtures' ports), so run one suite at a time.
+The tests in `e2e/` build the gateway, the Fetch services and Fetch Accounts from a clean export of the last commit (`git archive HEAD`), so uncommitted work never reaches the programs under test, and run them through the repository's demo tool with the Fetch baseline policy. They check what the dashboard shows against the Admin API, the services' own receipts and the gateway's security events, including the content policy, session cookie, CSRF, Origin and Host rules, unknown outcomes, storage and accessibility at phone, tablet and desktop widths. They run serially on fixed loopback ports (`127.0.0.1:9440`, `127.0.0.2:9480`, `127.0.0.1:9450`, a second gateway at `127.0.0.1:9441`, `127.0.0.2:9481` and `127.0.0.1:9451`, and the services at `127.0.0.1:9501` to `9505` with their control listeners at `9601` to `9605`), so run one suite at a time.
 
 ```powershell
 npm run build

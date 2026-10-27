@@ -1,6 +1,6 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react'
 import { newKey, type Admin, type HistoryEntry, type Page, type Policy, type Reply, type Revision } from './api'
-import { useGatewayState, useMutation, useResource } from './hooks'
+import { useGatewayState, useMutation, useResource, type Resource } from './hooks'
 import { Badge, Confirm, Empty, Field, MutationResult, PageHeader, Problem, ReadStamp, ReplyView, TableScroll, Time, TimeOfDay, type Tone } from './ui'
 import type { ViewProps } from './views'
 
@@ -39,8 +39,11 @@ export interface Traffic {
   per_second: { at: string; allowed: number; refused: number }[]
 }
 
+// requests = previewed + identity_unknown. A request whose sign-in was never
+// checked (refused before the token check, or a public operation) cannot be
+// replayed under a policy that would check it; the gateway counts it apart.
 interface Impact {
-  window: { from: string; to: string; requests: number }
+  window: { from: string; to: string; requests: number; previewed: number; identity_unknown: number }
   flips: { operation: string; subject: string | null; roles: string[]; before: string; after: string; after_code: string | null; count: number }[]
   not_previewed: string[]
 }
@@ -111,45 +114,97 @@ function usePoll(refresh: () => void, ms: number) {
   }, [ms])
 }
 
+type StepState = 'cleared' | 'refused' | 'unknown' | 'skipped' | 'unreached'
+const stepWords: Record<StepState, string> = { cleared: 'passed', refused: 'refused here', unknown: 'outcome unknown', skipped: 'not checked', unreached: 'not reached' }
+
+// beforeRouting says the gateway decided a request before matching it to an
+// operation: it was refused on its form, or no policy could be captured (a
+// gateway that admits nothing). The event then names a later check, but none
+// of the checks ahead of it ran.
+function beforeRouting(event: Pick<RequestEvent, 'stage' | 'decision' | 'operation'>): boolean {
+  return event.decision !== 'allowed' && event.operation === null && event.stage !== 'route'
+}
+
+// pathStates says what happened at each of the gateway's checks: those ahead
+// of the deciding check passed, unless the request was decided before
+// routing; those after it were never reached.
+function pathStates(event: Pick<RequestEvent, 'stage' | 'decision' | 'operation'>): StepState[] {
+  const stop = stages.findIndex((s) => s.id === event.stage)
+  const early = beforeRouting(event)
+  return stages.map((_, n) => {
+    if (event.decision === 'allowed') return 'cleared'
+    if (n === stop) return event.decision === 'failed' ? 'unknown' : 'refused'
+    if (n > stop) return 'unreached'
+    return early ? 'skipped' : 'cleared'
+  })
+}
+
 // DecisionPath shows the checks a request cleared, the one that decided it
 // and those it never reached.
-export function DecisionPath({ event }: { event: Pick<RequestEvent, 'stage' | 'decision'> }) {
-  const stop = stages.findIndex((s) => s.id === event.stage)
+export function DecisionPath({ event }: { event: Pick<RequestEvent, 'stage' | 'decision' | 'operation'> }) {
+  const states = pathStates(event)
   const allowed = event.decision === 'allowed'
-  const name = stages[stop]?.name ?? event.stage
+  const early = beforeRouting(event)
+  const name = stages.find((s) => s.id === event.stage)?.name ?? event.stage
+  const cleared = states.filter((s) => s === 'cleared').length
   return (
     <span className="decision-path">
-      <span className="dp-steps" role="img" aria-label={allowed ? 'Cleared every check' : `Cleared ${stop} checks, decided at ${name}`}>
-        {stages.map((s, n) => {
-          const state = allowed || n < stop ? 'cleared' : n === stop ? (event.decision === 'failed' ? 'unknown' : 'refused') : 'unreached'
-          return <span key={s.id} className={`dp-step dp-${state}`} title={`${s.name}: ${state === 'unreached' ? 'not reached' : state}`} />
-        })}
+      <span
+        className="dp-steps"
+        role="img"
+        aria-label={allowed ? 'Cleared every check' : early ? `Decided before routing, at ${name}` : `Cleared ${cleared} checks, decided at ${name}`}
+      >
+        {stages.map((s, n) => (
+          <span key={s.id} className={`dp-step dp-${states[n] === 'skipped' ? 'unreached' : states[n]}`} title={`${s.name}: ${stepWords[states[n]]}`} />
+        ))}
       </span>
-      <span className={`dp-label dp-label-${event.decision}`}>{allowed ? 'Forwarded' : name}</span>
+      <span className={`dp-label dp-label-${event.decision}`}>{allowed ? 'Forwarded' : early ? 'Before routing' : name}</span>
     </span>
   )
+}
+
+// intervals spreads the gateway's per-second counts, which list only the
+// seconds that saw requests, over the whole window ending at end: 60 equal
+// intervals, the quiet ones empty.
+function intervals(traffic: Traffic, end: number) {
+  const count = 60
+  const step = (traffic.window_seconds * 1000) / count
+  const start = end - traffic.window_seconds * 1000
+  const bars = Array.from({ length: count }, (_, n) => ({
+    at: new Date(start + n * step).toISOString(),
+    to: new Date(start + (n + 1) * step).toISOString(),
+    allowed: 0,
+    refused: 0,
+  }))
+  for (const p of traffic.per_second) {
+    const n = Math.min(count - 1, Math.max(0, Math.floor((Date.parse(p.at) - start) / step)))
+    bars[n].allowed += p.allowed
+    bars[n].refused += p.refused
+  }
+  return bars
 }
 
 // TrafficChart draws requests per interval: allowed in grey, refused in red.
 // The grey marks sit below 3:1 against the card, so every value is also in the
 // readout and the table view.
-export function TrafficChart({ points }: { points: Traffic['per_second'] }) {
+export function TrafficChart({ traffic, end }: { traffic: Traffic; end: number }) {
   const [active, setActive] = useState<number | null>(null)
   const id = useId()
+  const bars = useMemo(() => intervals(traffic, end), [traffic, end])
+  const points = traffic.per_second
   if (points.length === 0) return <Empty title="No requests in this window yet." />
-  const max = Math.max(1, ...points.map((p) => p.allowed + p.refused))
+  const max = Math.max(1, ...bars.map((p) => p.allowed + p.refused))
   const width = 600
   const height = 140
-  const band = width / points.length
+  const band = width / bars.length
   const bar = Math.max(1.5, Math.min(10, band * 0.78))
-  const shown = active !== null ? points[active] : null
-  const middle = points[Math.floor(points.length / 2)]
+  const shown = active !== null ? bars[active] : null
   return (
     <figure className="traffic-chart">
       <p className="chart-readout" aria-live="polite">
         {shown ? (
           <>
-            <TimeOfDay value={shown.at} seconds /> · {shown.allowed} allowed · {shown.refused} refused
+            <TimeOfDay value={shown.at} seconds /> to <TimeOfDay value={shown.to} seconds /> · {shown.allowed} allowed · {shown.refused} refused
           </>
         ) : (
           <span className="muted">Point at a bar for its values</span>
@@ -157,7 +212,7 @@ export function TrafficChart({ points }: { points: Traffic['per_second'] }) {
       </p>
       <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-labelledby={`${id}-t`} onMouseLeave={() => setActive(null)}>
         <title id={`${id}-t`}>Requests allowed and refused over the window</title>
-        {points.map((p, n) => {
+        {bars.map((p, n) => {
           const total = ((p.allowed + p.refused) / max) * (height - 4)
           const refused = (p.refused / max) * (height - 4)
           // A 2px surface gap separates the stacked segments.
@@ -173,13 +228,13 @@ export function TrafficChart({ points }: { points: Traffic['per_second'] }) {
         })}
       </svg>
       <figcaption className="chart-axis">
-        <TimeOfDay value={points[0].at} />
-        <TimeOfDay value={middle.at} />
+        <TimeOfDay value={bars[0].at} />
+        <TimeOfDay value={bars[bars.length / 2].at} />
         <span>now</span>
       </figcaption>
       <details className="chart-table">
         <summary>Show as a table</summary>
-        <TableScroll label="Requests per interval">
+        <TableScroll label="Seconds with requests">
           <table>
             <thead>
               <tr>
@@ -277,7 +332,14 @@ function WindowSwitch({ value, onChange }: { value: number; onChange: (seconds: 
   )
 }
 
-function TrafficCards({ traffic, span, onSpan }: { traffic: Traffic; span: number; onSpan: (seconds: number) => void }) {
+// windowEnd is when a traffic reading's window ends: the gateway's clock when
+// it answered, or the browser's when the reading arrived if no date came.
+function windowEnd(resource: Resource<Traffic>): number {
+  if (resource.reply?.kind === 'ok' && resource.reply.date !== undefined) return resource.reply.date
+  return resource.readAt?.getTime() ?? Date.now()
+}
+
+function TrafficCards({ traffic, end, span, onSpan }: { traffic: Traffic; end: number; span: number; onSpan: (seconds: number) => void }) {
   return (
     <div className="section grid-main-side">
       <section className="card card-pad" aria-labelledby="traffic-title">
@@ -286,7 +348,7 @@ function TrafficCards({ traffic, span, onSpan }: { traffic: Traffic; span: numbe
           <WindowSwitch value={span} onChange={onSpan} />
         </div>
         <Figures traffic={traffic} />
-        <TrafficChart points={traffic.per_second} />
+        <TrafficChart traffic={traffic} end={end} />
       </section>
       <section className="card card-pad" aria-labelledby="reasons-title">
         <div className="card-head">
@@ -374,7 +436,7 @@ export function OverviewLive({ admin, history }: { admin: Admin; history: boolea
   return (
     <>
       {traffic.reply && traffic.reply.kind !== 'ok' ? <Problem reply={traffic.reply} /> : null}
-      {t ? <TrafficCards traffic={t} span={span} onSpan={setSpan} /> : null}
+      {t ? <TrafficCards traffic={t} end={windowEnd(traffic)} span={span} onSpan={setSpan} /> : null}
       <section className="section card" aria-labelledby="refusals-title">
         <div className="card-head card-head-pad">
           <h2 id="refusals-title">Recent refusals</h2>
@@ -448,7 +510,10 @@ function ApiFigures({ traffic }: { traffic: Traffic }) {
   )
 }
 
+// apiName names an API; the gateway counts requests that matched no route
+// under "unknown".
 function apiName(id: string): string {
+  if (id === 'unknown') return 'No route matched'
   return id.slice(0, 1).toUpperCase() + id.slice(1)
 }
 
@@ -544,6 +609,12 @@ function PolicyTimeline({ admin }: { admin: Admin }) {
 // LiveTraffic streams request events as they happen and summarises a
 // chosen window. Pause keeps the list still for inspection; events that
 // arrive meanwhile are counted, not lost from the gateway's record.
+// The page keeps more requests than it draws, so a filter can still find
+// writes made minutes ago between the boards' frequent reads.
+const keptEvents = 1000
+const shownEvents = 200
+const reads = new Set(['GET', 'HEAD', 'OPTIONS'])
+
 export function LiveTraffic({ admin }: ViewProps) {
   const [span, setSpan] = useState(60)
   const traffic = useResource<Traffic>((signal) => admin.get(`/admin/traffic?window=${span}`, signal), [span])
@@ -553,9 +624,12 @@ export function LiveTraffic({ admin }: ViewProps) {
   const [held, setHeld] = useState(0)
   const [dropped, setDropped] = useState(0)
   const [stream, setStream] = useState<'connecting' | 'live' | 'closed'>('connecting')
-  const [only, setOnly] = useState<'all' | 'refused'>('all')
+  const [only, setOnly] = useState<'all' | 'changes' | 'refused'>('all')
   const pausedRef = useRef(paused)
   pausedRef.current = paused
+  // Requests that arrive while paused wait here, newest first, and join the
+  // list on Resume.
+  const waiting = useRef<RequestEvent[]>([])
 
   useEffect(() => {
     const source = new EventSource('/admin/events/stream')
@@ -563,8 +637,10 @@ export function LiveTraffic({ admin }: ViewProps) {
     source.onerror = () => setStream(source.readyState === EventSource.CLOSED ? 'closed' : 'connecting')
     source.addEventListener('request', (message) => {
       const event = JSON.parse((message as MessageEvent<string>).data) as RequestEvent
-      if (pausedRef.current) setHeld((n) => n + 1)
-      else setEvents((list) => [event, ...list].slice(0, 200))
+      if (pausedRef.current) {
+        waiting.current = [event, ...waiting.current].slice(0, keptEvents)
+        setHeld((n) => n + 1)
+      } else setEvents((list) => [event, ...list].slice(0, keptEvents))
     })
     source.addEventListener('dropped', (message) => {
       const { count } = JSON.parse((message as MessageEvent<string>).data) as { count: number }
@@ -573,12 +649,25 @@ export function LiveTraffic({ admin }: ViewProps) {
     return () => source.close()
   }, [])
 
-  const shown = only === 'refused' ? events.filter((e) => e.decision !== 'allowed') : events
+  // The list starts with the latest recorded requests; the stream adds newer
+  // ones on top. A request in both appears once.
+  const recent = useResource<Page<RequestEvent>>((signal) => admin.get('/admin/events?limit=50', signal), [])
+  const recentItems = recent.reply?.kind === 'ok' ? recent.reply.body.items : undefined
+  const all = useMemo(() => {
+    const live = new Set(events.map((e) => e.request_id))
+    return [...events, ...(recentItems ?? []).filter((e) => !live.has(e.request_id))]
+  }, [events, recentItems])
+  const matching = useMemo(
+    () => (only === 'refused' ? all.filter((e) => e.decision !== 'allowed') : only === 'changes' ? all.filter((e) => !reads.has(e.method)) : all),
+    [all, only],
+  )
+  const shown = matching.slice(0, shownEvents)
   return (
     <>
       <PageHeader title="Live traffic" lede="Every request the gateway decides, as it happens, with the check that decided it. Pausing only stops this list; the gateway records every request." />
       {traffic.reply && traffic.reply.kind !== 'ok' ? <Problem reply={traffic.reply} /> : null}
-      {traffic.reply?.kind === 'ok' ? <TrafficCards traffic={traffic.reply.body} span={span} onSpan={setSpan} /> : null}
+      {recent.reply && recent.reply.kind !== 'ok' ? <Problem reply={recent.reply} /> : null}
+      {traffic.reply?.kind === 'ok' ? <TrafficCards traffic={traffic.reply.body} end={windowEnd(traffic)} span={span} onSpan={setSpan} /> : null}
       <section className="section card" aria-labelledby="stream-title">
         <div className="card-head card-head-pad">
           <h2 id="stream-title">
@@ -592,6 +681,9 @@ export function LiveTraffic({ admin }: ViewProps) {
               <button type="button" aria-pressed={only === 'all'} onClick={() => setOnly('all')}>
                 All
               </button>
+              <button type="button" aria-pressed={only === 'changes'} onClick={() => setOnly('changes')} title="Requests that may change something; reads are hidden">
+                Changes only
+              </button>
               <button type="button" aria-pressed={only === 'refused'} onClick={() => setOnly('refused')}>
                 Refused only
               </button>
@@ -601,7 +693,12 @@ export function LiveTraffic({ admin }: ViewProps) {
               className="btn btn-small"
               aria-pressed={paused}
               onClick={() => {
-                setPaused((p) => !p)
+                if (paused) {
+                  const arrived = waiting.current
+                  waiting.current = []
+                  setEvents((list) => [...arrived, ...list].slice(0, keptEvents))
+                }
+                setPaused(!paused)
                 setHeld(0)
               }}
             >
@@ -614,9 +711,22 @@ export function LiveTraffic({ admin }: ViewProps) {
         ) : null}
         <div className="card-body">
           {shown.length ? (
-            <EventRows events={shown} open={lookupRef} label="Requests as they happen" />
+            <>
+              <EventRows events={shown} open={lookupRef} label="Requests as they happen" />
+              {matching.length > shown.length ? (
+                <p className="hint card-empty">
+                  Showing the newest {shown.length} of {matching.length.toLocaleString()}. Request lookup finds any request by its Ref.
+                </p>
+              ) : null}
+            </>
           ) : (
-            <p className="hint card-empty">{stream === 'closed' ? 'The stream closed. Reload the page to reconnect.' : 'Waiting for requests. Use the Fetch app and they appear here within a second.'}</p>
+            <p className="hint card-empty">
+              {stream === 'closed'
+                ? 'The stream closed. Reload the page to reconnect.'
+                : all.length
+                  ? 'No request of this kind yet.'
+                  : 'Waiting for requests. Use the Fetch app and they appear here within a second.'}
+            </p>
           )}
         </div>
       </section>
@@ -736,19 +846,17 @@ function EventDetail({ event }: { event: RequestEvent }) {
         </h2>
       </div>
       <ol className="path-steps" aria-label="The gateway's checks, in order">
-        {stages.map((s, n) => {
-          const stop = stages.findIndex((x) => x.id === event.stage)
-          const state = event.decision === 'allowed' || n < stop ? 'cleared' : n === stop ? (event.decision === 'failed' ? 'unknown' : 'refused') : 'unreached'
-          const word = { cleared: 'passed', refused: 'refused here', unknown: 'outcome unknown', unreached: 'not reached' }[state]
-          return (
-            <li key={s.id} className={`path-step dp-${state}`}>
-              <span className="path-bar" aria-hidden="true" />
-              <span className="path-name">{s.name}</span>
-              <span className="path-word">{word}</span>
-            </li>
-          )
-        })}
+        {pathStates(event).map((state, n) => (
+          <li key={stages[n].id} className={`path-step dp-${state === 'skipped' ? 'unreached' : state}`}>
+            <span className="path-bar" aria-hidden="true" />
+            <span className="path-name">{stages[n].name}</span>
+            <span className="path-word">{stepWords[state]}</span>
+          </li>
+        ))}
       </ol>
+      {beforeRouting(event) ? (
+        <p className="hint">The gateway decided this before matching it to an operation, so no check ahead of this one ran.</p>
+      ) : null}
       <dl className="facts">
         <div className="fact">
           <dt>Reference</dt>
@@ -983,7 +1091,7 @@ export function AccountsView({ admin, can }: ViewProps) {
                 l.items.length === 0 ? (
                   <p className="hint card-empty">No account is blocked.</p>
                 ) : (
-                  <TableScroll label="Blocked accounts">
+                  <TableScroll label="Table of blocked accounts">
                     <table>
                       <thead>
                         <tr>
@@ -1022,7 +1130,7 @@ export function AccountsView({ admin, can }: ViewProps) {
                 )
               }
             </ReplyView>
-            <MutationResult mutation={unblock} onRefresh={list.refresh} success={(u) => <p className="notice-title">Unblocked <code>{u.subject}</code>.</p>} />
+            <MutationResult mutation={unblock} onRefresh={list.refresh} success={(u) => <p className="notice-title"><code>{u.subject}</code> is unblocked and can use Fetch again</p>} />
           </div>
         </section>
         {manage ? (
@@ -1047,7 +1155,7 @@ export function AccountsView({ admin, can }: ViewProps) {
             <button type="submit" className="btn btn-danger btn-wide" disabled={block.pending || !subject.trim() || !reason.trim()}>
               Block now
             </button>
-            <MutationResult mutation={block} onRefresh={list.refresh} success={(b) => <p className="notice-title">Blocked <code>{b.subject}</code>. Its requests are refused from now on.</p>} />
+            <MutationResult mutation={block} onRefresh={list.refresh} success={(b) => <p className="notice-title"><code>{b.subject}</code> is blocked: its requests are refused from now on</p>} />
           </form>
         ) : null}
       </div>
@@ -1209,7 +1317,7 @@ export function TeamView({ admin, can }: ViewProps) {
           <h2 id="keys-title">Token signing keys</h2>
           {can('manage_policy') ? (
             <button type="button" className="btn btn-small" disabled={reload.pending} onClick={() => void reload.run({ method: 'POST', path: '/admin/keys/reload', key: newKey() })}>
-              Reload keys from settings
+              {reload.pending ? 'Reloading…' : 'Reload keys from settings'}
             </button>
           ) : null}
         </div>
@@ -1326,13 +1434,40 @@ go run ./cmd/demo policy stage  -dir <state> -file policy.json`}</pre>
   )
 }
 
+const notPreviewed: Record<string, string> = {
+  rate: 'rate limits',
+  body: 'body checks (bodies are never stored)',
+  unobserved_identity: 'sign-in on requests whose token was never checked',
+}
+
+function listOf(items: string[]): string {
+  return items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`
+}
+
+function noneChanged(previewed: number): string {
+  if (previewed === 0) return 'No recent request could be replayed.'
+  if (previewed === 1) return 'The one replayed request would not be decided differently.'
+  return `None of the ${previewed.toLocaleString()} replayed requests would be decided differently.`
+}
+
+// unknownText explains the requests the preview leaves out: the gateway never
+// checked their sign-in token (a public operation, or a refusal before the
+// sign-in check), and this change would need to know it.
+function unknownText(count: number): string {
+  const requests = count === 1 ? '1 request was' : `${count.toLocaleString()} requests were`
+  const which = count === 1 ? 'a public operation, or a refusal before the sign-in check' : 'public operations, or refusals before the sign-in check'
+  return `${requests} decided without the gateway checking a sign-in token (${which}), so the gateway cannot tell how this change would decide ${count === 1 ? 'it' : 'them'}; ${count === 1 ? 'it is' : 'they are'} left out.`
+}
+
 // ImpactPreview asks the gateway which recent requests a staged change would
 // decide differently. The gateway's own compiler evaluates it; rate
 // limits and bodies cannot be replayed and are said so.
 export function ImpactPreview({ admin, candidate }: { admin: Admin; candidate: number }) {
   const preview = useMutation<Impact>(admin, () => {})
   const result = preview.phase.state === 'replied' && preview.phase.reply.kind === 'ok' ? preview.phase.reply.body : null
+  const changed = result ? result.flips.reduce((n, f) => n + f.count, 0) : 0
   const refused = result ? result.flips.filter((f) => f.after !== 'allowed').reduce((n, f) => n + f.count, 0) : 0
+  const unknown = result?.window.identity_unknown ?? 0
   return (
     <section className="impact" aria-labelledby={`impact-${candidate}`}>
       <div className="impact-head">
@@ -1344,16 +1479,22 @@ export function ImpactPreview({ admin, candidate }: { admin: Admin; candidate: n
       {result ? (
         <>
           {result.flips.length === 0 ? (
-            <p className="notice tone-ok">
-              <span className="notice-title">No recent request would be decided differently.</span>
+            <p className={unknown ? 'notice tone-pending' : 'notice tone-ok'}>
+              <span className="notice-title">
+                {unknown
+                  ? noneChanged(result.window.previewed)
+                  : 'No recent request would be decided differently.'}
+              </span>
+              {unknown ? <> {unknownText(unknown)}</> : null}
             </p>
           ) : (
             <>
               <p className={refused ? 'notice tone-refused' : 'notice tone-pending'}>
                 <span className="notice-title">
-                  {result.flips.reduce((n, f) => n + f.count, 0).toLocaleString()} recent requests would be decided differently
-                  {refused ? `; ${refused.toLocaleString()} of them would now be refused` : ''}.
+                  {changed === 1 ? '1 recent request' : `${changed.toLocaleString()} recent requests`} would be decided differently
+                  {refused ? (changed === 1 ? '; it would now be refused' : `; ${refused.toLocaleString()} of them would now be refused`) : ''}.
                 </span>
+                {unknown ? <> {unknownText(unknown)}</> : null}
               </p>
               <TableScroll label="Decisions that would change">
                 <table>
@@ -1394,8 +1535,8 @@ export function ImpactPreview({ admin, candidate }: { admin: Admin; candidate: n
             </>
           )}
           <p className="hint">
-            Replayed {result.window.requests.toLocaleString()} requests from <Time value={result.window.from} /> to <Time value={result.window.to} />. Not replayed:{' '}
-            {result.not_previewed.map((n) => (n === 'rate' ? 'rate limits' : n === 'body' ? 'body checks (bodies are never stored)' : n)).join(' and ')}.
+            Replayed {result.window.previewed.toLocaleString()} of {result.window.requests.toLocaleString()} requests from <Time value={result.window.from} /> to{' '}
+            <Time value={result.window.to} />. Not replayed: {listOf(result.not_previewed.map((n) => notPreviewed[n] ?? n))}.
           </p>
         </>
       ) : preview.phase.state === 'replied' ? (

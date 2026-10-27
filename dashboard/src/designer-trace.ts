@@ -8,6 +8,7 @@ export interface TraceStep {
 export const traceExplanation =
   'This explains the policy document. The Gateway decides each request, and active temporary overrides can change the result.'
 
+// who is "none" (no token) or "role:<id>" (a token carrying that role).
 export function trace(policy: Policy, who: string, operation: Operation): TraceStep[] {
   const steps: TraceStep[] = []
   let stopped = false
@@ -35,21 +36,18 @@ export function trace(policy: Policy, who: string, operation: Operation): TraceS
       ? 'not checked (public)'
       : who === 'none'
         ? '401: a valid token is required'
-        : 'A valid token is required; this trace does not verify one.',
+        : 'A valid token from the trusted issuer is required; this trace does not verify one. Its roles are kept only if this policy defines them.',
     !isPublic && who === 'none',
   )
-  const subject = who.startsWith('subject:') ? policy.subjects?.find((item) => item.id === who.slice(8)) : undefined
-  const roles = who.startsWith('role:') ? [who.slice(5)] : (subject?.roles ?? [])
+  step(
+    'Blocked list',
+    isPublic ? 'not applicable' : 'An account on the blocked list is refused (403 account_blocked). The list is kept apart from the policy.',
+    false,
+    !isPublic,
+  )
+  const roles = who.startsWith('role:') ? [who.slice(5)] : []
   const permitted = policy.permits.some((permit) => permit.operation === operation.id && roles.includes(permit.role))
-  const reason =
-    who.startsWith('subject:') && !subject
-      ? '403: subject not in the policy'
-      : subject?.status === 'disabled'
-        ? '403: subject disabled'
-        : !permitted
-          ? '403: no permit'
-          : 'A held role has a permit.'
-  step('Permit', isPublic ? 'not applicable' : reason, !isPublic && reason.startsWith('403'), !isPublic)
+  step('Permit', isPublic ? 'not applicable' : permitted ? 'A held role has a permit.' : '403: no permit', !isPublic && !permitted, !isPublic)
   step(
     'Rate',
     operation.rate

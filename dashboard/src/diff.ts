@@ -15,7 +15,7 @@ export interface Change {
 
 type Item = Record<string, unknown>
 
-const sections = ['upstreams', 'apis', 'operations', 'roles', 'permits', 'subjects'] as const
+const sections = ['upstreams', 'apis', 'operations', 'roles', 'permits'] as const
 
 // canonical writes a JSON value with object members sorted, so the order in
 // which a document was written never shows as a difference.
