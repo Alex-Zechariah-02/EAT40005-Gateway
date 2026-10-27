@@ -1,9 +1,10 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { SignOut } from '@phosphor-icons/react'
 import { adminClient, request, type Admin, type Permission, type Reply, type SessionInfo, type Status } from './api'
-import { GatewayState, useResource } from './hooks'
+import { GatewayState, inactive, Outcomes, usePoll, useRereadWhen, useResource, ViewMemory, type Gateway } from './hooks'
 import { Icon, type IconName } from './icons'
-import { Problem } from './ui'
+import { UnresolvedChanges, useOutcomeRegister } from './outcomes'
+import { Problem, time, TimeOfDay } from './ui'
 import { admissionText, Brand } from './state'
 import { SignIn } from './signin'
 import { Overview } from './overview'
@@ -95,13 +96,30 @@ export function App() {
   // epoch changes on every sign-in and sign-out, which remounts the views and
   // so aborts their pending reads: nothing from an ended session can appear.
   const [epoch, setEpoch] = useState(0)
+  // Changes whose answer was lost outlive an ended session, so the same
+  // administrator signing in again still sees them; signing out clears them.
+  const outcomes = useOutcomeRegister(session?.name ?? null)
+  const clearOutcomes = outcomes.clear
+  // lastStatus is the gateway's status as the shell last read it, so the
+  // sign-in page can say that a trial goes on when a session ends.
+  const lastStatus = useRef<Status | undefined>(undefined)
 
-  const signedOut = useCallback((message: string) => {
-    setSession(null)
-    setNotice(message)
-    setEpoch((e) => e + 1)
-    window.history.replaceState(null, '', window.location.pathname)
-  }, [])
+  const signedOut = useCallback(
+    (message: string, explicit = false) => {
+      const facts = lastStatus.current
+      const trial =
+        !explicit && facts?.provisional !== undefined && facts.deadline
+          ? ` Revision ${facts.provisional} was on trial when this page last read the gateway: unless someone confirms it, the gateway rolls back to revision ${facts.confirmed} at ${time(facts.deadline)} by itself. Sign in again to see its current state.`
+          : ''
+      if (explicit) clearOutcomes()
+      lastStatus.current = undefined
+      setSession(null)
+      setNotice(message + trial)
+      setEpoch((e) => e + 1)
+      window.history.replaceState(null, '', window.location.pathname)
+    },
+    [clearOutcomes],
+  )
 
   const signedIn = useCallback((info: SessionInfo) => {
     setNotice('')
@@ -139,7 +157,11 @@ export function App() {
   }, [resume])
 
   if (session && admin) {
-    return <Shell key={epoch} admin={admin} session={session} signedOut={signedOut} />
+    return (
+      <Outcomes.Provider value={outcomes}>
+        <Shell key={epoch} admin={admin} session={session} signedOut={signedOut} onStatus={(facts) => (lastStatus.current = facts)} />
+      </Outcomes.Provider>
+    )
   }
 
   return (
@@ -202,8 +224,13 @@ function accessWord(permissions: Permission[]): string {
   return 'Read only'
 }
 
-function Shell(props: { admin: Admin; session: SessionInfo; signedOut: (message: string) => void }) {
-  const { admin, session, signedOut } = props
+function Shell(props: {
+  admin: Admin
+  session: SessionInfo
+  signedOut: (message: string, explicit?: boolean) => void
+  onStatus: (facts: Status | undefined) => void
+}) {
+  const { admin, session, signedOut, onStatus } = props
   const [view, setView] = useState<View>(viewFromHash)
   const [draft, setDraft] = useState<string | undefined>(undefined)
   const [candidate, setCandidate] = useState<number | undefined>(undefined)
@@ -214,8 +241,36 @@ function Shell(props: { admin: Admin; session: SessionInfo; signedOut: (message:
   const pendingDraft = useRef<Handoff | undefined>(undefined)
   const firstView = useRef(true)
 
-  const status = useResource<Status>((signal) => admin.get('/admin/status', signal), [view])
+  const status = useResource<Status>((signal) => admin.get('/admin/status', signal), [])
   const can = (permission: Permission) => session.permissions.includes(permission)
+  // Each change of view rereads the status.
+  useRereadWhen(view, status.refresh)
+
+  // While a trial or temporary rule is active the status is reread every
+  // 3 s, so a change made elsewhere or a deadline the gateway enforces shows
+  // within seconds; otherwise only the Overview rereads it, every 10 s.
+  const facts = status.last?.body
+  const critical = facts !== undefined && (facts.provisional !== undefined || (facts.overrides?.length ?? 0) > 0)
+  usePoll(status.refresh, critical ? 3_000 : view === 'overview' ? 10_000 : null, critical)
+  const factsKey = facts ? JSON.stringify(facts) : ''
+  const [version, setVersion] = useState(0)
+  useEffect(() => {
+    setVersion((v) => v + 1)
+    onStatus(facts)
+  }, [factsKey])
+  const gateway: Gateway = {
+    ...status,
+    facts,
+    critical,
+    version,
+    refresh: () => {
+      status.refresh()
+      setVersion((v) => v + 1)
+    },
+  }
+  const memory = useRef(new Map<string, unknown>()).current
+  const paused = usePaused(critical)
+  const outcomes = useContext(Outcomes)
 
   useEffect(() => {
     const onHash = () => {
@@ -253,18 +308,20 @@ function Shell(props: { admin: Admin; session: SessionInfo; signedOut: (message:
   async function signOut() {
     const reply = await admin.send({ method: 'DELETE', path: '/admin/session' })
     if (reply.kind === 'ok') {
-      signedOut('Signed out.')
+      signedOut('Signed out.', true)
     } else if (reply.kind === 'unknown') {
-      signedOut('Signed out of this page, but the gateway did not confirm it; the session ends at its idle timeout.')
+      signedOut('Signed out of this page, but the gateway did not confirm it; the session ends at its idle timeout.', true)
     }
   }
 
-  const facts = status.reply?.kind === 'ok' ? status.reply.body : undefined
   const current = section[view] ?? view
   const viewProps = { admin, can, open }
+  const sessionEnds = new Date(session.expires_at).getTime()
+  const trialOutlivesSession = facts?.provisional !== undefined && facts.deadline !== undefined && sessionEnds < new Date(facts.deadline).getTime()
 
   return (
-    <GatewayState.Provider value={status}>
+    <GatewayState.Provider value={gateway}>
+    <ViewMemory.Provider value={memory}>
       <a className="visually-hidden" href="#content">
         Skip to content
       </a>
@@ -339,6 +396,25 @@ function Shell(props: { admin: Admin; session: SessionInfo; signedOut: (message:
               <a href="#/overview">Open the Overview</a>
             </p>
           ) : null}
+          {facts?.stored_authority === 'unreadable' ? (
+            <p className="banner tone-unknown" role="status">
+              <strong>The gateway could not read its stored policy.</strong> Which revision is confirmed or on trial is not known from its latest
+              answer; nothing here means there is none.
+            </p>
+          ) : null}
+          {trialOutlivesSession ? (
+            <p className="banner tone-pending">
+              <strong>Your session ends at <TimeOfDay value={session.expires_at} />, before revision {facts?.provisional}'s trial deadline.</strong>{' '}
+              Sign in again before then to confirm or roll it back; otherwise the gateway rolls it back by itself at the deadline.
+            </p>
+          ) : null}
+          {paused && (view === 'overview' || view === 'traffic' || view === 'apis') ? (
+            <p className="banner tone-neutral">
+              Automatic updates are paused after 10 minutes without activity, so an unattended page does not keep your session open. They resume
+              when you use the page.
+            </p>
+          ) : null}
+          {outcomes ? <UnresolvedChanges admin={admin} name={session.name} register={outcomes} canReadHistory={can('read_history')} /> : null}
           {view === 'overview' ? <Overview {...viewProps} /> : null}
           {view === 'traffic' ? <LiveTraffic {...viewProps} /> : null}
           {view === 'lookup' ? <RequestLookup key={window.location.hash} {...viewProps} /> : null}
@@ -358,6 +434,21 @@ function Shell(props: { admin: Admin; session: SessionInfo; signedOut: (message:
           {view === 'account' ? <Account admin={admin} session={session} signedOut={signedOut} /> : null}
         </main>
       </div>
+    </ViewMemory.Provider>
     </GatewayState.Provider>
   )
+}
+
+// usePaused says, rechecked every 5 s, that the page's background reads are
+// paused because nobody has used it for a while and no trial or temporary
+// rule is active.
+function usePaused(critical: boolean): boolean {
+  const [paused, setPaused] = useState(false)
+  useEffect(() => {
+    const check = () => setPaused(!critical && inactive())
+    check()
+    const timer = setInterval(check, 5_000)
+    return () => clearInterval(timer)
+  }, [critical])
+  return paused
 }

@@ -46,6 +46,9 @@ export interface Status {
   confirmed?: number
   provisional?: number
   deadline?: string
+  // "unreadable" when the gateway could not read its stored policy for this
+  // answer: confirmed, provisional and deadline are then unknown, not absent.
+  stored_authority?: string
 }
 
 export interface RateRule {
@@ -297,10 +300,15 @@ export async function request<T>(method: string, path: string, init: RequestInit
   }
 }
 
-// explanations describe the server's error and refusal codes. Unknown codes
-// are shown as they are.
+// explanations describe the server's error and refusal codes. A code is
+// looked up as sent, in capitals and in lower case, because blocked-account
+// and key changes send the controller's reasons in lower case while history
+// records them in capitals.
 const explanations: Record<string, string> = {
   bad_request: 'The request was malformed or a value is not allowed.',
+  gateway_unavailable:
+    'The gateway could not complete this now. For a change, this does not show whether it was applied: check its outcome before sending anything else.',
+  candidate_invalid: 'The stored change could not be read as a complete policy, so its impact cannot be previewed.',
   unauthenticated: 'You are not signed in, or the credentials are wrong.',
   forbidden: 'Your administrator account does not have the permission for this action.',
   not_found: 'It does not exist.',
@@ -340,7 +348,6 @@ const explanations: Record<string, string> = {
   UNKNOWN_REFERENCE: 'It names something the policy does not define.',
   NOT_DENY_ALL: 'The first policy must deny everything.',
   OUTCOME_AUDIT_PENDING: 'The change was committed but its audit record is pending; admission is stopped until the gateway restarts.',
-  outcome_audit_pending: 'The change was committed but its audit record is pending; admission is stopped until the gateway restarts.',
   UNKNOWN_FIELD: 'The document has a field the gateway does not know.',
   DUPLICATE_MEMBER: 'The document repeats a member name.',
   DUPLICATE_ID: 'An identifier is used twice.',
@@ -354,12 +361,45 @@ const explanations: Record<string, string> = {
   DUPLICATE_OPERATION: 'Two operations have the same method and path.',
   UNAVAILABLE: 'The gateway is unavailable and changed nothing.',
   AUDIT_UNAVAILABLE: 'The security event log cannot be written, so nothing was changed.',
-  STORE_ERROR: 'The gateway could not read or write its database; nothing was changed.',
+  STORE_ERROR:
+    'The gateway could not use its database and did not complete this request. If the identical request was sent before, check whether that earlier one was applied.',
   PUBLICATION_FAILED: 'The change was stored but could not be put in force; the gateway stopped admitting requests.',
   CREDENTIAL_CHANGED: 'Your credentials changed during the request. Sign in again.',
   ENROLMENT_CONSUMED: 'This enrolment secret was already used.',
 }
 
+// explain describes a code in plain words, or says that this Dashboard has
+// no description, so a code is never shown without any explanation.
 export function explain(code: string): string {
-  return explanations[code] ?? ''
+  return (
+    explanations[code] ??
+    explanations[code.toUpperCase()] ??
+    explanations[code.toLowerCase()] ??
+    'This Dashboard has no description for this code; it is shown for diagnosis.'
+  )
+}
+
+// committedAnyway says whether a non-success answer still reports a
+// committed change: in force but not yet recorded in the audit log, or
+// stored but not put in force. Such a change is never shown as refused.
+export function committedAnyway(reply: { error: string; outcome?: Outcome }): boolean {
+  return reply.outcome?.outcome === 'committed' || reply.error.toUpperCase() === 'OUTCOME_AUDIT_PENDING'
+}
+
+// describe names a state-changing request in plain words, for the list of
+// changes whose outcome is unknown.
+export function describe(request: MutationRequest): string {
+  const body = (request.body ?? {}) as { revision?: number; candidate?: number }
+  const [, , resource, id, action] = request.path.split('/')
+  const name = id === undefined ? '' : decodeURIComponent(id)
+  if (resource === 'candidates') return request.method === 'DELETE' ? `Withdraw change ${name}` : 'Stage a change'
+  if (resource === 'provisional') {
+    if (id === 'confirm') return `Confirm revision ${body.revision}`
+    if (id === 'rollback') return `Roll back revision ${body.revision}`
+    return `Put change ${body.candidate} on trial`
+  }
+  if (resource === 'overrides') return request.method === 'DELETE' ? `Revoke temporary rule ${name}` : 'Add a temporary rule'
+  if (resource === 'blocked-accounts') return request.method === 'DELETE' ? `Unblock ${name}` : `Block ${name}`
+  if (resource === 'keys' && id === 'reload' && action === undefined) return 'Reload the signing keys'
+  return `${request.method} ${request.path}`
 }

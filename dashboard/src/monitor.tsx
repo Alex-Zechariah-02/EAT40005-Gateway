@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react'
 import { newKey, type Admin, type HistoryEntry, type Page, type Policy, type Reply, type Revision } from './api'
-import { useGatewayState, useMutation, useResource, type Resource } from './hooks'
+import { useGatewayState, useMutation, usePoll, useRemembered, useRereadWhen, useResource, type Resource } from './hooks'
 import { Badge, Confirm, Empty, Field, MutationResult, PageHeader, Problem, ReadStamp, ReplyView, TableScroll, Time, TimeOfDay, type Tone } from './ui'
 import type { ViewProps } from './views'
 
@@ -101,18 +101,6 @@ export function reasonOf(code: string | null): string {
 
 const decisionTone: Record<RequestEvent['decision'], Tone> = { allowed: 'ok', refused: 'refused', failed: 'unknown' }
 const decisionWord: Record<RequestEvent['decision'], string> = { allowed: 'Allowed', refused: 'Refused', failed: 'Unknown' }
-
-// usePoll rereads a resource every ms while the page is visible.
-function usePoll(refresh: () => void, ms: number) {
-  const latest = useRef(refresh)
-  latest.current = refresh
-  useEffect(() => {
-    const timer = setInterval(() => {
-      if (document.visibilityState === 'visible') latest.current()
-    }, ms)
-    return () => clearInterval(timer)
-  }, [ms])
-}
 
 type StepState = 'cleared' | 'refused' | 'unknown' | 'skipped' | 'unreached'
 const stepWords: Record<StepState, string> = { cleared: 'passed', refused: 'refused here', unknown: 'outcome unknown', skipped: 'not checked', unreached: 'not reached' }
@@ -332,14 +320,20 @@ function WindowSwitch({ value, onChange }: { value: number; onChange: (seconds: 
   )
 }
 
-// windowEnd is when a traffic reading's window ends: the gateway's clock when
-// it answered, or the browser's when the reading arrived if no date came.
+// windowEnd is when the shown traffic reading's window ends: the gateway's
+// clock when it answered, or the browser's when the reading arrived if no
+// date came.
 function windowEnd(resource: Resource<Traffic>): number {
-  if (resource.reply?.kind === 'ok' && resource.reply.date !== undefined) return resource.reply.date
-  return resource.readAt?.getTime() ?? Date.now()
+  return resource.last?.date ?? resource.last?.at.getTime() ?? Date.now()
 }
 
-function TrafficCards({ traffic, end, span, onSpan }: { traffic: Traffic; end: number; span: number; onSpan: (seconds: number) => void }) {
+// TrafficCards shows the last traffic reading that arrived. When a later
+// reading failed it says how old the figures are, so they are never taken
+// for current ones.
+function TrafficCards({ resource, span, onSpan }: { resource: Resource<Traffic>; span: number; onSpan: (seconds: number) => void }) {
+  if (!resource.last) return null
+  const traffic = resource.last.body
+  const end = windowEnd(resource)
   return (
     <div className="section grid-main-side">
       <section className="card card-pad" aria-labelledby="traffic-title">
@@ -347,6 +341,11 @@ function TrafficCards({ traffic, end, span, onSpan }: { traffic: Traffic; end: n
           <h2 id="traffic-title">Traffic</h2>
           <WindowSwitch value={span} onChange={onSpan} />
         </div>
+        {resource.failed ? (
+          <p className="notice tone-pending card-notice">
+            Not current: these figures were read at <TimeOfDay value={resource.last.at.toISOString()} seconds /> and the latest read failed.
+          </p>
+        ) : null}
         <Figures traffic={traffic} />
         <TrafficChart traffic={traffic} end={end} />
       </section>
@@ -425,18 +424,23 @@ function lookupRef(ref: string) {
 // OverviewLive is the Overview's live half: traffic in a chosen window, the
 // latest refusals, each API's figures and the policy timeline.
 export function OverviewLive({ admin, history }: { admin: Admin; history: boolean }) {
+  const state = useGatewayState()
   const [span, setSpan] = useState(300)
   const traffic = useResource<Traffic>((signal) => admin.get(`/admin/traffic?window=${span}`, signal), [span])
   const refusals = useResource<Page<RequestEvent>>((signal) => admin.get('/admin/events?decision=refused&limit=5', signal), [])
-  usePoll(() => {
-    traffic.refresh()
-    refusals.refresh()
-  }, 10_000)
-  const t = traffic.reply?.kind === 'ok' ? traffic.reply.body : undefined
+  usePoll(
+    () => {
+      traffic.refresh()
+      refusals.refresh()
+    },
+    10_000,
+    state.critical,
+  )
+  const t = traffic.last?.body
   return (
     <>
       {traffic.reply && traffic.reply.kind !== 'ok' ? <Problem reply={traffic.reply} /> : null}
-      {t ? <TrafficCards traffic={t} end={windowEnd(traffic)} span={span} onSpan={setSpan} /> : null}
+      <TrafficCards resource={traffic} span={span} onSpan={setSpan} />
       <section className="section card" aria-labelledby="refusals-title">
         <div className="card-head card-head-pad">
           <h2 id="refusals-title">Recent refusals</h2>
@@ -540,30 +544,22 @@ function timelineName(entry: HistoryEntry, kind: { name: string }): string {
   return kind.name
 }
 
-// The gateway lists its history oldest first, so the timeline reads to the
-// end (at most 20 pages of 100) and keeps the newest entries.
-async function newestHistory(admin: Admin, signal: AbortSignal): Promise<Reply<HistoryEntry[]>> {
-  let items: HistoryEntry[] = []
-  let after = ''
-  for (let page = 0; page < 20; page++) {
-    const reply = await admin.get<Page<HistoryEntry>>(`/admin/history?limit=100${after ? `&after=${encodeURIComponent(after)}` : ''}`, signal)
-    if (reply.kind !== 'ok') return reply
-    items = [...items, ...reply.body.items].slice(-200)
-    if (!reply.body.next) break
-    after = reply.body.next
-  }
-  return { kind: 'ok', status: 200, body: items, etag: null }
-}
+// The timeline is one read: the gateway lists the newest committed entries
+// of the timeline's kinds itself, however long the history is.
+const timelinePath = `/admin/history?order=desc&outcome=committed&limit=6&kind=${Object.keys(timelineKinds).join(',')}`
 
 // PolicyTimeline lists the latest policy events from the administrative
 // history, newest first: trials, confirmations, rollbacks, temporary
 // rules and blocks.
 function PolicyTimeline({ admin }: { admin: Admin }) {
-  // It rereads whenever the shell rereads the gateway's status (each change
-  // of view, each change made and each deadline shown), not on a timer: only
-  // traffic figures refresh by themselves.
+  // It rereads when the gateway's status changes or someone asks for a
+  // reread (each change made and each deadline shown), not at every poll.
   const state = useGatewayState()
-  const history = useResource<HistoryEntry[]>((signal) => newestHistory(admin, signal), [state.readAt])
+  const history = useResource<HistoryEntry[]>(async (signal) => {
+    const reply = await admin.get<Page<HistoryEntry>>(timelinePath, signal)
+    return reply.kind === 'ok' ? { ...reply, body: reply.body.items } : reply
+  }, [])
+  useRereadWhen(state.version, history.refresh)
   return (
     <section className="card card-pad" aria-labelledby="timeline-title">
       <div className="card-head">
@@ -573,11 +569,7 @@ function PolicyTimeline({ admin }: { admin: Admin }) {
         </a>
       </div>
       <ReplyView reply={history.reply}>
-        {(entries) => {
-          const items = entries
-            .filter((e) => timelineKinds[e.kind] && e.outcome === 'committed')
-            .reverse()
-            .slice(0, 6)
+        {(items) => {
           if (items.length === 0) return <p className="hint">No policy changes recorded yet.</p>
           return (
             <ol className="timeline">
@@ -616,9 +608,10 @@ const shownEvents = 200
 const reads = new Set(['GET', 'HEAD', 'OPTIONS'])
 
 export function LiveTraffic({ admin }: ViewProps) {
+  const state = useGatewayState()
   const [span, setSpan] = useState(60)
   const traffic = useResource<Traffic>((signal) => admin.get(`/admin/traffic?window=${span}`, signal), [span])
-  usePoll(traffic.refresh, 5_000)
+  usePoll(traffic.refresh, 5_000, state.critical)
   const [events, setEvents] = useState<RequestEvent[]>([])
   const [paused, setPaused] = useState(false)
   const [held, setHeld] = useState(0)
@@ -673,7 +666,7 @@ export function LiveTraffic({ admin }: ViewProps) {
       <PageHeader title="Live traffic" lede="Every request the gateway decides, as it happens, with the check that decided it. Pausing only stops this list; the gateway records every request." />
       {traffic.reply && traffic.reply.kind !== 'ok' ? <Problem reply={traffic.reply} /> : null}
       {recent.reply && recent.reply.kind !== 'ok' ? <Problem reply={recent.reply} /> : null}
-      {traffic.reply?.kind === 'ok' ? <TrafficCards traffic={traffic.reply.body} end={windowEnd(traffic)} span={span} onSpan={setSpan} /> : null}
+      <TrafficCards resource={traffic} span={span} onSpan={setSpan} />
       <section className="section card" aria-labelledby="stream-title">
         <div className="card-head card-head-pad">
           <h2 id="stream-title">
@@ -745,16 +738,30 @@ export function LiveTraffic({ admin }: ViewProps) {
 
 // RequestLookup finds request events by reference, account, operation or
 // decision and shows one request's decision path.
+const blankLookup = { ref: '', subject: '', operation: '', decision: '' }
+
 export function RequestLookup({ admin }: ViewProps) {
   const id = useId()
-  const initial = new URLSearchParams(window.location.hash.split('?')[1] ?? '')
-  const [form, setForm] = useState({ ref: initial.get('ref') ?? '', subject: '', operation: '', decision: '' })
-  const [query, setQuery] = useState(() => (initial.get('ref') ? `ref=${encodeURIComponent(initial.get('ref')!)}` : ''))
+  // A Ref in the address starts a new search. Otherwise the last search of
+  // this session is shown again: it is kept in the page's memory, so an
+  // account searched for never goes into the address or browser history.
+  const linked = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('ref')
+  const [saved, remember] = useRemembered('lookup', { form: blankLookup, query: '' })
+  const start = linked ? { form: { ...blankLookup, ref: linked }, query: `ref=${encodeURIComponent(linked)}` } : saved
+  const [form, setForm] = useState(start.form)
+  const [query, setSearch] = useState(start.query)
   const results = useResource<Page<RequestEvent> | null>(
     (signal) => (query ? admin.get(`/admin/events?${query}&limit=50`, signal) : Promise.resolve({ kind: 'ok', status: 200, body: null, etag: null } as Reply<null>)),
     [query],
   )
   const [selected, setSelected] = useState<string | null>(null)
+  const setQuery = (next: string, nextForm = form) => {
+    setSearch(next)
+    remember({ form: nextForm, query: next })
+  }
+  useEffect(() => {
+    if (linked) remember(start)
+  }, [])
   const search = (event: FormEvent) => {
     event.preventDefault()
     const q = new URLSearchParams()
@@ -797,16 +804,21 @@ export function RequestLookup({ admin }: ViewProps) {
       {results.reply && results.reply.kind !== 'ok' ? <Problem reply={results.reply} /> : null}
       {query && results.reply?.kind === 'ok' && items.length === 0 ? (
         <Empty title="No request matches.">
-          <p className="hint">Older requests are only in the security log on the gateway host. Check the Ref for typing mistakes: it is 32 letters and digits.</p>
+          <p className="hint">
+            The lookup searches only the most recent 10,000 requests the gateway has kept in memory since it last started, so no match does
+            not prove a request never arrived. Older requests, and those before a restart, are only in the security log on the gateway host.
+            Check the Ref for typing mistakes: it is 32 letters and digits.
+          </p>
         </Empty>
       ) : null}
       {!query ? (
         <RecentRefusals
           admin={admin}
           pick={(ref) => {
-            setForm({ ref, subject: '', operation: '', decision: '' })
+            const picked = { ...blankLookup, ref }
+            setForm(picked)
             setSelected(null)
-            setQuery(`ref=${encodeURIComponent(ref)}`)
+            setQuery(`ref=${encodeURIComponent(ref)}`, picked)
           }}
         />
       ) : null}
@@ -929,15 +941,18 @@ function EventDetail({ event }: { event: RequestEvent }) {
 // ApisView shows one block per API: its operations, who may call them, their
 // limits and how the API is answering now.
 export function ApisView({ admin }: ViewProps) {
+  const state = useGatewayState()
   const policy = useResource<Revision>((signal) => admin.get('/admin/policy', signal), [])
   const traffic = useResource<Traffic>((signal) => admin.get('/admin/traffic?window=300', signal), [])
-  usePoll(traffic.refresh, 10_000)
-  const health = traffic.reply?.kind === 'ok' ? traffic.reply.body.by_api : []
+  usePoll(traffic.refresh, 10_000, state.critical)
+  // The last figures read stay shown when a refresh fails; the problem
+  // notice above says the latest read failed.
+  const health = traffic.last?.body.by_api ?? []
   return (
     <>
       <PageHeader title="APIs" lede="Each API behind the gateway: its operations, who may call them, their limits, and its traffic in the last 5 minutes.">
         <ReadStamp
-          readAt={policy.readAt}
+          okAt={policy.last?.at ?? null} failed={policy.failed}
           loading={policy.loading}
           onRefresh={() => {
             policy.refresh()
@@ -1087,7 +1102,7 @@ export function AccountsView({ admin, can }: ViewProps) {
         title="Accounts"
         lede="Block an account instantly: its requests are refused from the next one, whatever roles its token carries. A block is not a policy change, so it never goes on trial and no rollback undoes it."
       >
-        <ReadStamp readAt={list.readAt} loading={list.loading} onRefresh={refresh} />
+        <ReadStamp okAt={list.last?.at ?? null} failed={list.failed} loading={list.loading} onRefresh={refresh} />
       </PageHeader>
       <div className="section grid-main-side grid-top">
         <section className="card" aria-labelledby={`${id}-list`}>
@@ -1139,7 +1154,18 @@ export function AccountsView({ admin, can }: ViewProps) {
                 )
               }
             </ReplyView>
-            <MutationResult mutation={unblock} onRefresh={list.refresh} success={(u) => <p className="notice-title"><code>{u.subject}</code> is unblocked and can use Fetch again</p>} />
+            <MutationResult
+              mutation={unblock}
+              onRefresh={list.refresh}
+              success={(u) => (
+                <>
+                  <p className="notice-title">
+                    <code>{u.subject}</code> is unblocked and can use Fetch again
+                  </p>
+                  <p>Unblocking grants nothing by itself: the account can do only what its token's roles and the policy allow.</p>
+                </>
+              )}
+            />
           </div>
         </section>
         {manage ? (
@@ -1263,11 +1289,14 @@ export function TeamView({ admin, can }: ViewProps) {
   const admins = useResource<{ items: Administrator[] }>((signal) => admin.get('/admin/administrators', signal), [])
   const keys = useResource<{ items: SigningKey[] }>((signal) => admin.get('/admin/keys', signal), [])
   const reload = useMutation<{ items: SigningKey[] }>(admin, keys.refresh)
+  // trustedBefore is the key list read before the latest reload was sent,
+  // so the result can say which key IDs it added and removed.
+  const [trustedBefore, setTrustedBefore] = useState<SigningKey[] | null>(null)
   return (
     <>
       <PageHeader title="Team" lede="Who administers the gateway, and the keys it trusts to verify sign-in tokens. This page cannot grant access: the operator adds administrators on the gateway host.">
         <ReadStamp
-          readAt={admins.readAt}
+          okAt={admins.last?.at ?? null} failed={admins.failed}
           loading={admins.loading}
           onRefresh={() => {
             admins.refresh()
@@ -1325,7 +1354,15 @@ export function TeamView({ admin, can }: ViewProps) {
         <div className="card-head card-head-pad">
           <h2 id="keys-title">Token signing keys</h2>
           {can('manage_policy') ? (
-            <button type="button" className="btn btn-small" disabled={reload.pending} onClick={() => void reload.run({ method: 'POST', path: '/admin/keys/reload', key: newKey() })}>
+            <button
+              type="button"
+              className="btn btn-small"
+              disabled={reload.pending}
+              onClick={() => {
+                setTrustedBefore(keys.last?.body.items ?? null)
+                void reload.run({ method: 'POST', path: '/admin/keys/reload', key: newKey() })
+              }}
+            >
               {reload.pending ? 'Reloading…' : 'Reload keys from settings'}
             </button>
           ) : null}
@@ -1362,12 +1399,32 @@ export function TeamView({ admin, can }: ViewProps) {
             )}
           </ReplyView>
           <div className="card-pad-x">
-            <MutationResult mutation={reload} onRefresh={keys.refresh} success={(r) => <p className="notice-title">Reloaded: {r.items.length} key{r.items.length === 1 ? '' : 's'} trusted.</p>} />
+            <MutationResult mutation={reload} onRefresh={keys.refresh} success={(r) => <KeyChange before={trustedBefore} after={r.items} />} />
           </div>
         </div>
       </section>
       <p className="hint section">
         Keys live in the gateway's operator settings, never in the policy, so a policy rollback can never trust a retired key again. The gateway reads them only from disk.
+      </p>
+    </>
+  )
+}
+
+// KeyChange says what a key reload changed, by key ID and fingerprint only:
+// the Dashboard never sees key material.
+function KeyChange({ before, after }: { before: SigningKey[] | null; after: SigningKey[] }) {
+  const trusted = `${after.length} key${after.length === 1 ? '' : 's'} trusted`
+  if (!before) return <p className="notice-title">Reloaded: {trusted}.</p>
+  const known = (list: SigningKey[], key: SigningKey) => list.some((k) => k.kid === key.kid && k.fingerprint === key.fingerprint)
+  const added = after.filter((key) => !known(before, key))
+  const removed = before.filter((key) => !known(after, key))
+  return (
+    <>
+      <p className="notice-title">Reloaded: {trusted}.</p>
+      <p>
+        {added.length === 0 && removed.length === 0 ? 'The same keys as before: nothing changed.' : null}
+        {added.length > 0 ? `Now also trusted: ${added.map((k) => k.kid).join(', ')}. ` : null}
+        {removed.length > 0 ? `No longer trusted: ${removed.map((k) => k.kid).join(', ')}; tokens signed with them are refused from the next request.` : null}
       </p>
     </>
   )
@@ -1391,7 +1448,7 @@ export function PolicyCode({ admin, open }: ViewProps) {
   return (
     <>
       <PageHeader title="Policy as code" lede="The whole policy is one JSON document: export it, keep it in Git, and stage changes from a file. Staging only creates a change; it goes live only through a trial you confirm.">
-        <ReadStamp readAt={policy.readAt} loading={policy.loading} onRefresh={policy.refresh} />
+        <ReadStamp okAt={policy.last?.at ?? null} failed={policy.failed} loading={policy.loading} onRefresh={policy.refresh} />
       </PageHeader>
       <ReplyView reply={policy.reply}>
         {(revision) => (

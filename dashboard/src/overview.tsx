@@ -12,12 +12,14 @@ import type { ViewProps } from './views'
 // what traffic is doing. Every figure is the gateway's own.
 export function Overview({ admin, can, open }: ViewProps) {
   const state = useGatewayState()
-  const status = state.reply?.kind === 'ok' ? state.reply.body : undefined
+  // The last status read; the read stamp and problem notice say when a later
+  // read failed.
+  const status = state.facts
   const blocked = status && (status.admission !== 'ready' || status.audit_failed)
   return (
     <>
       <PageHeader title="Overview" lede="What the gateway enforces now and how it is deciding requests, as it reports them. Nothing here is decided by this page.">
-        <ReadStamp readAt={state.readAt} loading={state.loading} onRefresh={state.refresh} />
+        <ReadStamp okAt={state.last?.at ?? null} failed={state.failed} loading={state.loading} onRefresh={state.refresh} />
       </PageHeader>
       {state.reply && state.reply.kind !== 'ok' ? <Problem reply={state.reply} /> : null}
       {status && blocked ? <Admission status={status} /> : null}
@@ -53,6 +55,11 @@ function StatusStrip({ admin, can, status }: Pick<ViewProps, 'admin' | 'can'> & 
                 </>
               ) : null}
             </p>
+          </>
+        ) : status.stored_authority === 'unreadable' ? (
+          <>
+            <p className="tile-value tile-value-quiet">Not known</p>
+            <p className="tile-note">The gateway could not read its stored policy for this answer.</p>
           </>
         ) : (
           <>

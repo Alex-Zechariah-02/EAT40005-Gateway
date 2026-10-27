@@ -1,6 +1,6 @@
 import { Check, Clock, X, QuestionMark, Minus, Plus, ArrowRight, ArrowsClockwise, Info, MagnifyingGlass } from '@phosphor-icons/react'
 import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from 'react'
-import { explain, type Outcome, type Reply } from './api'
+import { committedAnyway, explain, type Outcome, type Reply } from './api'
 import type { Change } from './diff'
 import type { Mutation } from './hooks'
 
@@ -122,13 +122,46 @@ function RefSearch() {
   )
 }
 
-// ReadStamp shows when the data on the page was read and whether a newer read
-// is under way, because what the dashboard shows is a copy of server state at
-// that moment.
-export function ReadStamp(props: { readAt: Date | null; loading: boolean; onRefresh: () => void }) {
+// staleAfterMs is when a reading counts as out of date on screen and before
+// a trial is confirmed.
+export const staleAfterMs = 15_000
+
+// age says how long ago a reading arrived, in words.
+export function age(at: Date, now = Date.now()): string {
+  const seconds = Math.max(0, Math.round((now - at.getTime()) / 1000))
+  return seconds < 60 ? `${seconds} s ago` : `${duration(seconds).replace(/ \d+ s$/, '')} ago`
+}
+
+// useNow is the browser's clock, updated every second, for ages and
+// countdowns.
+export function useNow(): number {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [])
+  return now
+}
+
+// ReadStamp shows when the data on the page was last read successfully,
+// whether the latest read failed and when it has become old, because what
+// the dashboard shows is a copy of server state at that moment. It is not a
+// live region: routine rereads are not announced; a failed read is, by the
+// view's problem notice.
+export function ReadStamp(props: { okAt: Date | null; loading: boolean; failed?: boolean; onRefresh: () => void }) {
+  const now = useNow()
+  const old = props.okAt !== null && now - props.okAt.getTime() > staleAfterMs
+  const text =
+    props.okAt === null
+      ? props.loading
+        ? 'Reading…'
+        : props.failed
+          ? 'Not read'
+          : ''
+      : `Updated ${clock(props.okAt.toISOString(), true)}${old ? ` · ${age(props.okAt, now)}` : ''}${props.failed ? ' · latest read failed' : ''}`
   return (
-    <p className="read-stamp" role="status">
-      <span>{props.loading ? 'Reading…' : props.readAt ? `Read ${clock(props.readAt.toISOString(), true)}` : ''}</span>
+    <p className={props.failed ? 'read-stamp read-stamp-failed' : 'read-stamp'}>
+      <span>{text}</span>
       <button type="button" className="btn btn-small" onClick={props.onRefresh} disabled={props.loading}>
         <ArrowsClockwise size={14} aria-hidden="true" />
         Refresh
@@ -153,7 +186,21 @@ export function Problem<T>(props: { reply: Reply<T> }) {
   if (r.kind !== 'refused') return null
   const code = r.outcome?.reason ?? r.error
   const field = r.outcome?.field ?? r.field
-  const explanation = explain(code)
+  // A committed change whose audit record or publication failed is
+  // reported with an error status, but it was applied: never "Refused".
+  if (committedAnyway(r)) {
+    return (
+      <div role="alert" className="notice tone-pending">
+        <p className="notice-title">
+          <Glyph name="pending" />
+          <span>
+            Applied, with a problem (HTTP {r.status}): <code>{code}</code>
+          </span>
+        </p>
+        <p>{explain(code)}</p>
+      </div>
+    )
+  }
   return (
     <div role="alert" className="notice tone-refused">
       <p className="notice-title">
@@ -162,7 +209,7 @@ export function Problem<T>(props: { reply: Reply<T> }) {
           Refused (HTTP {r.status}): <code>{code}</code>
         </span>
       </p>
-      {explanation ? <p>{explanation}</p> : null}
+      <p>{explain(code)}</p>
       {field ? (
         <p>
           Field: <code>{field}</code>
@@ -266,7 +313,7 @@ export function MutationResult<T>(props: {
               {phase.request.key !== undefined ? (
                 <p>
                   Sending the identical request again is safe: it carries the same request key, so the gateway returns its recorded result
-                  or applies it once.
+                  or applies it once. Until its outcome is known it stays listed at the top of every page.
                 </p>
               ) : null}
               <div className="actions">
@@ -294,6 +341,9 @@ export function Confirm(props: {
   title: string
   confirmLabel: string
   danger?: boolean
+  // disabled holds the confirm button back, for example until the facts it
+  // depends on have been read again.
+  disabled?: boolean
   onConfirm: () => void
   onCancel: () => void
   children: ReactNode
@@ -322,7 +372,7 @@ export function Confirm(props: {
         <button type="button" className="btn" autoFocus onClick={props.onCancel}>
           Cancel
         </button>
-        <button type="button" className={`btn ${props.danger ? 'btn-danger' : 'btn-primary'}`} onClick={props.onConfirm}>
+        <button type="button" className={`btn ${props.danger ? 'btn-danger' : 'btn-primary'}`} onClick={props.onConfirm} disabled={props.disabled}>
           {props.confirmLabel}
         </button>
       </div>
@@ -364,7 +414,7 @@ export function fieldError<T>(reply: Reply<T> | undefined, field: string): strin
   const named = reply.outcome?.field ?? reply.field
   if (named !== field) return undefined
   const code = reply.outcome?.reason ?? reply.error
-  return `${code}: ${explain(code) || 'not accepted'}`
+  return `${code}: ${explain(code)}`
 }
 
 const timeFormat: Intl.DateTimeFormatOptions = {
@@ -408,21 +458,23 @@ export function duration(seconds: number): string {
   return `${Math.floor(minutes / 60)} h ${minutes % 60} min`
 }
 
+// The rereads after a deadline shown here passes, in milliseconds after it:
+// the gateway ends the trial or rule by its own timer, which may run a
+// little after this computer's clock.
+const rereadsAfterEnd = [500, 2_000, 5_000, 10_000, 20_000]
+
 // Remaining shows the time left until a server-provided instant. It is a
 // display aid only: the gateway decides when a deadline or expiry has
-// passed. When the instant passes it calls onPassed once, so the view rereads
-// the server's state.
+// passed. Once the instant passes it calls onPassed a few times, so the view
+// rereads the server's state until the gateway reports the end (the view then
+// no longer shows this countdown).
 export function Remaining(props: { until: string; onPassed: () => void; format?: 'words' | 'clock' }) {
   const end = new Date(props.until).getTime()
-  const [now, setNow] = useState(Date.now())
-  const passed = useRef(false)
+  const now = useNow()
+  const rereads = useRef(0)
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(timer)
-  }, [])
-  useEffect(() => {
-    if (now >= end + 500 && !passed.current) {
-      passed.current = true
+    if (rereads.current < rereadsAfterEnd.length && now >= end + rereadsAfterEnd[rereads.current]) {
+      rereads.current++
       props.onPassed()
     }
   })
@@ -432,7 +484,12 @@ export function Remaining(props: { until: string; onPassed: () => void; format?:
     const text = seconds >= 3600 ? `${Math.floor(seconds / 3600)}:${pad(Math.floor(seconds / 60) % 60)}:${pad(seconds % 60)}` : `${pad(Math.floor(seconds / 60))}:${pad(seconds % 60)}`
     return <span className="countdown">{text}</span>
   }
-  return <span className="remaining">{seconds > 0 ? `${duration(seconds)} left` : 'time reached; rereading the gateway'}</span>
+  if (seconds > 0) return <span className="remaining">{duration(seconds)} left</span>
+  return (
+    <span className="remaining">
+      {rereads.current < rereadsAfterEnd.length ? 'time reached; waiting for the gateway to end it' : 'time reached, but the gateway has not reported it ended; refresh'}
+    </span>
+  )
 }
 
 // Empty is what a list or view shows when there is nothing in it, with the

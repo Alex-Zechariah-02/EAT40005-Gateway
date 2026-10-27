@@ -1,6 +1,6 @@
 import { useId, useState, type FormEvent } from 'react'
 import { newKey, type Outcome, type Override, type OverridesView, type Policy, type Reply, type Revision } from './api'
-import { useGatewayState, useMutation, usePaged, useResource } from './hooks'
+import { useGatewayState, useMutation, usePaged, useRereadWhen, useResource } from './hooks'
 import {
   Badge,
   Confirm,
@@ -111,12 +111,17 @@ export function Overrides({ admin, can }: ViewProps) {
   const active = useResource<OverridesView>((signal) => admin.get('/admin/overrides', signal), [])
   const policy = useResource<Revision>((signal) => admin.get('/admin/policy', signal), [])
   const [reads, setReads] = useState(0)
-  const refresh = () => {
+  // A rule's end, revocation or a new rule made elsewhere changes the
+  // gateway's status, which the shell rereads every 3 s while rules are
+  // active; the rules in force, the policy and past rules are then read
+  // again from the gateway, not from a local countdown. A reread this page
+  // asks for goes the same way.
+  useRereadWhen(state.version, () => {
     active.refresh()
     policy.refresh()
-    state.refresh()
     setReads((n) => n + 1)
-  }
+  })
+  const refresh = state.refresh
   const mutation = useMutation(admin, refresh)
   const [revoking, setRevoking] = useState<Override | null>(null)
 
@@ -131,7 +136,7 @@ export function Overrides({ admin, can }: ViewProps) {
         title="Temporary rules"
         lede="A temporary rule changes what the gateway enforces for a fixed time, then ends by itself: an exception lets more through, a containment lets less through. The confirmed policy never changes, and a rule can be revoked early."
       >
-        <ReadStamp readAt={active.readAt} loading={active.loading || policy.loading} onRefresh={refresh} />
+        <ReadStamp okAt={active.last?.at ?? null} failed={active.failed} loading={active.loading || policy.loading} onRefresh={refresh} />
       </PageHeader>
 
       <section className="section card" aria-labelledby="overrides-title">

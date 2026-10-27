@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { newKey, type Candidate, type Outcome, type Revision, type Status } from './api'
 import { differences } from './diff'
-import { useGatewayState, useMutation, usePaged, useResource } from './hooks'
+import { useGatewayState, useMutation, usePaged, useRereadWhen, useResource } from './hooks'
 import { ImpactPreview } from './monitor'
 import { ActivationHistory, TrialDecision } from './provisional'
 import {
@@ -41,12 +41,15 @@ export function Candidates({ admin, can, draft, candidate }: ViewProps & { draft
   useEffect(() => {
     if (candidate !== undefined) setSelected(candidate)
   }, [candidate])
-  const refresh = () => {
+  // The list, the confirmed policy and the past trials are read again
+  // whenever the gateway's status changes (a trial confirmed, rolled back or
+  // timed out, here or elsewhere) and whenever this page asks for a reread.
+  useRereadWhen(state.version, () => {
     list.refresh()
     policy.refresh()
-    state.refresh()
     setTrials((n) => n + 1)
-  }
+  })
+  const refresh = () => state.refresh()
 
   // A candidate names the confirmed revision it was prepared against; "r0"
   // when no confirmed policy is in force (a new or restored installation).
@@ -57,7 +60,7 @@ export function Candidates({ admin, can, draft, candidate }: ViewProps & { draft
         ? '"r0"'
         : undefined
   const confirmed = policy.reply?.kind === 'ok' ? policy.reply.body : undefined
-  const status = state.reply?.kind === 'ok' ? state.reply.body : undefined
+  const status = state.facts
   const manage = can('manage_policy')
 
   return (
@@ -66,10 +69,10 @@ export function Candidates({ admin, can, draft, candidate }: ViewProps & { draft
         title="Changes"
         lede="A change is a complete proposed policy. The gateway checks it when it is staged; you can preview its effect on recent traffic; it then goes live on trial and rolls back by itself unless someone confirms it."
       >
-        <ReadStamp readAt={list.readAt} loading={list.loading || policy.loading} onRefresh={refresh} />
+        <ReadStamp okAt={list.last?.at ?? null} failed={list.failed} loading={list.loading || policy.loading} onRefresh={refresh} />
       </PageHeader>
 
-      <TrialDecision admin={admin} manage={manage} variant="full" onChanged={refresh} />
+      <TrialDecision admin={admin} manage={manage} variant="full" />
 
       <Lifecycle status={status} />
 
@@ -302,6 +305,13 @@ function StageForm(props: {
 
 type Action = 'activate' | 'withdraw' | 'genesis' | 'recovery'
 
+// A trial shorter than this leaves too little time for real requests to
+// arrive, for a few rereads of the trial's traffic and for a deliberate
+// decision. It is advice only: the gateway accepts 1 to 86400 seconds.
+const adviseTrialSeconds = 120
+const shortTrialAdvice =
+  'Under 2 minutes leaves little time for real requests to arrive, to check how they were decided and to decide. Unless someone confirms it in time, the gateway rolls the change back by itself.'
+
 function CandidateDetail(props: {
   id: number
   admin: ViewProps['admin']
@@ -358,6 +368,7 @@ function CandidateDetail(props: {
   }
 
   const period = Number(seconds)
+  const shortTrial = Number.isInteger(period) && period > 0 && period < adviseTrialSeconds
   return (
     <section className="section card card-pad detail" aria-labelledby={`${formId}-title`}>
       <div className="detail-head">
@@ -437,6 +448,7 @@ function CandidateDetail(props: {
                       onChange={(e) => setSeconds(e.target.value)}
                     />
                   </Field>
+                  {shortTrial ? <p className="notice tone-pending trial-advice">{shortTrialAdvice}</p> : null}
                   <div className="actions">
                     <button type="submit" className="btn btn-primary" disabled={mutation.pending}>
                       Put on trial
@@ -498,6 +510,7 @@ function CandidateDetail(props: {
           current confirmed policy{props.confirmed ? `, revision ${props.confirmed.id}` : ''}.
         </p>
         {changes ? <p className="hint">{changes.length === 0 ? 'No differences from the confirmed policy.' : `${changes.length} differences from the confirmed policy.`}</p> : null}
+        {shortTrial ? <p className="notice tone-pending">{shortTrialAdvice}</p> : null}
       </Confirm>
       <Confirm open={asking === 'withdraw'} title={`Withdraw change ${props.id}?`} confirmLabel="Withdraw change" danger onCancel={() => setAsking(null)} onConfirm={() => act('withdraw')}>
         <p>It can no longer be put on trial. The policy in force does not change.</p>

@@ -1505,6 +1505,10 @@ dialog h2 {
   font-variant-numeric: tabular-nums;
 }
 
+.read-stamp-failed {
+  color: var(--refused-strong);
+}
+
 .section {
   margin-bottom: 24px;
 }
@@ -2385,6 +2389,72 @@ dialog h2 {
 
 .trial-side .facts {
   margin-top: 16px;
+}
+
+/* The trial's own traffic, under the decision it informs. */
+.trial-traffic {
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px solid var(--pending-line);
+}
+
+.trial-traffic h3 {
+  margin-bottom: 6px;
+}
+
+.trial-traffic .hint {
+  margin: 4px 0 0;
+}
+
+.trial-counts {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.trial-advice {
+  margin: 8px 0 12px;
+}
+
+/* What a confirmation must be reviewed for, inside its dialog. */
+.check-reasons {
+  margin: 6px 0 10px;
+  padding-left: 1.2em;
+}
+
+.check-reasons li + li {
+  margin-top: 4px;
+}
+
+/* Changes whose answer was lost, listed at the top of every page. */
+.unresolved {
+  display: grid;
+  gap: 8px;
+}
+
+.unresolved-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--tone);
+  font-size: var(--text-sm);
+}
+
+.unresolved-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.unresolved-item p {
+  margin: 0 0 4px;
+}
+
+.unresolved-result {
+  color: var(--tone);
+  font-weight: 600;
 }
 
 .detail-head {

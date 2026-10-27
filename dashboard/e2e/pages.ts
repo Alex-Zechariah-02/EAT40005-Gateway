@@ -87,13 +87,26 @@ export function trial(page: Page): Locator {
   return page.getByRole('region', { name: /is in force but not confirmed$/ })
 }
 
+// confirmTrial opens the confirmation of the change on trial and sends it.
+// The dialog first reads the gateway again; when it finds a reason to look
+// twice (no request decided yet, an old reading, a change made elsewhere)
+// sending needs the review box ticked, which these flows do knowingly. The
+// guard itself is tested on its own.
+export async function confirmTrial(page: Page): Promise<void> {
+  await trial(page)
+    .getByRole('button', { name: /^Confirm revision \d+$/ })
+    .click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByText(/^Read again at /)).toBeVisible()
+  const reviewed = dialog.getByLabel('I have reviewed the current facts above')
+  if (await reviewed.count()) await reviewed.check()
+  await dialogButton(page, /^Confirm revision \d+$/).click()
+}
+
 export async function resolve(page: Page, action: 'confirm' | 'rollback'): Promise<void> {
   await go(page, 'Changes')
   if (action === 'confirm') {
-    await trial(page)
-      .getByRole('button', { name: /^Confirm revision \d+$/ })
-      .click()
-    await dialogButton(page, /^Confirm revision \d+$/).click()
+    await confirmTrial(page)
     await expect(page.getByText(/^Confirmed: revision \d+ is now the permanent policy\.$/)).toBeVisible()
   } else {
     await trial(page)

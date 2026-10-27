@@ -41,7 +41,7 @@ export function PolicyView({ admin, can, open }: ViewProps) {
             Start a change from this
           </button>
         ) : null}
-        <ReadStamp readAt={policy.readAt} loading={policy.loading || revisions.loading} onRefresh={refresh} />
+        <ReadStamp okAt={policy.last?.at ?? null} failed={policy.failed} loading={policy.loading || revisions.loading} onRefresh={refresh} />
       </PageHeader>
       {none ? (
         <Empty title="No confirmed policy is in force.">

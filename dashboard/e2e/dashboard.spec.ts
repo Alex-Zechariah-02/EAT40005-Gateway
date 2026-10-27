@@ -5,7 +5,7 @@ import { dirname, join, resolve as resolvePath } from 'node:path'
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Browser, type BrowserContext, type Locator, type Page } from '@playwright/test'
 import { adminURL, applicationDist, build, Demo, gatewayIdentity, raw, ShortSessions, siteURL, webRoot, type Receipt } from './env'
-import { activate, createOverride, dialogButton, enrol, expectLayoutOnlyStorage, go, nav, record, resolve, revisions, revokeOverride, shot, signIn, stage, trial } from './pages'
+import { activate, confirmTrial, createOverride, dialogButton, enrol, expectLayoutOnlyStorage, go, nav, record, resolve, revisions, revokeOverride, shot, signIn, stage, trial } from './pages'
 
 // One demonstration deployment, driven in order as an operator and its
 // administrators would drive it. Every step checks what the dashboard shows
@@ -410,7 +410,7 @@ test.describe.serial('dashboard', () => {
     record('genesis-and-baseline', { denyAll, baseline, provisional, status: after })
   })
 
-  test('the overview, policy revisions, accounts and team views show the controller state as the Admin API reports it, and only traffic figures refresh by themselves', async () => {
+  test('the overview, policy revisions, accounts and team views show the controller state as the Admin API reports it, and only traffic figures and the status refresh by themselves', async () => {
     await go(admin, 'Overview')
     const now = await status()
     const main = admin.getByRole('main')
@@ -521,14 +521,18 @@ test.describe.serial('dashboard', () => {
     await admin.waitForTimeout(12_000)
     const changesIdle = adminRequests.slice(before).map((url) => new URL(url).pathname)
     expect(changesIdle).toEqual([])
-    // The Overview rereads only its traffic figures by itself.
+    // With no trial or temporary rule active, the Overview rereads only its
+    // traffic figures and the gateway's status by itself, every 10 s.
     await go(admin, 'Overview')
     await settled()
     const start = adminRequests.length
     await admin.waitForTimeout(12_000)
     const idle = adminRequests.slice(start).map((url) => new URL(url).pathname)
     expect(idle.length).toBeGreaterThan(0)
-    expect(idle.filter((path) => path !== '/admin/traffic' && path !== '/admin/events')).toEqual([])
+    expect(idle).toContain('/admin/status')
+    expect(idle.filter((path) => path !== '/admin/traffic' && path !== '/admin/events' && path !== '/admin/status')).toEqual([])
+    // At most one reread of each per 10 s.
+    for (const path of ['/admin/traffic', '/admin/events', '/admin/status']) expect(idle.filter((p) => p === path).length).toBeLessThanOrEqual(2)
     record('overview', { status: now, changesIdle, overviewIdle: [...new Set(idle)], seconds: 12 })
   })
 
@@ -732,14 +736,18 @@ test.describe.serial('dashboard', () => {
       await route.abort('connectionreset')
     })
     await go(admin, 'Changes')
-    await admin.getByRole('main').getByRole('button', { name: `Confirm revision ${second}` }).click()
-    await dialogButton(admin, `Confirm revision ${second}`).click()
+    await confirmTrial(admin)
     await expect(admin.getByText('Outcome unknown.')).toBeVisible()
     await expect(admin.getByText(/^Confirmed:/)).toHaveCount(0)
     await shot(admin, '14-outcome-unknown')
     expect(await status()).toMatchObject({ confirmed: second })
+    // Without sending anything again, the page looks the change up by its
+    // exact transition and finds it applied.
+    const unresolved = admin.getByRole('region', { name: /^(A change has an unknown outcome|Outcome found)$/ })
+    await expect(unresolved).toContainText(`Confirm revision ${second}`)
+    await expect(unresolved.getByText(/^Applied: the gateway recorded it at /)).toBeVisible()
     await admin.unroute('**/admin/provisional/confirm')
-    await admin.getByRole('button', { name: 'Send the identical request again' }).click()
+    await admin.getByRole('button', { name: 'Send the identical request again', exact: true }).click()
     await expect(admin.getByText(`Confirmed: revision ${second} is now the permanent policy.`)).toBeVisible()
     // Changes also shows the earlier staging and trial receipts; this is the
     // confirmation's own.
@@ -1080,6 +1088,9 @@ test.describe.serial('dashboard', () => {
     const keys = (await adminCall('GET', '/admin/keys')).body.items as unknown[]
     await admin.getByRole('button', { name: 'Reload keys from settings' }).click()
     await expect(admin.getByText(`Reloaded: ${keys.length} key${keys.length === 1 ? '' : 's'} trusted.`)).toBeVisible()
+    // The settings were not changed, so the reload reports the same keys by
+    // ID; no key material is shown.
+    await expect(admin.getByText('The same keys as before: nothing changed.')).toBeVisible()
     expect((await listAll<{ kind: string }>('/admin/history')).filter((h) => h.kind === 'keys.reload')).toHaveLength(1)
     expect((await sales('ops-01')).status).toBe(200)
 
@@ -1106,11 +1117,13 @@ test.describe.serial('dashboard', () => {
     const entries = await listAll<{ seq: number; kind: string; outcome: string; actor: string; transition_id: string }>('/admin/history')
     expect(entries.length).toBeGreaterThan(100)
 
+    // The newest entries come first; every page can be read.
     await go(admin, 'History')
     const table = admin.getByRole('region', { name: 'Administrative history' })
     const rows = table.locator('tbody tr')
     await expect(rows).toHaveCount(100)
-    await expect(admin.getByText(/^Showing 100 entries\. The gateway lists the oldest first and more exist/)).toBeVisible()
+    await expect(rows.first().locator('td').first()).toHaveText(String(Math.max(...entries.map((e) => e.seq))))
+    await expect(admin.getByText('Showing 100 entries, newest first. More entries exist.')).toBeVisible()
     await admin.getByRole('button', { name: 'Load all' }).click()
     await expect(rows).toHaveCount(entries.length)
     await expect(admin.getByText(`Showing ${entries.length} entries, the whole history.`)).toBeVisible()
@@ -1119,25 +1132,31 @@ test.describe.serial('dashboard', () => {
     for (const kind of kinds) await expect(table.getByText(kind, { exact: true }).first()).toBeVisible()
     await shot(admin, '22-history')
 
-    // The filters work on the entries read, and the order can be reversed.
+    // The gateway applies the filters, so a count covers the whole history,
+    // not just the entries read so far.
     await admin.getByLabel('Area').selectOption('overrides')
-    const overrides = entries.filter((e) => e.kind.startsWith('tpo.'))
+    const overrides = entries.filter((e) => ['tpo.create', 'tpo.revoke', 'tpo.expire'].includes(e.kind))
     expect(overrides.length).toBeGreaterThan(0)
     await expect(rows).toHaveCount(overrides.length)
-    await expect(admin.getByText(`Showing ${overrides.length} of the ${entries.length} entries read, the whole history.`)).toBeVisible()
+    await expect(admin.getByText(`Showing ${overrides.length} matching entries: every match in the history.`)).toBeVisible()
+    await expect(rows.first().locator('td').first()).toHaveText(String(overrides[overrides.length - 1].seq))
     await admin.getByLabel('Area').selectOption('all')
-    await admin.getByLabel('Outcome').selectOption('rejected')
+    await admin.getByLabel('Outcome', { exact: true }).selectOption('rejected')
     const rejected = entries.filter((e) => e.outcome === 'rejected')
-    if (rejected.length > 0) await expect(rows).toHaveCount(rejected.length)
-    else await expect(admin.getByText('No entry read so far matches these filters.')).toBeVisible()
-    await admin.getByLabel('Outcome').selectOption('all')
-    await admin.getByLabel('Newest first').check()
-    await expect(rows.first().locator('td').first()).toHaveText(String(Math.max(...entries.map((e) => e.seq))))
+    if (rejected.length > 0) await expect(rows).toHaveCount(Math.min(rejected.length, 100))
+    else await expect(admin.getByText('No recorded transition matches these filters.')).toBeVisible()
+    await admin.getByLabel('Outcome', { exact: true }).selectOption('all')
     await admin.getByLabel('Area').selectOption('policy')
     await shot(admin, '22b-history-filtered')
     await admin.getByLabel('Area').selectOption('all')
     await admin.getByLabel('Newest first').uncheck()
     await expect(rows.first().locator('td').first()).toHaveText(String(entries[0].seq))
+    // The choices stay while moving between views, and only in this page.
+    await go(admin, 'Overview')
+    await go(admin, 'History')
+    await expect(admin.getByLabel('Newest first')).not.toBeChecked()
+    await expect(rows.first().locator('td').first()).toHaveText(String(entries[0].seq))
+    expect(admin.url()).not.toContain('order')
 
     await table.getByRole('button', { name: 'Details of entry 1', exact: true }).click()
     const entry = admin.getByRole('region', { name: /^Transition / })
@@ -1146,6 +1165,7 @@ test.describe.serial('dashboard', () => {
     await shot(admin, '23-history-entry')
     const shown = await admin.locator('body').innerText()
     for (const secret of [password, ...handedOut, demo.file('service.secret').trim()]) expect(shown).not.toContain(secret)
+    await admin.getByLabel('Newest first').check()
     record('history', { entries: entries.length, kinds, overrides: overrides.length, rejected: rejected.length })
   })
 
@@ -1434,6 +1454,240 @@ test.describe.serial('dashboard', () => {
     await expect(admin.getByText('Signed in as admin')).toHaveCount(0)
     await signIn(admin, 'admin', password)
     record('sign-out', { oldCookieStatus: 401 })
+  })
+
+  test('a confirmation reads the gateway again first, needs a deliberate step when evidence is missing or the trial changed, and never sends by itself', async ({ browser }) => {
+    const confirms: string[] = []
+    const onRequest = (request: { url: () => string; method: () => string }) => {
+      if (new URL(request.url()).pathname === '/admin/provisional/confirm') confirms.push(request.method())
+    }
+    admin.on('request', onRequest)
+    const other = await signedInPage(browser, 'admin')
+    try {
+      await propose(admin, { role: 'CUSTOMER', operation: 'reports.summary' })
+      // A trial under two minutes gets advice; the gateway would accept it.
+      await admin.getByLabel('Trial length (seconds)').fill('60')
+      await expect(admin.getByText(/^Under 2 minutes leaves little time/).first()).toBeVisible()
+      const revision = await activate(admin, 600)
+      await expect(admin.getByText(/^Under 2 minutes leaves little time/)).toHaveCount(0)
+      const panel = trial(admin)
+      await expect(panel).toContainText('No request has been decided since the trial started')
+
+      // No request yet: the dialog says so and holds the confirmation back
+      // until the administrator says they have reviewed the facts.
+      await panel.getByRole('button', { name: `Confirm revision ${revision}` }).click()
+      const dialog = admin.getByRole('dialog')
+      await expect(dialog.getByText(/^Read again at /)).toBeVisible()
+      await expect(dialog).toContainText('No request has been decided since the trial started')
+      await expect(dialogButton(admin, `Confirm revision ${revision}`)).toBeDisabled()
+      await dialog.getByLabel('I have reviewed the current facts above').check()
+      await expect(dialogButton(admin, `Confirm revision ${revision}`)).toBeEnabled()
+      await shot(admin, '40-confirm-needs-review')
+      await dialogButton(admin, 'Cancel').click()
+
+      // Real requests during the trial, counted from its start.
+      admitted(await sales('ops-01'))
+      admitted(await sales('ops-01'))
+      const refused = await sales('cust-001')
+      expect(refused.status).toBe(403)
+      expect(refused.receipts).toHaveLength(0)
+      await expect(panel).toContainText('3 decided · 2 allowed · 1 refused')
+
+      // With current figures and nothing changed, no extra step is needed.
+      await panel.getByRole('button', { name: `Confirm revision ${revision}` }).click()
+      await expect(dialog.getByText(/^Read again at /)).toBeVisible()
+      await expect(dialog.getByLabel('I have reviewed the current facts above')).toHaveCount(0)
+      await expect(dialogButton(admin, `Confirm revision ${revision}`)).toBeEnabled()
+
+      // Another administrator rolls the trial back while the dialog is open:
+      // this page sees it within seconds and the confirmation becomes
+      // unavailable. Nothing is sent.
+      await resolve(other.page, 'rollback')
+      const rolledBackAt = Date.now()
+      await expect(dialog).toContainText('No change is on trial any more', { timeout: 10_000 })
+      const noticed = Date.now() - rolledBackAt
+      expect(noticed).toBeLessThan(6_000)
+      await expect(dialogButton(admin, `Confirm revision ${revision}`)).toBeDisabled()
+      await shot(admin, '41-confirm-trial-ended')
+      await dialogButton(admin, 'Cancel').click()
+      expect(confirms).toEqual([])
+      expect((await status()).provisional).toBeUndefined()
+      const confirmed = (await listAll<{ kind: string; target: string }>('/admin/history')).filter((h) => h.kind === 'cpa.confirm' && h.target === `revision ${revision}`)
+      expect(confirmed).toHaveLength(0)
+      record('confirm-guard', { revision, noticedMs: noticed, confirmsSent: confirms.length })
+    } finally {
+      admin.off('request', onRequest)
+      await other.context.close()
+    }
+  })
+
+  test('a change whose answer is lost stays listed on every page and after signing in again, and is resolved from its exact history record without being sent again', async () => {
+    const subject = 'cust-004'
+    await go(admin, 'Accounts')
+    // The gateway acts on the block but its answer is lost, and the
+    // history look-up is held back too, so the outcome stays unknown.
+    await admin.route('**/admin/blocked-accounts/*', async (route) => {
+      if (route.request().method() !== 'PUT') return route.continue()
+      await route.fetch()
+      await route.abort('connectionreset')
+    })
+    await admin.route('**/admin/history/admin*', (route) => route.abort('connectionreset'))
+    try {
+      await admin.getByLabel('Account ID').fill(subject)
+      await admin.getByLabel('Reason').fill('lost answer test')
+      await admin.getByRole('button', { name: 'Block now' }).click()
+      await expect(admin.getByText('Outcome unknown.')).toBeVisible()
+      const unresolved = admin.getByRole('region', { name: /^(A change has an unknown outcome|Outcome found)$/ })
+      await expect(unresolved).toContainText(`Block ${subject}`)
+      await expect(unresolved).toContainText('It could not be looked up')
+      await admin.unroute('**/admin/blocked-accounts/*')
+
+      // Still listed on another view.
+      await go(admin, 'Overview')
+      await expect(unresolved).toContainText(`Block ${subject}`)
+      await shot(admin, '42-unknown-outcome-listed')
+
+      // The session ends elsewhere; signing in again as the same
+      // administrator still lists it.
+      const tab = await adminContext.newPage()
+      await tab.goto(adminURL + '/')
+      await expect(tab.getByText('Signed in as admin')).toBeAttached()
+      await tab.getByRole('button', { name: 'Sign out' }).click()
+      await expect(tab.getByRole('heading', { name: 'Sign in' })).toBeVisible()
+      await tab.close()
+      // The Overview's next status read (every 10 s) finds the session ended.
+      await expect(admin.getByText(/^Your session has ended\. Sign in again\./)).toBeVisible({ timeout: 20_000 })
+      await signIn(admin, 'admin', password)
+      await expect(unresolved).toContainText(`Block ${subject}`)
+
+      // Look-ups work again: the exact transition shows it applied, once.
+      await admin.unroute('**/admin/history/admin*')
+      await unresolved.getByRole('button', { name: /^Check its outcome/ }).click()
+      await expect(unresolved.getByText(/^Applied: the gateway recorded it at /)).toBeVisible()
+      const blocks = (await listAll<{ kind: string; target: string }>('/admin/history')).filter((h) => h.kind === 'account.block' && h.target === subject)
+      expect(blocks).toHaveLength(1)
+      await unresolved.getByRole('button', { name: /^Dismiss/ }).click()
+      await expect(unresolved).toHaveCount(0)
+      record('unknown-outcome-register', { subject, blockTransitions: blocks.length })
+    } finally {
+      await admin.unroute('**/admin/blocked-accounts/*')
+      await admin.unroute('**/admin/history/admin*')
+    }
+    expect((await adminCall('DELETE', `/admin/blocked-accounts/${subject}`, undefined, { 'Idempotency-Key': crypto.randomUUID() })).status).toBe(200)
+  })
+
+  test('keyboard alone puts a change on trial and rolls it back and revokes a rule, while timers move neither focus nor the screen reader', async () => {
+    await propose(admin, { role: 'CUSTOMER', operation: 'reports.summary' })
+    await admin.getByLabel('Trial length (seconds)').focus()
+    await admin.keyboard.press('Control+A')
+    await admin.keyboard.type('600')
+    await admin.keyboard.press('Enter')
+    await expect(dialogButton(admin, 'Cancel')).toBeFocused()
+    // Escape cancels and changes nothing.
+    await admin.keyboard.press('Escape')
+    await expect(admin.getByRole('dialog')).toHaveCount(0)
+    expect((await status()).provisional).toBeUndefined()
+    await admin.getByLabel('Trial length (seconds)').focus()
+    await admin.keyboard.press('Enter')
+    await admin.keyboard.press('Tab')
+    await expect(dialogButton(admin, 'Put on trial')).toBeFocused()
+    await admin.keyboard.press('Enter')
+    await expect(admin.getByText(/^Revision \d+ is on trial and in force/)).toBeVisible()
+
+    // With the trial active the page rereads every 3 s and counts down every
+    // second; focus stays put and nothing is announced.
+    const confirmButton = trial(admin).getByRole('button', { name: /^Confirm revision \d+$/ })
+    await confirmButton.focus()
+    await admin.evaluate(() => {
+      const page = window as unknown as { announced: string[] }
+      page.announced = []
+      new MutationObserver((records) => {
+        for (const change of records) {
+          const node = change.target instanceof Element ? change.target : change.target.parentElement
+          const region = node?.closest('[aria-live]:not([aria-live="off"]), [role="status"], [role="alert"], [role="log"]')
+          if (region) page.announced.push(region.textContent ?? '')
+        }
+      }).observe(document.body, { subtree: true, childList: true, characterData: true })
+    })
+    await admin.waitForTimeout(7_000)
+    await expect(confirmButton).toBeFocused()
+    const announced = await admin.evaluate(() => (window as unknown as { announced: string[] }).announced)
+    expect(announced).toEqual([])
+
+    const rollback = trial(admin).getByRole('button', { name: /^Roll back to revision \d+$/ })
+    await rollback.focus()
+    await admin.keyboard.press('Enter')
+    await expect(dialogButton(admin, 'Cancel')).toBeFocused()
+    await admin.keyboard.press('Tab')
+    await admin.keyboard.press('Enter')
+    await expect(admin.getByText(/^Rolled back: revision \d+ is in force again\.$/)).toBeVisible()
+
+    const id = await createOverride(admin, { action: 'Containment: stop a role calling an operation', operation: 'inventory.stock.adjust', role: 'OPERATIONS', seconds: 300 })
+    await admin.getByRole('main').getByRole('button', { name: `Revoke rule ${id}` }).focus()
+    await admin.keyboard.press('Enter')
+    await expect(dialogButton(admin, 'Cancel')).toBeFocused()
+    await admin.keyboard.press('Tab')
+    await admin.keyboard.press('Enter')
+    await expect(admin.getByText(`Rule ${id} revoked (revoked)`)).toBeVisible()
+    expect(await status()).toMatchObject({ overrides: [] })
+    record('keyboard-urgent-actions', { announcedWhileWaiting: announced.length, override: id })
+  })
+
+  test('background reads pause after ten minutes without input, resume at the next input, and go on while a temporary rule is active', async () => {
+    const page = await adminContext.newPage()
+    try {
+      await page.clock.install()
+      await page.goto(adminURL + '/#/overview')
+      await expect(page.getByRole('heading', { level: 1, name: 'Overview', exact: true })).toBeVisible()
+      const reads: string[] = []
+      page.on('request', (r) => reads.push(new URL(r.url()).pathname))
+      const readsDuring = async (ms: number) => {
+        const from = reads.length
+        await page.clock.runFor(ms)
+        await page.waitForTimeout(300)
+        return reads.slice(from)
+      }
+      const notice = page.getByText(/^Automatic updates are paused after 10 minutes without activity/)
+      expect((await readsDuring(30_000)).length).toBeGreaterThan(0)
+      await readsDuring(10 * 60_000)
+      expect(await readsDuring(60_000)).toEqual([])
+      await expect(notice).toBeVisible()
+      await shot(page, '43-updates-paused')
+
+      // Any input resumes them.
+      await page.mouse.move(40, 40)
+      expect(await readsDuring(11_000)).toContain('/admin/status')
+      await expect(notice).toHaveCount(0)
+
+      // While a temporary rule is active they go on without input.
+      const id = await createOverride(admin, { action: 'Containment: stop a role calling an operation', operation: 'inventory.stock.adjust', role: 'OPERATIONS', seconds: 600 })
+      await readsDuring(11_000)
+      await readsDuring(11 * 60_000)
+      const during = await readsDuring(60_000)
+      expect(during).toContain('/admin/status')
+      await expect(notice).toHaveCount(0)
+      await revokeOverride(admin, id)
+      record('inactivity-pause', { readsWhileRuleActive: during.length })
+    } finally {
+      await page.close()
+    }
+  })
+
+  test('request lookup keeps its search while moving between views without putting the account in the address, and a miss says what was searched', async () => {
+    await go(admin, 'Request lookup')
+    await admin.getByLabel('Account').fill('cust-001')
+    await admin.getByRole('button', { name: 'Find requests' }).click()
+    await expect(admin.getByText(/^Reading/)).toHaveCount(0)
+    await expect(admin.getByText('No request matches.')).toHaveCount(0)
+    await go(admin, 'Overview')
+    await go(admin, 'Request lookup')
+    await expect(admin.getByLabel('Account')).toHaveValue('cust-001')
+    await expect(admin.getByText('No request matches.')).toHaveCount(0)
+    expect(admin.url()).not.toContain('cust-001')
+    await admin.getByLabel('Account').fill('')
+    await admin.getByLabel('Reference (Ref)').fill('0'.repeat(32))
+    await admin.getByRole('button', { name: 'Find requests' }).click()
+    await expect(admin.getByText(/no match does not prove a request never arrived/)).toBeVisible()
   })
 
   test('an unreachable gateway, a restart and a read-only administrator are shown truthfully', async ({ browser }) => {

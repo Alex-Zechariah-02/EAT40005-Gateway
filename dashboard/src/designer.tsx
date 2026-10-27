@@ -48,7 +48,7 @@ export function Designer({
   setDraft,
 }: ViewProps & { draft: DesignerDraft | null; setDraft: Dispatch<SetStateAction<DesignerDraft | null>> }) {
   const state = useGatewayState()
-  const facts = state.reply?.kind === 'ok' ? state.reply.body : undefined
+  const facts = state.facts
   const policy = useResource<Revision>((signal) => admin.get('/admin/policy', signal), [])
   const overrides = useResource<OverridesView>((signal) => admin.get('/admin/overrides', signal), [])
   const provisional = useResource<ProvisionalView>((signal) => admin.get('/admin/provisional', signal), [])
@@ -292,7 +292,7 @@ export function Designer({
         <a className="btn btn-small" href="#/policy">
           Revisions and tables
         </a>
-        <ReadStamp readAt={policy.readAt} loading={policy.loading || overrides.loading || provisional.loading} onRefresh={refresh} />
+        <ReadStamp okAt={policy.last?.at ?? null} failed={policy.failed} loading={policy.loading || overrides.loading || provisional.loading} onRefresh={refresh} />
       </PageHeader>
       {none ? (
         <Empty title="Establish the first policy before designing changes.">

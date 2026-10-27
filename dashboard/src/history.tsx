@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useId, useRef, useState } from 'react'
 import { explain, type HistoryEntry } from './api'
-import { usePaged, useResource } from './hooks'
+import { usePaged, useRemembered, useResource } from './hooks'
 import { Badge, CodeBlock, Empty, PageHeader, Problem, ReadStamp, ReplyView, ShowMore, TableScroll, Time } from './ui'
 import type { ViewProps } from './views'
 
@@ -45,25 +45,51 @@ const areas: { id: Area | 'all'; label: string }[] = [
 // The most pages "Load all" reads at once: 2000 entries at 100 a page.
 const allPages = 20
 
+// historyPath asks the gateway for one page of the history in the chosen
+// order, with the filters applied by the gateway, so a count of matches
+// covers the whole history rather than the entries read so far.
+function historyPath(filters: HistoryFilters): string {
+  const query = new URLSearchParams({ limit: '100', order: filters.newestFirst ? 'desc' : 'asc' })
+  if (filters.area !== 'all') {
+    query.set(
+      'kind',
+      Object.entries(kinds)
+        .filter(([, k]) => k.area === filters.area)
+        .map(([kind]) => kind)
+        .join(','),
+    )
+  }
+  if (filters.outcome !== 'all') query.set('outcome', filters.outcome)
+  if (filters.actor !== 'all') query.set('actor', filters.actor)
+  return `/admin/history?${query}`
+}
+
+interface HistoryFilters {
+  area: Area | 'all'
+  outcome: string
+  actor: string
+  newestFirst: boolean
+}
+
 // History lists every recorded administrative transition as the controller
 // stored it: who asked for what, against which revision, and the outcome.
-// Request bodies, passwords and tokens are never recorded. The filters work
-// on the entries read so far.
+// Request bodies, passwords and tokens are never recorded. It lists the
+// newest first unless asked otherwise, and the gateway applies the filters.
 export function History({ admin }: ViewProps) {
   const id = useId()
-  const history = usePaged<HistoryEntry>(admin, '/admin/history?limit=100', [])
+  const [filters, setFilters] = useRemembered<HistoryFilters>('history', { area: 'all', outcome: 'all', actor: 'all', newestFirst: true })
+  const path = historyPath(filters)
+  const history = usePaged<HistoryEntry>(admin, path, [path])
+  const team = useResource<{ items: { name: string }[] }>((signal) => admin.get('/admin/administrators', signal), [])
   const [selected, setSelected] = useState<string | null>(null)
-  const [area, setArea] = useState<Area | 'all'>('all')
-  const [outcome, setOutcome] = useState('all')
-  const [actor, setActor] = useState('all')
-  const [newestFirst, setNewestFirst] = useState(false)
+  const { area, outcome, actor, newestFirst } = filters
+  const choose = (change: Partial<HistoryFilters>) => setFilters({ ...filters, ...change })
 
-  const actors = [...new Set(history.items.map((h) => h.actor))].sort()
-  const shown = history.items.filter(
-    (h) => (area === 'all' || kinds[h.kind]?.area === area) && (outcome === 'all' || h.outcome === outcome) && (actor === 'all' || h.actor === actor),
-  )
-  if (newestFirst) shown.reverse()
-  const filtered = shown.length !== history.items.length
+  // The administrators, anyone else seen in the entries read (the operator
+  // and the gateway itself) and the current choice.
+  const actors = [...new Set([...(team.last?.body.items.map((a) => a.name) ?? []), ...history.items.map((h) => h.actor), ...(actor === 'all' ? [] : [actor])])].sort()
+  const shown = history.items
+  const filtered = area !== 'all' || outcome !== 'all' || actor !== 'all'
 
   return (
     <>
@@ -71,17 +97,17 @@ export function History({ admin }: ViewProps) {
         title="History"
         lede="Every administrative transition the controller recorded, with its outcome. Request bodies, passwords and tokens are never recorded."
       >
-        <ReadStamp readAt={history.readAt} loading={history.loading} onRefresh={history.refresh} />
+        <ReadStamp okAt={history.last?.at ?? null} failed={history.failed} loading={history.loading} onRefresh={history.refresh} />
       </PageHeader>
       <section className="section">
         {history.reply && history.reply.kind !== 'ok' ? <Problem reply={history.reply} /> : null}
-        {history.reply?.kind === 'ok' && history.items.length === 0 ? <Empty title="No transition has been recorded yet." /> : null}
-        {history.items.length > 0 ? (
+        {history.reply?.kind === 'ok' && history.items.length === 0 && !filtered ? <Empty title="No transition has been recorded yet." /> : null}
+        {history.items.length > 0 || filtered ? (
           <>
             <div className="filters" role="group" aria-label="Filter the history">
               <div className="field">
                 <label htmlFor={`${id}-area`}>Area</label>
-                <select id={`${id}-area`} className="input" value={area} onChange={(e) => setArea(e.target.value as Area | 'all')}>
+                <select id={`${id}-area`} className="input" value={area} onChange={(e) => choose({ area: e.target.value as Area | 'all' })}>
                   {areas.map((a) => (
                     <option key={a.id} value={a.id}>
                       {a.label}
@@ -91,7 +117,7 @@ export function History({ admin }: ViewProps) {
               </div>
               <div className="field">
                 <label htmlFor={`${id}-outcome`}>Outcome</label>
-                <select id={`${id}-outcome`} className="input" value={outcome} onChange={(e) => setOutcome(e.target.value)}>
+                <select id={`${id}-outcome`} className="input" value={outcome} onChange={(e) => choose({ outcome: e.target.value })}>
                   <option value="all">All outcomes</option>
                   <option value="committed">committed</option>
                   <option value="rejected">rejected</option>
@@ -99,7 +125,7 @@ export function History({ admin }: ViewProps) {
               </div>
               <div className="field">
                 <label htmlFor={`${id}-actor`}>By</label>
-                <select id={`${id}-actor`} className="input" value={actor} onChange={(e) => setActor(e.target.value)}>
+                <select id={`${id}-actor`} className="input" value={actor} onChange={(e) => choose({ actor: e.target.value })}>
                   <option value="all">Anyone</option>
                   {actors.map((a) => (
                     <option key={a} value={a}>
@@ -109,17 +135,21 @@ export function History({ admin }: ViewProps) {
                 </select>
               </div>
               <label className="check">
-                <input type="checkbox" checked={newestFirst} onChange={(e) => setNewestFirst(e.target.checked)} />
+                <input type="checkbox" checked={newestFirst} onChange={(e) => choose({ newestFirst: e.target.checked })} />
                 <span>Newest first</span>
               </label>
             </div>
             <p className="hint list-count" role="status">
-              {filtered ? `Showing ${shown.length} of the ${history.items.length} entries read` : `Showing ${history.items.length} entries`}
-              {history.next ? '. The gateway lists the oldest first and more exist, so the newest are not read yet.' : ', the whole history.'}
+              {`Showing ${shown.length} ${filtered ? 'matching ' : ''}${shown.length === 1 ? 'entry' : 'entries'}`}
+              {history.next
+                ? `, ${newestFirst ? 'newest' : 'oldest'} first. More ${filtered ? 'matches' : 'entries'} exist.`
+                : filtered
+                  ? ': every match in the history.'
+                  : ', the whole history.'}
             </p>
           </>
         ) : null}
-        {history.items.length > 0 && shown.length === 0 ? <Empty title="No entry read so far matches these filters." /> : null}
+        {history.reply?.kind === 'ok' && shown.length === 0 && filtered ? <Empty title="No recorded transition matches these filters." /> : null}
         {shown.length > 0 ? (
           <TableScroll label="Administrative history">
             <table>
