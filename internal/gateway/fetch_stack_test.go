@@ -192,6 +192,48 @@ func TestFetchStackScenarios(t *testing.T) {
 	}
 	call("GET", "/internal/orders", "", ops, 404)
 
+	t.Log("customer stock permission is controlled by a temporary gateway grant")
+	before = receiptCount(0)
+	call("GET", "/inventory/stock/ITM-501", "", customer, 403)
+	if receiptCount(0) != before {
+		t.Fatal("unpermitted stock read reached Inventory")
+	}
+	e.mustOverride(root, permitOverride(overrideException, "CUSTOMER", "inventory.stock.read", 1), policyETag(revision), "fetch-stack-stock-grant")
+	call("GET", "/inventory/stock/ITM-501", "", customer, 200)
+	if receiptCount(0) != before+1 {
+		t.Fatal("temporary stock grant did not reach Inventory exactly once")
+	}
+	waitFor(t, time.Now().Add(5*time.Second), "temporary stock grant expiry", func() bool {
+		response, _ := e.exchange("GET", "/inventory/stock/ITM-501", "", "", "Authorization", "Bearer "+customer)
+		return response.StatusCode == 403
+	})
+
+	t.Log("platform reports follow gateway grants; baseline and expiry still refuse")
+	reportOperations := []struct{ id, path string }{{"reports.summary", "/reports/summary"}, {"reports.sales", "/reports/sales"}, {"reports.top-items", "/reports/top-items"}}
+	before = receiptCount(2)
+	for _, operation := range reportOperations {
+		call("GET", operation.path, "", customer, 403)
+	}
+	if receiptCount(2) != before {
+		t.Fatal("unpermitted report reached Reports")
+	}
+	for i, operation := range reportOperations {
+		e.mustOverride(root, permitOverride(overrideException, "CUSTOMER", operation.id, 5), policyETag(revision), fmt.Sprintf("fetch-report-grant-%d", i))
+	}
+	for _, operation := range reportOperations {
+		call("GET", operation.path, "", customer, 200)
+	}
+	if receiptCount(2) != before+3 {
+		t.Fatal("gateway report grants did not forward each request exactly once")
+	}
+	waitFor(t, time.Now().Add(8*time.Second), "report grant expiry", func() bool { return len(e.activeOverrides(root).GenerationOverrides) == 0 })
+	for _, operation := range reportOperations {
+		call("GET", operation.path, "", customer, 403)
+	}
+	if receiptCount(2) != before+3 {
+		t.Fatal("expired report grant reached Reports")
+	}
+
 	t.Log("real source-bound flood commands")
 	for _, scenario := range []struct{ name, source, count string }{{"flood-orders", "127.0.0.51", "12"}, {"flood-search", "127.0.0.50", "65"}, {"flood-login", "127.0.0.52", "12"}} {
 		result := cli(false, "attack", "-dir", dir, "-scenario", scenario.name, "-from", scenario.source, "-count", scenario.count)

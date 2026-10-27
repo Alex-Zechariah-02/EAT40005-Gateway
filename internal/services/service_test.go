@@ -178,3 +178,29 @@ func TestInventoryRefusalsAndOwnership(t *testing.T) {
 		}
 	}
 }
+
+func TestInventoryStockHonorsGatewayPermissionAndMerchantOwnership(t *testing.T) {
+	s, err := New(Config{Name: "inventory", Secret: testSecret})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The service receives an already permitted request from the gateway.
+	// Stock ownership is restricted for merchants, not a second role policy.
+	for _, tc := range []struct {
+		method, body, subject, roles string
+		status                       int
+	}{
+		{"GET", "", "cust-001", "CUSTOMER", 200},
+		{"PATCH", `{"delta":1}`, "cust-001", "CUSTOMER", 200},
+		{"GET", "", "merchant-001", "MERCHANT", 404},
+		{"PATCH", `{"delta":1}`, "merchant-001", "MERCHANT", 404},
+		{"GET", "", "merchant-005", "MERCHANT", 200},
+		{"GET", "", "ops-01", "OPERATIONS", 200},
+		{"GET", "", "", "", 404},
+	} {
+		response := serviceRequest(s, tc.method, "/inventory/stock/ITM-501", tc.body, tc.subject, tc.roles, "")
+		if response.Code != tc.status {
+			t.Errorf("%s role=%s stock: %d want %d", tc.method, tc.roles, response.Code, tc.status)
+		}
+	}
+}

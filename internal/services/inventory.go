@@ -191,7 +191,12 @@ func (d *inventory) handle(r *http.Request, body []byte) result {
 	}
 	if id, ok := oneID(path, "/inventory/stock/"); ok && (r.Method == "GET" || r.Method == "PATCH") {
 		stock := d.item(id)
-		if stock == nil || (!hasRole(r, "OPERATIONS") && !ownsMerchant(r, stock.Item.Merchant)) {
+		if stock == nil || r.Header.Get("X-Gateway-Subject") == "" {
+			return notFound()
+		}
+		// Authorization is the gateway's decision, including temporary grants.
+		// Only merchant ownership belongs here; Operations can see all stores.
+		if hasRole(r, "MERCHANT") && !hasRole(r, "OPERATIONS") && !ownsMerchant(r, stock.Item.Merchant) {
 			return notFound()
 		}
 		if stock.Stock == nil {

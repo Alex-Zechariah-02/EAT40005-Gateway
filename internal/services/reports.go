@@ -69,6 +69,9 @@ func (d *reports) handle(r *http.Request, body []byte) result {
 	if !slices.Contains([]string{"/reports/merchant", "/reports/summary", "/reports/sales", "/reports/top-items"}, r.URL.Path) {
 		return notFound()
 	}
+	if r.Header.Get("X-Gateway-Subject") == "" {
+		return notFound()
+	}
 	q, ok := query(r, "from", "to", "limit")
 	if !ok || r.URL.Path != "/reports/top-items" && q.Has("limit") {
 		return invalidQuery()
@@ -102,8 +105,6 @@ func (d *reports) handle(r *http.Request, body []byte) result {
 			return notFound()
 		}
 		merchantID = *user.Merchant
-	} else if !hasRole(r, "OPERATIONS") {
-		return notFound()
 	}
 	orders, err := d.load(r.Context())
 	if err != nil {

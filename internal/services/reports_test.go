@@ -53,3 +53,37 @@ func TestReportsContractAndLiveOrders(t *testing.T) {
 		t.Fatalf("live aggregation: count %d -> %d, revenue %d -> %d", before, after, revenue, total)
 	}
 }
+
+func TestPlatformReportsHonorGatewayPermission(t *testing.T) {
+	_, orderService := newCommerce(t)
+	server := httptest.NewServer(orderService)
+	defer server.Close()
+	reportService, err := New(Config{Name: "reports", Secret: testSecret, OrdersURL: server.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reportService.data.(*reports).close()
+	for _, caller := range []struct{ subject, roles string }{{"cust-001", "CUSTOMER"}, {"rider-01", "RIDER"}, {"merchant-001", "MERCHANT"}, {"support-01", "SUPPORT"}, {"ops-01", "OPERATIONS"}} {
+		for _, path := range []string{"/reports/summary", "/reports/sales", "/reports/top-items"} {
+			response := serviceRequest(reportService, "GET", path, "", caller.subject, caller.roles, "")
+			if response.Code != 200 {
+				t.Errorf("gateway-permitted %s %s: %d", caller.roles, path, response.Code)
+			}
+		}
+	}
+	if response := serviceRequest(reportService, "GET", "/reports/summary", "", "", "OPERATIONS", ""); response.Code != 404 {
+		t.Fatal("Reports accepted missing forwarded identity")
+	}
+	if response := serviceRequest(reportService, "GET", "/reports/merchant", "", "cust-001", "CUSTOMER", ""); response.Code != 404 {
+		t.Fatal("customer acquired an unowned merchant report")
+	}
+	for _, owner := range []struct{ subject, merchant string }{{"merchant-001", "MER-001"}, {"merchant-005", "MER-005"}} {
+		response := serviceRequest(reportService, "GET", "/reports/merchant", "", owner.subject, "MERCHANT", "")
+		var view struct {
+			Merchant string `json:"merchant"`
+		}
+		if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &view) != nil || view.Merchant != owner.merchant {
+			t.Fatal("merchant report did not retain store ownership")
+		}
+	}
+}

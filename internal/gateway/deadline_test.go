@@ -216,6 +216,7 @@ func TestExpiredProvisionalAdmitsNothing(t *testing.T) {
 	for time.Now().Before(expiring.Deadline.Add(1500 * time.Millisecond)) {
 		sent := time.Now()
 		code, _ := e.request(http.MethodPost, "/a/item", "application/json", `{}`, "Authorization", bobToken)
+		received := time.Now()
 		atOrAfter := !sent.Before(expiring.Deadline)
 		switch {
 		case code == http.StatusOK && atOrAfter:
@@ -226,7 +227,12 @@ func TestExpiredProvisionalAdmitsNothing(t *testing.T) {
 			refusedAfter++
 		case code == http.StatusServiceUnavailable && expiring.Deadline.Sub(sent) < 200*time.Millisecond:
 			// Sent just before the deadline but captured by the gateway at or
-			// after it: refusing it is correct.
+			// after it: refusing it is correct and may trigger rollback before
+			// the next send. Count this observed expiry refusal too.
+			if received.Before(expiring.Deadline) {
+				t.Fatalf("expiry refusal arrived before the deadline: %v", received.Sub(expiring.Deadline))
+			}
+			refusedAfter++
 		case code == http.StatusForbidden && atOrAfter:
 			baseAfter++
 		default:
