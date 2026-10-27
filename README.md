@@ -37,7 +37,7 @@ A policy can pass all checks and still cause problems when it is in use. Adminis
 
 ## Build and test
 
-You need Go 1.26 or newer. `go.mod` names Go 1.27.3 as the toolchain, because it fixes security issues in the standard HTTP, TLS and certificate packages the gateway uses; an older `go` command downloads and uses it automatically. Programs live in `cmd/`, with shared code in `internal/gateway` and `internal/services`. The preserved controlled APIs for gateway regression tests live in `internal/services/testfixture`. The two web applications are in `dashboard/` and `client/`.
+You need Go 1.26 or newer. `go.mod` selects the Go 1.27.3 toolchain; with `GOTOOLCHAIN=auto`, Go uses or downloads that toolchain when needed. Programs live in `cmd/`, with shared code in `internal/gateway` and `internal/services`. The preserved controlled APIs for gateway regression tests live in `internal/services/testfixture`. The two web applications are in `dashboard/` and `client/`.
 
 - `cmd/gateway` runs the gateway from one strict JSON configuration file. It has the commands `run`, `install`, `enrol`, `backup`, `restore` and `migrate`, each with `--config <file>`. The local commands `install`, `enrol`, `backup`, `restore` and `migrate` run while the gateway is stopped.
 - `cmd/services -service inventory|orders|reports|support -secret-file <service.secret>` runs a Fetch business API, with independent authenticated receipts, state and reset. Defaults honor `EAT_PORT_OFFSET`; `-listen` and `-control` select explicit loopback addresses. Orders uses `-inventory <http-origin>` and Reports uses `-orders <http-origin>` for authenticated internal calls.
@@ -52,12 +52,23 @@ go build -trimpath -o <out-dir>/services.exe ./cmd/services
 go build -trimpath -o <out-dir>/accounts.exe ./cmd/accounts
 go build -trimpath -o <out-dir>/testfixture.exe ./cmd/testfixture
 go build -trimpath -o <out-dir>/demo.exe ./cmd/demo
+go build -trimpath -o <out-dir>/measure.exe ./cmd/measure
+```
+
+`-trimpath` keeps local build directory names out of the programs. Reproducing an identical binary also requires the same source, toolchain, dependencies, build flags and environment.
+
+Run the required Go checks from the repository root. In PowerShell, give backend verification its isolated port offset:
+
+```powershell
+$env:EAT_PORT_OFFSET='1000'
+go mod verify
+gofmt -l cmd internal
+go vet ./...
+go vet -tags faultinject ./...
 go test ./... -count=1
 ```
 
-`-trimpath` keeps local directory names out of the programs, so the same source gives the same files wherever it is built.
-
-The tests start the real gateway and the three test APIs as separate processes on this computer. Each test API keeps its own record of every request it receives. The tests use these records to show that a rejected request never reaches an API. The tests sign their own tokens with keys made in memory for each run, so no signing key is stored anywhere. Administrator passwords in the tests are also made fresh for each run.
+`gofmt -l` must print nothing. The gateway regression tests start real gateway and controlled API processes and check independent request receipts. The Fetch integration test starts all five services and walks the role flows, refusals, policy changes, blocks, keys and resets. Tests use isolated synthetic identities and temporary state: the controlled-test issuer is in memory, while real Accounts tests create private signing files in temporary directories. No application signing key is shipped in source. Race and optional WSL checks have separate evidence; an unrun platform check is not implied by a passing Windows suite.
 
 The dashboard is in `dashboard/` and the website in `client/` (React and TypeScript, built with Vite). Each has its own browser tests, which drive a real demonstration made by `cmd/demo` (see their READMEs). To run the demonstration by hand, put the dashboard build in `<web-dir>/admin` and the website build in `<web-dir>/demo`, then:
 

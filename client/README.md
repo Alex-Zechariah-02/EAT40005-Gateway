@@ -44,7 +44,7 @@ npm audit
 
 - `npm run dev` serves the app at `http://localhost:5174/` and forwards the API paths to a running gateway at `http://127.0.0.2:9480` (start it with `go run ./cmd/demo up -home <folder>` from the repository root).
 - `npm run dev:mock` runs the app on a development stand-in for the gateway and services (`src/dev/`), for building screens without the backend. It is never part of a production build and is never test evidence.
-- `npm run preview` serves a build at `http://127.0.0.1:5175/` with the gateway's exact content policy header, to catch policy violations early.
+- `npx vite preview` serves an existing build at `http://127.0.0.1:5175/` with the gateway's exact content policy header, to catch policy violations early. There is no `preview` npm script; this invokes the locally installed Vite command.
 
 ## Browser tests
 
