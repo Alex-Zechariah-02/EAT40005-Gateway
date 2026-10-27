@@ -6,7 +6,6 @@ import { Link } from '../lib/router'
 import { call } from '../lib/session'
 import type { Order } from '../lib/types'
 import { OrderBadge } from '../ui/badge'
-import { Button } from '../ui/button'
 import { cx } from '../ui/cx'
 import { ProblemNotice } from '../ui/notice'
 
@@ -65,7 +64,7 @@ export function useAction(onDone: () => void) {
     }
     onDone()
   }
-  return { busy, problem, done, run, clear: () => setProblem(null) }
+  return { busy, problem, done, run }
 }
 
 // OrderCard shows one order as the person looking at it needs it: a shop
@@ -123,8 +122,4 @@ export function Column({ title, hint, count, children }: { title: string; hint: 
       {children}
     </section>
   )
-}
-
-export function ActionButton({ label, busy, busyLabel, onClick, variant = 'primary' }: { label: string; busy: boolean; busyLabel: string; onClick: () => void; variant?: 'primary' | 'secondary' }) {
-  return <Button block variant={variant} busy={busy} busyLabel={busyLabel} onClick={onClick}>{label}</Button>
 }

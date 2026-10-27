@@ -52,7 +52,7 @@ const service: Record<string, string> = {
   invalid_credentials: 'That email and password don’t match a Fetch account.',
   invalid_change: 'There’s nothing to change.',
   invalid_query: 'Fetch couldn’t search for that.',
-  inventory_unavailable: 'Fetch couldn’t reserve the items.',
+  inventory_unavailable: 'Fetch couldn’t confirm Inventory.',
   not_found: 'We couldn’t find this.',
 }
 
@@ -81,7 +81,7 @@ export function describe(answer: Answer<unknown>, write?: Write): Problem | null
   // A service states its own reason in a plain sentence.
   if (answer.service) {
     const title = service[answer.code] ?? 'Fetch couldn’t do this.'
-    const detail = answer.message && answer.message !== title ? answer.message : answer.code === 'inventory_unavailable' ? 'Nothing was charged and no order was created. Try again in a moment.' : null
+    const detail = answer.message && answer.message !== title ? answer.message : null
     return { ...base, title, detail, unknown: false }
   }
 

@@ -1,19 +1,7 @@
 import {
-  Stack,
-  FileText,
-  Files,
-  HourglassMedium,
   Timer,
   ClockCounterClockwise,
-  FlowArrow,
-  Funnel,
-  Path,
-  Lock,
-  Key,
   ShieldCheck,
-  Gauge,
-  ClipboardText,
-  ArrowSquareOut,
   SquaresFour,
   Pulse,
   MagnifyingGlass,
@@ -25,31 +13,20 @@ import {
   UserCircle,
 } from '@phosphor-icons/react'
 
+// The navigation's icons, one per view.
 const icons = {
-  layers: Stack,
   overview: SquaresFour,
   traffic: Pulse,
   lookup: MagnifyingGlass,
   apis: Plugs,
-  policy: FileText,
   accounts: UserMinus,
   candidates: GitDiff,
-  provisional: HourglassMedium,
   overrides: Timer,
   history: ClockCounterClockwise,
   code: Code,
   team: UsersThree,
   account: UserCircle,
-  staged: Files,
-  flow: FlowArrow,
-  form: Funnel,
-  route: Path,
-  access: Lock,
-  token: Key,
   permit: ShieldCheck,
-  rate: Gauge,
-  body: ClipboardText,
-  forward: ArrowSquareOut,
 }
 export type IconName = keyof typeof icons
 

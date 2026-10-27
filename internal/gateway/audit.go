@@ -397,6 +397,8 @@ func (a *auditLog) stamp(e Event) Event {
 		e.Path = e.Path[:maxLoggedPath]
 		e.Truncated = true
 	}
+	// A substring can retain the complete request target's backing storage.
+	e.Path = strings.Clone(e.Path)
 	return e
 }
 

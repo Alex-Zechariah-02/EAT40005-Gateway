@@ -66,7 +66,7 @@ func (e *env) confirmPolicy(s adminSession, policy Policy, parent int64, key str
 // storedActivations reads every activation record of a stopped gateway.
 func storedActivations(t *testing.T, path string) []activationRecord {
 	t.Helper()
-	db, err := sql.Open("sqlite", "file:"+path)
+	db, err := sql.Open("sqlite", databaseURI(path))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestActivationAndConfirmation(t *testing.T) {
 	}
 
 	// Ordinary traffic, reads, a retried activation, a refused second
-	// activation and refused membership edits do not confirm or extend it.
+	// activation and an account block do not confirm or extend it.
 	for range 10 {
 		e.expectEnforced(true, activated.Generation)
 	}

@@ -35,11 +35,19 @@ func newProcessGroup(cmd *exec.Cmd) {
 }
 
 func interruptProcess(cmd *exec.Cmd) error {
-	generate := syscall.NewLazyDLL("kernel32.dll").NewProc("GenerateConsoleCtrlEvent")
-	if ok, _, err := generate.Call(syscall.CTRL_BREAK_EVENT, uintptr(cmd.Process.Pid)); ok == 0 {
-		return err
+	return windows.GenerateConsoleCtrlEvent(windows.CTRL_BREAK_EVENT, uint32(cmd.Process.Pid))
+}
+
+func lockEarlierDemoFile(path string) (*os.File, error) {
+	file, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		return nil, err
 	}
-	return nil
+	if err := windows.LockFileEx(windows.Handle(file.Fd()), windows.LOCKFILE_EXCLUSIVE_LOCK|windows.LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &windows.Overlapped{}); err != nil {
+		file.Close()
+		return nil, err
+	}
+	return file, nil
 }
 
 // The new directory receives its DACL atomically, before any signing key is

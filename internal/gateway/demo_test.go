@@ -156,7 +156,7 @@ func TestNativeDemoCommands(t *testing.T) {
 			t.Fatal("native gateway did not stop cleanly, or disclosed a token")
 		}
 	}
-	// A gateway crash must stop the launcher and its three remaining children.
+	// A gateway crash must stop the launcher and its remaining service children.
 	_, input, exited, runOutput := startDemo(t, dir)
 	for line := range strings.Lines(runOutput.String()) {
 		fields := strings.Fields(line)

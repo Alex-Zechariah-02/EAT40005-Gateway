@@ -34,13 +34,14 @@ export function Button({
   block,
   busy,
   busyLabel,
+  disabled,
   className,
   children,
   type = 'button',
   ...rest
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: Size; block?: boolean; busy?: boolean; busyLabel?: ReactNode }) {
   return (
-    <button type={type} className={cx(buttonClass(variant, size, block), className)} disabled={busy || rest.disabled} aria-busy={busy || undefined} {...rest}>
+    <button type={type} className={cx(buttonClass(variant, size, block), className)} disabled={busy || disabled} aria-busy={busy || undefined} {...rest}>
       {busy && <span className="size-4 animate-spin rounded-full border-2 border-current border-r-transparent" aria-hidden="true" />}
       {busy && busyLabel ? busyLabel : children}
     </button>

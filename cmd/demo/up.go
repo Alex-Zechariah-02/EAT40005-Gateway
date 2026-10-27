@@ -36,7 +36,7 @@ var websites = []struct{ page, folder string }{
 }
 
 // up runs the whole local demonstration with one command. It builds the
-// gateway, the fetchServices and both websites from the current sources, creates
+// gateway, the services and both websites from the current sources, creates
 // the demonstration the first time and then establishes its baseline policy
 // through the Admin API, prints the public demo accounts and runs everything until
 // interrupted. Later runs reuse the administrator and policy; services restart from seed.
@@ -77,6 +77,17 @@ func up(args []string) error {
 	if err != nil && !firstRun {
 		return err
 	}
+	earlierSetup := false
+	if !firstRun {
+		if err := checkDemo(state); err != nil {
+			lock, earlierErr := lockUnfinishedEarlierDemo(state)
+			if earlierErr != nil {
+				return errors.Join(err, earlierErr)
+			}
+			lock.Close()
+			firstRun, earlierSetup = true, true
+		}
+	}
 
 	// The password is chosen before anything is created, so stopping here
 	// leaves nothing half set up.
@@ -97,6 +108,13 @@ func up(args []string) error {
 	}
 	secret := ""
 	if firstRun {
+		if earlierSetup {
+			preserved, err := preserveUnfinishedEarlierDemo(state)
+			if err != nil {
+				return err
+			}
+			fmt.Println("Preserved the unfinished earlier setup in", preserved)
+		}
 		var install bytes.Buffer
 		if err := createDemo(state, web, programs.gateway, upAdmin, &install); err != nil {
 			return err
@@ -126,10 +144,7 @@ func up(args []string) error {
 		cancel()
 		return errors.Join(err, <-finished)
 	}
-	if err := printSignIns(state); err != nil {
-		cancel()
-		return errors.Join(err, <-finished)
-	}
+	printSignIns()
 	fmt.Printf("\nDashboard: http://%s/  (sign in as %s)\nShop:      http://%s/\nPress Ctrl+C to stop.\n", adminListen, upAdmin, dataListen)
 	if *stdin {
 		// Every password prompt is answered; the rest of the input only
@@ -327,7 +342,7 @@ func prepareGateway(state string, firstRun bool, secret, password string) error 
 	case "normal":
 		return nil
 	case "recovery_required":
-		fmt.Println("The gateway needs recovery: sign in to the Dashboard and establish a recovery base on the Candidates page.")
+		fmt.Println("The gateway needs recovery: sign in to the Dashboard and establish a recovery base on the Changes page.")
 		return nil
 	case "bootstrap_locked":
 	default:
@@ -356,7 +371,7 @@ func prepareGateway(state string, firstRun bool, secret, password string) error 
 }
 
 // printSignIns prints only the deliberately public fictional demo credentials.
-func printSignIns(state string) error {
+func printSignIns() {
 	fmt.Println("\nFetch demo accounts (all fictional). Password: FetchDemo2026!")
 	fmt.Printf("%-14s %-22s %-24s %-20s %-8s %s\n", "Subject", "Name", "Email", "Roles", "Merchant", "Home")
 	for _, user := range services.Users() {
@@ -366,7 +381,6 @@ func printSignIns(state string) error {
 		}
 		fmt.Printf("%-14s %-22s %-24s %-20s %-8s %s\n", user.ID, user.Name, user.Email, strings.Join(user.Roles, ","), merchant, user.Home)
 	}
-	return nil
 }
 
 // adminClient speaks the Admin API's protocol as the Dashboard does: the
@@ -450,7 +464,9 @@ func (a *adminClient) health() (string, error) {
 	var health struct {
 		State string `json:"state"`
 	}
-	return health.State, json.Unmarshal(reply, &health)
+	// Unmarshal first: a return statement may read health.State before the call.
+	err = json.Unmarshal(reply, &health)
+	return health.State, err
 }
 
 func (a *adminClient) enrol(secret, password string) error {
@@ -498,13 +514,14 @@ func (a *adminClient) stage(document []byte, ifMatch string) (stagedCandidate, e
 	var staged struct {
 		Candidate stagedCandidate `json:"candidate"`
 	}
-	return staged.Candidate, json.Unmarshal(reply, &staged)
+	err = json.Unmarshal(reply, &staged)
+	return staged.Candidate, err
 }
 
 // establishBaseline makes the demonstration's deny-all document the first
 // policy, then activates the baseline document and confirms it, as the
-// Dashboard's Candidates and Provisional pages would. Both documents are the
-// ones setup wrote into the demonstration directory.
+// Dashboard's Changes page would. Both documents are the ones setup wrote
+// into the demonstration directory.
 func (a *adminClient) establishBaseline(state string) error {
 	denyAllDocument, err := compactFile(filepath.Join(state, denyAllFile))
 	if err != nil {

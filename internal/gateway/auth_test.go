@@ -305,8 +305,9 @@ func TestRoleMatrixAgainstCatalogue(t *testing.T) {
 	}
 }
 
-// Role claims in a valid token, and role or identity values anywhere else in
-// the request, never add a role: only the policy's membership counts.
+// Role claims from an untrusted issuer, and role or identity values anywhere
+// else in the request, never add a role: only verified token roles that the
+// policy defines count.
 func TestForgedRolesGrantNothing(t *testing.T) {
 	e, fixtures := newFixtureEnv(t)
 
@@ -791,8 +792,8 @@ func TestRoleChangeSurvivesCrash(t *testing.T) {
 	}
 }
 
-// The gateway does not start without valid trust material, and a key is
-// replaced only by changing the file and restarting.
+// The gateway does not start without valid trust material, and changing a
+// key file alone changes nothing: keys are replaced by a reload or restart.
 func TestTrustMaterialAtStartup(t *testing.T) {
 	other := newTestIssuer(2048)
 	privateKey := filepath.Join(t.TempDir(), "private.pem")

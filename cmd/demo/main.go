@@ -532,7 +532,7 @@ func token(args []string) error {
 	if !validSubject(*subject) || *ttl != maxTokenTTL {
 		return errors.New("use a seeded subject and the fixed 15m lifetime")
 	}
-	compact, expires, err := accountToken(dir, *subject, *ttl)
+	compact, expires, err := accountToken(*subject)
 	if err != nil {
 		return err
 	}
@@ -541,10 +541,7 @@ func token(args []string) error {
 	return nil
 }
 
-func accountToken(dir, subject string, ttl time.Duration) (string, time.Time, error) {
-	if ttl != maxTokenTTL {
-		return "", time.Time{}, errors.New("Accounts tokens last 15m")
-	}
+func accountToken(subject string) (string, time.Time, error) {
 	for _, user := range services.Users() {
 		if user.ID == subject {
 			return accountLogin("http://"+fetchServices[4].listen, user.Email)

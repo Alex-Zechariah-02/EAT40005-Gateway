@@ -20,7 +20,7 @@ const (
 )
 
 // rateRule is a compiled rate rule: at most count requests per window
-// milliseconds for each verified subject.
+// milliseconds for each verified subject or each direct client address.
 type rateRule struct {
 	count  int64
 	window int64 // milliseconds

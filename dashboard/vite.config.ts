@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { adminURL, developmentPort } from '../e2e/ports.ts'
 
 // The dashboard is served by the gateway's admin listener at /, which serves
 // only index.html and flat files under /assets/.
@@ -8,15 +9,15 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: 'localhost',
-    port: 5173,
+    port: developmentPort(5173),
     strictPort: true,
     proxy: {
       '/admin': {
-        target: 'http://127.0.0.1:9440',
+        target: adminURL,
         changeOrigin: true,
         configure: (proxy) => {
           proxy.on('proxyReq', (proxyRequest) => {
-            if (proxyRequest.getHeader('origin')) proxyRequest.setHeader('origin', 'http://127.0.0.1:9440')
+            if (proxyRequest.getHeader('origin')) proxyRequest.setHeader('origin', adminURL)
           })
         },
       },

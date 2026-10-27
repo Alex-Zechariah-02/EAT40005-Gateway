@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { Money, PencilSimple, ShoppingBagOpen, Wallet } from '@phosphor-icons/react'
 import { addressErrors, setAddress, useAddress } from '../lib/address'
 import { newIdempotencyKey, outcomeOfWrite, type Answer } from '../lib/api'
@@ -107,8 +107,6 @@ function Checkout({ basket }: { basket: Basket }) {
     setAttempt(null)
   }
 
-  const lines = useMemo(() => basket.lines, [basket])
-
   return (
     <form onSubmit={submit} noValidate className="mt-8 grid grid-cols-1 items-start gap-8 lg:grid-cols-[1fr_400px]" aria-labelledby="checkout-heading">
       <div className="flex min-w-0 flex-col gap-6">
@@ -168,7 +166,7 @@ function Checkout({ basket }: { basket: Basket }) {
           {!locked && <Link to="/cart" className="flex items-center gap-1 text-sm font-semibold text-brand hover:underline"><PencilSimple size={14} aria-hidden="true" />Edit basket</Link>}
         </div>
         <ul className="mt-4 flex flex-col gap-3">
-          {lines.map((line) => (
+          {basket.lines.map((line) => (
             <li key={line.item} className={cx('flex items-center gap-3 rounded-xl', badLine === line.item && 'bg-bad-soft p-2 ring-1 ring-bad')}>
               <Photo id={line.item} className="size-11 shrink-0 rounded-lg" />
               <p className="min-w-0 flex-1 text-sm"><span className="font-bold tabular-nums">{line.quantity} ×</span> {line.name}</p>

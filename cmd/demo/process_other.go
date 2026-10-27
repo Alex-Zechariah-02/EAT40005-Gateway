@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+
+	"golang.org/x/sys/unix"
 )
 
 // readSecretLine reads one line from the terminal without showing it. Input
@@ -33,6 +35,18 @@ func newProcessGroup(*exec.Cmd) {}
 
 func interruptProcess(cmd *exec.Cmd) error {
 	return cmd.Process.Signal(os.Interrupt)
+}
+
+func lockEarlierDemoFile(path string) (*os.File, error) {
+	file, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		return nil, err
+	}
+	if err := unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+		file.Close()
+		return nil, err
+	}
+	return file, nil
 }
 
 func privateDirectory(path string) error {

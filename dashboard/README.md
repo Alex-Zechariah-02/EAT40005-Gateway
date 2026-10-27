@@ -64,11 +64,18 @@ The gateway serves the dashboard under a strict content policy (`default-src 'no
 
 ## Browser tests
 
-The tests in `e2e/` build the gateway, the Fetch services and Fetch Accounts from a clean export of the last commit (`git archive HEAD`), so uncommitted work never reaches the programs under test, and run them through the repository's demo tool with the Fetch baseline policy. They check what the dashboard shows against the Admin API, the services' own receipts and the gateway's security events, including the content policy, session cookie, CSRF, Origin and Host rules, unknown outcomes, storage and accessibility at phone, tablet and desktop widths. They run serially on fixed loopback ports (`127.0.0.1:9440`, `127.0.0.2:9480`, `127.0.0.1:9450`, a second gateway at `127.0.0.1:9441`, `127.0.0.2:9481` and `127.0.0.1:9451`, and the services at `127.0.0.1:9501` to `9505` with their control listeners at `9601` to `9605`), so run one suite at a time.
+The tests in `e2e/` run the gateway, Fetch services and Fetch Accounts through the repository's demo tool with the Fetch baseline policy. They check what the dashboard shows against the Admin API, the services' own receipts and the gateway's security events, including the content policy, session cookie, CSRF, Origin and Host rules, unknown outcomes, storage and accessibility at phone, tablet and desktop widths.
+
+By default, the backend is built from an isolated export of `HEAD`; uncommitted Go changes are excluded. Set `E2E_BACKEND_SOURCE=worktree` to snapshot the current `cmd/`, `internal/`, `go.mod` and `go.sum`, including non-ignored new files. The shared helpers in the root `e2e/` directory record the selected commit, source mode, input-file hashes and diff hash, and refuse a worktree snapshot that changes during copying.
+
+`EAT_PORT_OFFSET` shifts every backend address, including the second gateway used for short-session tests and the development proxy target. `E2E_DEV_PORT` selects the development server's port (default 5173). Run one browser suite at a time; its demonstrations own the selected backend ports. For example, to verify local backend changes on isolated ports:
 
 ```powershell
+$env:EAT_PORT_OFFSET='1000'
+$env:E2E_BACKEND_SOURCE='worktree'
+$env:E2E_DEV_PORT='15173'
 npm run build
 npm run e2e
 ```
 
-The demo tool also needs a website build; the helper builds `../client`, unless `WEBSITE_DIST` names a built client to use instead. Optional: `E2E_EVIDENCE` names a file for JSON-lines evidence (statuses, receipts and event fields, never secrets), and `E2E_SHOTS` a directory for screenshots. Pages taller than 16,000 pixels are captured as viewport images with a JSON manifest of their scroll positions, avoiding Chrome's tall-image repetition.
+The tests serve `dist/`, or the existing build named by `E2E_APP_DIST`. The demo tool also needs a website build; the helper builds `../client`, unless `WEBSITE_DIST` names a built client to use instead. Optional: `E2E_EVIDENCE` names a file for JSON-lines evidence (backend source manifests, statuses, receipts and event fields, never secrets), and `E2E_SHOTS` a directory for screenshots. Pages taller than 16,000 pixels are captured as viewport images with a JSON manifest of their scroll positions, avoiding Chrome's tall-image repetition.

@@ -125,7 +125,6 @@ func TestSignatureAndAlgorithm(t *testing.T) {
 		{"genuine RS256 token signed by hand", valid, ""},
 		{"signature bit flipped", badSignature, "invalid_signature"},
 		{"payload replaced after signing", swappedPayload, "invalid_signature"},
-		{"signed by an untrusted RSA key", other.signRaw(`{"alg":"RS256","kid":"test-a"}`, payload), "invalid_signature"},
 		{"untrusted key named by a trusted kid", other.signRaw(`{"alg":"RS256","kid":"test-a"}`, payload), "invalid_signature"},
 		{"alg none with a fake signature", encodeSegment(`{"alg":"none"}`) + "." + encodeSegment(payload) + ".AAAA", "unsupported_header"},
 		{"alg None", encodeSegment(`{"alg":"None"}`) + "." + encodeSegment(payload) + ".AAAA", "unsupported_header"},

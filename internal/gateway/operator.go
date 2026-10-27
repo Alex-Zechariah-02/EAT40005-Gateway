@@ -378,7 +378,7 @@ func checkBackup(backup string) (backupManifest, error) {
 	if manifest.SchemaVersion != databaseVersion {
 		return manifest, fmt.Errorf("the backup has schema version %d, this gateway needs %d", manifest.SchemaVersion, databaseVersion)
 	}
-	db, err := sql.Open("sqlite", "file:"+backup+"?mode=ro&_pragma=foreign_keys(ON)")
+	db, err := sql.Open("sqlite", databaseURI(backup)+"?mode=ro&_pragma=foreign_keys(ON)")
 	if err != nil {
 		return manifest, err
 	}
@@ -432,7 +432,7 @@ func checkLive(live, installation string) error {
 
 // copyDatabase copies a database file through SQLite into a new file.
 func copyDatabase(source, target string) error {
-	db, err := sql.Open("sqlite", "file:"+source+"?mode=ro")
+	db, err := sql.Open("sqlite", databaseURI(source)+"?mode=ro")
 	if err != nil {
 		return err
 	}
@@ -479,7 +479,7 @@ func removeStagedDatabase(path, installation string) error {
 	} else if err != nil {
 		return err
 	}
-	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro&_pragma=foreign_keys(ON)")
+	db, err := sql.Open("sqlite", databaseURI(path)+"?mode=ro&_pragma=foreign_keys(ON)")
 	if err != nil {
 		return err
 	}

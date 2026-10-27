@@ -1170,8 +1170,8 @@ func TestRateOverrideKeepsCounters(t *testing.T) {
 	if got := e.sendAs("alice", http.MethodGet, "/a/x", "", 1); !statusesAre(got, 429) {
 		t.Fatalf("alice after the expiry: %v", got)
 	}
-	// The unrelated change survived the expiry: dave is a member, with his
-	// own counter under the base count.
+	// Dave's READER role, from his token, keeps its own counter under the
+	// base count after the expiry.
 	if got := e.sendAs("dave", http.MethodGet, "/a/x", "", 5); !statusesAre(got, 200, 200, 200, 200, 429) {
 		t.Fatalf("dave after the expiry: %v", got)
 	}

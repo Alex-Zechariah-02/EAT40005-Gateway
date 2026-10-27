@@ -4,9 +4,9 @@
 
 export type Answer<T> =
   | { kind: 'ok'; status: number; data: T; ref: string | null; service: string | null }
-  // A 4xx: the gateway (no X-Service header) or a service refused the request.
+  // A definite refusal by the gateway (no X-Service header) or a service.
   | { kind: 'refused'; status: number; code: string; message: string | null; field: string | null; ref: string | null; service: string | null }
-  // A 5xx: the gateway or a service could not complete the request.
+  // A 5xx without a definite write outcome from the gateway or service.
   | { kind: 'failed'; status: number; code: string; message: string | null; ref: string | null; service: string | null }
   // Nothing came back: the request may or may not have reached its service.
   | { kind: 'no-answer'; reason: 'timeout' | 'network' }
@@ -70,16 +70,17 @@ export async function send<T>(request: Request): Promise<Answer<T>> {
   if (response.ok) return { kind: 'ok', status: response.status, data: parsed as T, ref, service }
   const code = typeof fields.error === 'string' ? fields.error : `http_${response.status}`
   const message = typeof fields.message === 'string' ? fields.message : null
-  if (response.status < 500) {
+  // Only checkout's Inventory failure guarantees no order or charge. A cancel
+  // can return the same code after cancelling and refunding the order while
+  // its stock release is still pending.
+  const checkoutRefused = response.status === 503 && service === 'orders' && code === 'inventory_unavailable'
+    && request.method === 'POST' && request.path === '/orders'
+  if (response.status < 500 || checkoutRefused) {
     const field = typeof fields.field === 'string' ? fields.field : null
     return { kind: 'refused', status: response.status, code, message, field, ref, service }
   }
   return { kind: 'failed', status: response.status, code, message, ref, service }
 }
-
-// Service answers that state a definite outcome even though they are 5xx.
-// Orders' 503 inventory_unavailable promises nothing was charged or created.
-const definiteServiceFailures = new Set(['inventory_unavailable'])
 
 // outcomeOfWrite says what the person may conclude about a change they asked
 // for. Only a success or a refusal is definite. A missing answer, or a
@@ -88,7 +89,6 @@ const definiteServiceFailures = new Set(['inventory_unavailable'])
 export function outcomeOfWrite(answer: Answer<unknown>): 'done' | 'refused' | 'unknown' {
   if (answer.kind === 'ok') return 'done'
   if (answer.kind === 'refused') return 'refused'
-  if (answer.kind === 'failed' && answer.service && definiteServiceFailures.has(answer.code)) return 'refused'
   return 'unknown'
 }
 

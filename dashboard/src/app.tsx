@@ -66,7 +66,6 @@ const titles: Record<View, string> = {
   designer: 'Policy',
   policy: 'Policy revisions',
   candidates: 'Changes',
-  provisional: 'Changes',
   overrides: 'Temporary rules',
   accounts: 'Accounts',
   history: 'History',
@@ -77,13 +76,14 @@ const titles: Record<View, string> = {
 
 // Views reached from another page rather than the navigation light up the
 // navigation item they belong to.
-const section: Partial<Record<View, View>> = { policy: 'designer', provisional: 'candidates' }
+const section: Partial<Record<View, View>> = { policy: 'designer' }
 
 // The open view is kept in the address fragment, so a reload or the
 // browser's back button returns to it. The fragment is never sent to the
 // server; a view may keep its search there (#/lookup?ref=...).
 function viewFromHash(): View {
   const id = window.location.hash.replace(/^#\/?/, '').split('?')[0]
+  // The former page for a change on trial is now part of Changes.
   if (id === 'provisional') return 'candidates'
   return id in titles ? (id as View) : 'overview'
 }

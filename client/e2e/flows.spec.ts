@@ -217,6 +217,8 @@ test.describe.serial('Fetch roles on the real services', () => {
     const markup = '<img src=x onerror=alert(1)> missing'
     await aisyah.getByLabel('What is it about?').fill(markup)
     await aisyah.getByLabel('What happened?').fill('The sambal was missing.')
+    // ORD-1001 is a cash order that was never delivered: nothing was paid.
+    await aisyah.getByRole('combobox', { name: /^Order\b/ }).selectOption('ORD-1001')
     await aisyah.getByRole('button', { name: 'Send to Fetch support' }).click()
     await aisyah.waitForURL(/\/help\/TKT-\d+$/)
     const ticket = new URL(aisyah.url()).pathname.split('/').pop()!
@@ -226,6 +228,10 @@ test.describe.serial('Fetch roles on the real services', () => {
     const panel = nurul.getByRole('region', { name: 'Ticket', exact: true })
     await expect(panel.getByRole('heading', { name: markup })).toBeVisible()
     expect(await nurul.locator('img[src="x"]').count()).toBe(0)
+    const linked = panel.getByRole('heading', { name: 'Linked order' }).locator('..')
+    await expect(linked).toContainText('ORD-1001')
+    await expect(linked).toContainText('cash on delivery')
+    await expect(linked).not.toContainText('Paid')
     await panel.getByLabel('Reply to the customer').fill('Sorry about that; we have refunded it.')
     await panel.getByRole('button', { name: 'Send reply' }).click()
     await expect(panel.getByRole('list', { name: 'Conversation' })).toContainText('we have refunded it')
@@ -276,15 +282,27 @@ test.describe.serial('Fetch roles on the real services', () => {
     const earlier = await kopitiam.count()
     await addToBasket(priya, siteURL, 'MER-003', 'Kopi O Peng')
     const before = (await demo.receipts('orders')).length
+    let releaseResponse!: () => void
+    let received!: () => void
+    const pendingResponse = new Promise<void>((done) => { releaseResponse = done })
+    const reached = new Promise<void>((done) => { received = done })
     await priya.route('**/orders', async (route) => {
       if (route.request().method() !== 'POST') return route.continue()
       await route.fetch()
+      received()
+      await pendingResponse
       await route.abort('connectionreset')
     })
     await priya.goto(siteURL + '/checkout', { waitUntil: 'networkidle' })
     await priya.getByLabel('Street address').fill('12 Jalan Telawi 3')
     await priya.getByLabel('Postcode').fill('59100')
-    await priya.getByRole('button', { name: /^Place order · RM / }).click()
+    try {
+      await priya.getByRole('button', { name: /^Place order · RM / }).click()
+      await reached
+      await expect(priya.getByRole('button', { name: 'Placing your order…' })).toBeDisabled()
+    } finally {
+      releaseResponse()
+    }
     const unknown = priya.getByRole('alert').filter({ hasText: 'No answer about your order.' })
     await expect(unknown).toContainText('It may or may not have been placed.')
     await priya.waitForTimeout(5000)
@@ -454,6 +472,48 @@ test.describe.serial('Fetch roles on the real services', () => {
         }
       }
       await page.setViewportSize({ width: 1440, height: 900 })
+    }
+  })
+
+  test('a cancellation with Inventory unavailable stays uncertain while a failed checkout is a definite refusal', async ({ browser }) => {
+    const daniel = await person(browser, 'daniel@fetch.test')
+    await addToBasket(daniel, siteURL, 'MER-005', 'Full Cream Milk 1 L')
+    const order = await placeOrder(daniel, siteURL, 'Fetch wallet')
+    const before = (await demo.receipts('orders')).length
+    const charged = (await demo.state('orders')).data as { wallets: Record<string, number> }
+
+    const priya = await person(browser, 'priya@fetch.test')
+    await addToBasket(priya, siteURL, 'MER-005', 'Full Cream Milk 1 L')
+    await priya.goto(siteURL + '/checkout', { waitUntil: 'networkidle' })
+    await priya.getByLabel('Street address').fill('12 Jalan Telawi 3')
+    await priya.getByLabel('Postcode').fill('59100')
+
+    // Stop only this test's Inventory process. Orders and its independent
+    // control surface remain live; no response or application is patched.
+    process.kill(demo.pids['inventory'])
+    try {
+      await daniel.getByRole('button', { name: 'Cancel order' }).click()
+      await daniel.getByRole('dialog').getByRole('button', { name: 'Cancel order' }).click()
+      await expect(daniel.getByRole('heading', { level: 1 })).toHaveText('Order cancelled')
+      const state = (await demo.state('orders')).data as { orders: { id: string; status: string; total_sen: number }[]; wallets: Record<string, number> }
+      const cancelled = state.orders.find((entry) => entry.id === order)!
+      expect(cancelled.status).toBe('cancelled')
+      expect(state.wallets['cust-002']).toBe(charged.wallets['cust-002'] + cancelled.total_sen)
+      const unknown = daniel.getByRole('alert').filter({ hasText: 'Fetch couldn’t confirm cancelling this order.' })
+      await expect(unknown).toContainText('It may or may not have been cancelled.')
+      await expect(unknown).toContainText('Answered by Orders · 503')
+      await daniel.waitForTimeout(3000)
+      const sent = (await since('orders', before)).filter((r) => r.method === 'POST' && r.target === `/orders/cancel/${order}`)
+      expect(sent).toHaveLength(1)
+      expect(sent[0].status).toBe(503)
+
+      await priya.getByRole('button', { name: /^Place order · RM / }).click()
+      await expect(priya.getByRole('alert').filter({ hasText: 'Inventory could not confirm this request.' })).toContainText('Answered by Orders · 503')
+      await expect(priya.getByRole('button', { name: 'Send the same order again' })).toHaveCount(0)
+      record('inventory-unavailable-outcomes', { order, cancellationReceipt: sent[0].request_id })
+    } finally {
+      await demo.stop()
+      await demo.start()
     }
   })
 

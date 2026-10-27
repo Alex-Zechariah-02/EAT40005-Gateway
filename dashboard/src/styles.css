@@ -599,8 +599,7 @@ code.tag {
   margin-bottom: 16px;
 }
 
-.field > label,
-.checks > legend {
+.field > label {
   display: block;
   margin-bottom: 6px;
   padding: 0;
@@ -699,12 +698,6 @@ textarea.input {
 
 .field-wide .input {
   max-width: 38rem;
-}
-
-.checks {
-  margin: 0 0 16px;
-  padding: 0;
-  border: 0;
 }
 
 .check {
@@ -1640,10 +1633,6 @@ dialog h2 {
   margin-bottom: 16px;
 }
 
-.editor {
-  margin-bottom: 26px;
-}
-
 /* Overview: the status strip, three tiles side by side. */
 .strip {
   display: grid;
@@ -2503,10 +2492,6 @@ dialog h2 {
 
 .document {
   margin-top: 16px;
-}
-
-.stage-start {
-  margin: 0 0 16px;
 }
 
 /* Policy revisions: request rules per operation, and the permit matrix. */

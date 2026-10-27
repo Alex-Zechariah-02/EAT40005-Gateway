@@ -3,6 +3,7 @@ package gateway
 import (
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 )
@@ -36,6 +37,10 @@ type observedRequest struct {
 	sequence      uint64
 	assertedRoles []string // verified assertions, including roles dropped by the active policy
 	identityKnown bool     // evaluated authentication, or no credential was supplied
+	// routingPath is separate from the displayed path. One byte beyond the
+	// longest target distinguishes an exact match from a longer request; prefix
+	// matching needs no more. Empty means canonicalization did not pass.
+	routingPath string
 }
 
 type eventViewer struct {
@@ -70,7 +75,8 @@ func optionalString(value string) *string {
 
 func (o *observations) record(event Event) {
 	view := requestEvent{
-		RequestID: event.RequestID, Time: event.Time, Method: event.Method, Path: event.Path,
+		RequestID: event.RequestID, Time: event.Time, Method: event.Method,
+		Path:      strings.Clone(event.Path[:min(len(event.Path), maxLoggedPath)]),
 		Operation: optionalString(event.Operation), API: optionalString(event.API), Subject: optionalString(event.Subject),
 		Roles: slices.Clone(event.Roles), ClientAddress: event.ClientAddress, Status: event.Status,
 		Code: optionalString(event.Error), Generation: event.Generation, DurationMS: event.DurationMS,
@@ -78,8 +84,9 @@ func (o *observations) record(event Event) {
 	if view.Roles == nil {
 		view.Roles = []string{}
 	}
-	if len(view.Path) > maxLoggedPath {
-		view.Path = view.Path[:maxLoggedPath]
+	var routingPath string
+	if event.Stages[stageCanonical] == stagePass {
+		routingPath = strings.Clone(event.Path[:min(len(event.Path), maxTargetLength+1)])
 	}
 	switch event.Decision {
 	case "forwarded":
@@ -116,7 +123,7 @@ func (o *observations) record(event Event) {
 	o.next++
 	asserted := append(slices.Clone(view.Roles), event.IgnoredRoles...)
 	slices.Sort(asserted)
-	request := observedRequest{requestEvent: view, sequence: o.next, assertedRoles: asserted, identityKnown: event.identityKnown}
+	request := observedRequest{requestEvent: view, sequence: o.next, assertedRoles: asserted, identityKnown: event.identityKnown, routingPath: routingPath}
 	o.ring[(o.next-1)%recentEventLimit] = request
 	if o.count < recentEventLimit {
 		o.count++
@@ -178,10 +185,10 @@ func (o *observations) close() {
 // previewDecision shares canonical matching and permit evaluation with the
 // request pipeline. It deliberately does not touch counters or validate bodies.
 func (g *Generation) previewDecision(event observedRequest) (decision, code, operation string, known bool) {
-	if !isCanonical(event.Path) {
+	if event.routingPath == "" {
 		return "refused", "bad_request", "", true
 	}
-	target, rule := g.match(event.Path, event.Method)
+	target, rule := g.match(event.routingPath, event.Method)
 	if target == nil {
 		return "refused", "not_found", "", true
 	}

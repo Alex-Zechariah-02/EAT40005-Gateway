@@ -634,7 +634,7 @@ func assertNativeReleased(t *testing.T, e *env, writers, admins, servers int) {
 	waitGoroutines(t, auditWriter, writers)
 	waitGoroutines(t, adminServer, admins)
 	waitGoroutines(t, "gateway.startNative.func", servers)
-	if dialable(e.dataAddr) || dialable(e.admin) {
+	if dialable(e.dataAddr) || dialable(e.admin) || dialable(e.metrics) {
 		t.Fatal("a listener is still open")
 	}
 	st, err := openStore(e.database)

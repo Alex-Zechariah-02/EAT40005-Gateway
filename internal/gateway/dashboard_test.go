@@ -128,7 +128,7 @@ func TestDashboardSetting(t *testing.T) {
 	}
 	for name, dir := range map[string]string{
 		"missing directory": filepath.Join(empty, "absent"),
-		"no index page":     filepath.Join(t.TempDir()),
+		"no index page":     t.TempDir(),
 		"a file":            notDirectory,
 	} {
 		e.writeConfig(configOptions{admin: map[string]any{"admin_ui": dir}})

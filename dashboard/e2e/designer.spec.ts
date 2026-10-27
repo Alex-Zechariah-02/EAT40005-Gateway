@@ -500,7 +500,7 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
     await expect(trace.locator('li').last()).toContainText('not reached')
     await capture('designer-trace-refused')
     await page.getByLabel('Who', { exact: true }).selectOption('role:SUPPORT')
-    await expect(trace.locator('li').last()).toContainText('127.0.0.1:9502')
+    await expect(trace.locator('li').last()).toContainText(`127.0.0.1:${9502 + Number(process.env.EAT_PORT_OFFSET ?? 0)}`)
     await capture('designer-trace-permitted')
     await page.getByLabel('What', { exact: true }).selectOption('inventory.categories')
     await page.getByLabel('Who', { exact: true }).selectOption('none')

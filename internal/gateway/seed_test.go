@@ -45,7 +45,7 @@ func seed(t *testing.T, path string, policy Policy, opts seedOptions) {
 	if opts.mode == modeRecovery {
 		episode = randomHex(16)
 	}
-	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)")
+	db, err := sql.Open("sqlite", databaseURI(path)+"?_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func revisionArgs(p Policy) []any {
 // inspect opens a stopped gateway's database for assertions.
 func inspect(t *testing.T, path string) *sql.DB {
 	t.Helper()
-	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=foreign_keys(ON)")
+	db, err := sql.Open("sqlite", databaseURI(path)+"?_pragma=foreign_keys(ON)")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func inspect(t *testing.T, path string) *sql.DB {
 // again, so the next gateway start can take its exclusive lock.
 func queryInt(t *testing.T, path, query string, args ...any) int {
 	t.Helper()
-	db, err := sql.Open("sqlite", "file:"+path)
+	db, err := sql.Open("sqlite", databaseURI(path))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func queryInt(t *testing.T, path, query string, args ...any) int {
 // queryString is queryInt for a text result.
 func queryString(t *testing.T, path, query string, args ...any) string {
 	t.Helper()
-	db, err := sql.Open("sqlite", "file:"+path)
+	db, err := sql.Open("sqlite", databaseURI(path))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +147,7 @@ func queryString(t *testing.T, path, query string, args ...any) string {
 // every result row in Go syntax, so rows compare exactly, NULL included.
 func queryRows(t *testing.T, path, query string) []string {
 	t.Helper()
-	db, err := sql.Open("sqlite", "file:"+path)
+	db, err := sql.Open("sqlite", databaseURI(path))
 	if err != nil {
 		t.Fatal(err)
 	}

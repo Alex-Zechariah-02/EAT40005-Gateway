@@ -4,7 +4,7 @@ import { createServer } from 'node:http'
 import { dirname, join, resolve as resolvePath } from 'node:path'
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Browser, type BrowserContext, type Locator, type Page } from '@playwright/test'
-import { adminURL, build, Demo, gatewayIdentity, raw, ShortSessions, siteURL, webRoot, type Receipt } from './env'
+import { adminURL, applicationDist, build, Demo, gatewayIdentity, raw, ShortSessions, siteURL, webRoot, type Receipt } from './env'
 import { activate, createOverride, dialogButton, enrol, expectLayoutOnlyStorage, go, nav, record, resolve, revisions, revokeOverride, shot, signIn, stage, trial } from './pages'
 
 // One demonstration deployment, driven in order as an operator and its
@@ -234,7 +234,7 @@ test.describe.serial('dashboard', () => {
     // Every built file is served from /assets/ with a fixed type and the
     // frontends' content policy; none is reachable on the data plane, whose
     // /assets/ holds only the Fetch app's files.
-    const index = readFileSync(resolvePath('dist', 'index.html'), 'utf8')
+    const index = readFileSync(resolvePath(applicationDist, 'index.html'), 'utf8')
     const assets = [...index.matchAll(/(?:src|href)="\/assets\/([^"]+)"/g)].map((m) => m[1])
     expect(assets.map((a) => a.split('.').pop()).sort()).toEqual(['css', 'js', 'svg'])
     const types: Record<string, string> = { js: 'text/javascript; charset=utf-8', css: 'text/css; charset=utf-8', svg: 'image/svg+xml' }
@@ -244,7 +244,7 @@ test.describe.serial('dashboard', () => {
       expect(reply.status, asset).toBe(200)
       expect(reply.headers['content-type'], asset).toBe(types[asset.split('.').pop()!])
       expect(reply.headers['content-security-policy'], asset).toBe(uiPolicy)
-      expect(reply.body, asset).toBe(readFileSync(resolvePath('dist', 'assets', asset), 'utf8'))
+      expect(reply.body, asset).toBe(readFileSync(resolvePath(applicationDist, 'assets', asset), 'utf8'))
       const onDataPlane = await raw('GET', `${siteURL}/assets/${asset}`)
       expect(onDataPlane.status, asset).toBe(404)
       expect(onDataPlane.body, asset).not.toBe(reply.body)
@@ -294,8 +294,8 @@ test.describe.serial('dashboard', () => {
     expect(page.body).not.toMatch(/revision|csrf|subject/i)
 
     // Each interface listens only on its own loopback host.
-    await expect(raw('GET', 'http://127.0.0.2:9440/')).rejects.toThrow(/ECONNREFUSED/)
-    await expect(raw('GET', 'http://127.0.0.1:9480/')).rejects.toThrow(/ECONNREFUSED/)
+    await expect(raw('GET', adminURL.replace('127.0.0.1', '127.0.0.2') + '/')).rejects.toThrow(/ECONNREFUSED/)
+    await expect(raw('GET', siteURL.replace('127.0.0.2', '127.0.0.1') + '/')).rejects.toThrow(/ECONNREFUSED/)
     expect(await demo.counts()).toEqual({ inventory: 0, orders: 0, reports: 0, support: 0, accounts: 0 })
     record('api-paths', { assets: served, probes: seen })
   })
@@ -1286,7 +1286,7 @@ test.describe.serial('dashboard', () => {
       'no origin': await put({ Cookie: cookie, 'X-CSRF-Token': csrf }),
       'no CSRF token': await put({ Cookie: cookie, Origin: adminURL }),
       'wrong CSRF token': await put({ Cookie: cookie, Origin: adminURL, 'X-CSRF-Token': 'x'.repeat(csrf.length) }),
-      'wrong host': await put({ Cookie: cookie, Origin: adminURL, 'X-CSRF-Token': csrf, Host: 'localhost:9440' }),
+      'wrong host': await put({ Cookie: cookie, Origin: adminURL, 'X-CSRF-Token': csrf, Host: `localhost:${new URL(adminURL).port}` }),
       'API token, no session': await put({ Authorization: `Bearer ${token('ops-01')}`, Origin: adminURL }),
     }
     expect(Object.fromEntries(Object.entries(cases).map(([k, v]) => [k, v.status]))).toEqual({
@@ -1693,7 +1693,7 @@ test.describe.serial('dashboard', () => {
 
     const walk = (dir: string): string[] =>
       readdirSync(dir).flatMap((name) => (statSync(join(dir, name)).isDirectory() ? walk(join(dir, name)) : [join(dir, name)]))
-    const built = [...walk(resolvePath('dist')), ...walk(join(demo.web, 'admin'))]
+    const built = [...walk(applicationDist), ...walk(join(demo.web, 'admin'))]
     for (const file of built) check(file, readFileSync(file, 'utf8'))
     for (const name of ['audit.log', 'gateway.log', 'orders.log', 'inventory.log', 'reports.log', 'support.log', 'accounts.log', 'gateway.json'])
       check(name, demo.file(name))

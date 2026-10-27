@@ -119,6 +119,16 @@ func TestFetchStackScenarios(t *testing.T) {
 		}
 		return len(view.Receipts)
 	}
+	// refused proves a gateway refusal by the service's own receipts: the
+	// service at index recorded nothing and the answer carries no X-Service.
+	refused := func(index int, method, path, body, token string, want int) {
+		t.Helper()
+		count := receiptCount(index)
+		response, _ := call(method, path, body, token, want)
+		if receiptCount(index) != count || response.Header.Get("X-Service") != "" {
+			t.Fatalf("%s %s reached the service", method, path)
+		}
+	}
 	seedHashes := make([]string, 5)
 	for i := range seedHashes {
 		var state services.State
@@ -190,7 +200,7 @@ func TestFetchStackScenarios(t *testing.T) {
 	if receiptCount(1) != before {
 		t.Fatal("invalid checkout reached Orders")
 	}
-	call("GET", "/internal/orders", "", ops, 404)
+	refused(1, "GET", "/internal/orders", "", ops, 404)
 
 	t.Log("customer stock permission is controlled by a temporary gateway grant")
 	before = receiptCount(0)
@@ -244,20 +254,20 @@ func TestFetchStackScenarios(t *testing.T) {
 
 	t.Log("containment applies, then expires")
 	e.mustOverride(root, operationContainment("orders.create", 1), policyETag(revision), "fetch-stack-contain")
-	call("POST", "/orders", checkout, customer, 403)
+	refused(1, "POST", "/orders", checkout, customer, 403)
 	waitFor(t, time.Now().Add(5*time.Second), "containment expiry", func() bool {
 		code, _ := e.get("/orders/wallet", "Authorization", "Bearer "+customer)
 		return code == 200 && len(e.activeOverrides(root).GenerationOverrides) == 0
 	})
 	// The old exhausted quota carries over; expiry removes only containment.
-	call("POST", "/orders", checkout, customer, 429)
+	refused(1, "POST", "/orders", checkout, customer, 429)
 
 	t.Log("add a Support operation through complete policy activation")
 	without := loadPolicy("baseline.json")
 	without.Operations = slices.DeleteFunc(without.Operations, func(op Operation) bool { return op.ID == "support.queue" })
 	without.Permits = slices.DeleteFunc(without.Permits, func(p Permit) bool { return p.Operation == "support.queue" })
 	revision = e.confirmPolicy(root, without, revision, "fetch-stack-without-queue").Revision
-	call("GET", "/support/queue", "", support, 404)
+	refused(3, "GET", "/support/queue", "", support, 404)
 	revision = e.confirmPolicy(root, baseline, revision, "fetch-stack-add-queue").Revision
 	call("GET", "/support/queue", "", support, 200)
 
@@ -276,7 +286,7 @@ func TestFetchStackScenarios(t *testing.T) {
 	if code, _, body = e.activate(root, staged.Candidate.candidateRecord, 1, policyETag(revision), "fetch-stack-bad-activate"); code != 200 {
 		t.Fatalf("bad activation: %d %s", code, body)
 	}
-	call("GET", "/orders/jobs", "", rider, 403)
+	refused(1, "GET", "/orders/jobs", "", rider, 403)
 	waitFor(t, time.Now().Add(5*time.Second), "automatic rollback", func() bool { code, _ := e.get("/orders/jobs", "Authorization", "Bearer "+rider); return code == 200 })
 
 	t.Log("ticket reference resolves the exact refused decision")

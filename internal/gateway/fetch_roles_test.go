@@ -1,7 +1,7 @@
 package gateway
 
 import (
-	"strings"
+	"slices"
 	"testing"
 )
 
@@ -32,32 +32,30 @@ func TestFetchRolesOnlyFromVerifiedToken(t *testing.T) {
 			if receipts[len(receipts)-1].Headers.Get("X-Gateway-Roles") != tc.forwarded {
 				t.Errorf("forwarded roles: %+v", receipts[len(receipts)-1])
 			}
-			if strings.Contains(tc.forwarded, "UNKNOWN") {
-				t.Fatal("test expects unknown role")
-			}
 		}
 	}
 	e.assertReceipts(2, 0, 0)
-	events := e.eventsWhen(func(events []map[string]any) bool {
+	droppedUnknown := func(events []map[string]any) bool {
 		for _, event := range events {
-			if event["subject"] == "outside-policy-membership" && event["ignored_roles"] != nil {
+			roles, _ := event["ignored_roles"].([]any)
+			if event["subject"] == "outside-policy-membership" && slices.Contains(roles, any("UNKNOWN")) {
 				return true
 			}
 		}
 		return false
-	})
-	for _, event := range events {
-		if event["subject"] == "outside-policy-membership" && event["ignored_roles"] != nil {
-			return
-		}
 	}
-	t.Fatal("ignored roles were not recorded")
+	if !droppedUnknown(e.eventsWhen(droppedUnknown)) {
+		t.Fatal("the dropped UNKNOWN role was not recorded")
+	}
 }
 
 func TestFetchRejectsLegacyPolicyAndSubjects(t *testing.T) {
-	for _, document := range []string{`{"schema_version":3,"profile":"core"}`, `{"schema_version":4,"profile":"core","subjects":[]}`} {
-		if _, err := DecodePolicy([]byte(document)); err == nil {
-			t.Errorf("accepted %s", document)
+	for document, want := range map[string]string{
+		`{"schema_version":3,"profile":"core"}`:               "SCHEMA_VERSION_UNSUPPORTED",
+		`{"schema_version":4,"profile":"core","subjects":[]}`: "UNKNOWN_FIELD",
+	} {
+		if _, err := DecodePolicy([]byte(document)); errorCode(err) != want {
+			t.Errorf("%s: %s, want %s", document, errorCode(err), want)
 		}
 	}
 }

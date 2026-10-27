@@ -22,8 +22,8 @@ func rate(count, windowSeconds int64) *RateRule {
 }
 
 // Rate rules compile only with a supported algorithm and key, a positive
-// bounded count and window, and an authenticated operation. Any invalid rule
-// rejects the whole policy.
+// bounded count and window, and a per-account key only on an authenticated
+// operation. Any invalid rule rejects the whole policy.
 func TestRateRuleCompilation(t *testing.T) {
 	p := threeAPIPolicy()
 	p.Operations[0].Rate = rate(10, 60)
@@ -54,7 +54,7 @@ func TestRateRuleCompilation(t *testing.T) {
 		{"token bucket", RateRule{"token-bucket", 10, 60, "subject"}, "UNSUPPORTED_FEATURE", "operations[0].rate.algorithm"},
 		{"fixed window", RateRule{"fixed-window", 10, 60, "subject"}, "UNSUPPORTED_FEATURE", "operations[0].rate.algorithm"},
 		{"missing algorithm", RateRule{"", 10, 60, "subject"}, "UNSUPPORTED_FEATURE", "operations[0].rate.algorithm"},
-		{"client address key", RateRule{"sliding-window", 10, 60, "client_ip"}, "UNSUPPORTED_FEATURE", "operations[0].rate.key"},
+		{"unsupported client_ip key", RateRule{"sliding-window", 10, 60, "client_ip"}, "UNSUPPORTED_FEATURE", "operations[0].rate.key"},
 		{"header key", RateRule{"sliding-window", 10, 60, "X-Forwarded-For"}, "UNSUPPORTED_FEATURE", "operations[0].rate.key"},
 		{"missing key", RateRule{"sliding-window", 10, 60, ""}, "UNSUPPORTED_FEATURE", "operations[0].rate.key"},
 	}
@@ -68,7 +68,7 @@ func TestRateRuleCompilation(t *testing.T) {
 		}
 	}
 
-	// No anonymous rate limiting: a public operation has no trusted key.
+	// A public operation has no verified subject to count per account.
 	p = threeAPIPolicy()
 	p.Operations[3].Rate = rate(10, 60)
 	if err := compileErr(p); errorCode(err) != "INVALID_VALUE" || err.(*PolicyError).Field != "operations[3].rate" {
@@ -409,7 +409,7 @@ func TestConcurrentAdmissionsRespectQuota(t *testing.T) {
 }
 
 // ratePolicy is the protected test policy with a rate rule on each of its
-// authenticated operations and a third subject.
+// authenticated operations and a TRIAL role for a third subject.
 func (e *env) ratePolicy(read, write *RateRule) Policy {
 	p := e.protectedPolicy()
 	p.Roles = append(p.Roles, Role{ID: "TRIAL"})
@@ -587,14 +587,14 @@ func TestEarlierRejectionsConsumeNoQuota(t *testing.T) {
 			t.Fatalf("expired token: %d", code)
 		}
 	}
-	// Carol holds READER, which has no permit for write-a: refused by RBAC.
+	// Carol holds TRIAL, which has no permit for write-a: refused by RBAC.
 	if got := e.sendAs("carol", http.MethodPost, "/a/item", `{"n":1}`, 5); !statusesAre(got, times(5, 403)...) {
 		t.Fatalf("carol before the permit: %v", got)
 	}
 	if got := e.sendAs("alice", http.MethodGet, "/a/x", "", 3); !statusesAre(got, 200, 200, 429) {
 		t.Fatalf("alice after refused tokens: %v", got)
 	}
-	// Grant READER write-a; carol's quota is untouched by the refusals.
+	// Grant TRIAL write-a; carol's quota is untouched by the refusals.
 	p := e.ratePolicy(rate(2, 60), rate(2, 60))
 	p.Permits = append(p.Permits, Permit{Role: "TRIAL", Operation: "write-a"})
 	if outcome, code := e.publish(Change{ID: "grant", Expected: 1, Policy: mustJSON(p)}); code != http.StatusOK {

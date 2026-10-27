@@ -1397,7 +1397,7 @@ func TestMigrateFromVersionThree(t *testing.T) {
 		if r.version == 3 {
 			writeVersion3Overrides(t, other.database)
 		}
-		db, err := sql.Open("sqlite", "file:"+other.database)
+		db, err := sql.Open("sqlite", databaseURI(other.database))
 		if err != nil {
 			t.Fatal(err)
 		}

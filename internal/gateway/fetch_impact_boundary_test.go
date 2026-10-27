@@ -4,8 +4,61 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 )
+
+func TestFetchImpactPreservesRequestTarget(t *testing.T) {
+	truncated := "/a/" + strings.Repeat("x", maxLoggedPath-3)
+	for _, tc := range []struct {
+		name, path string
+		status     int
+	}{
+		{"long-path", truncated + "/tail", 200},
+		{"encoded-separator", "/a/part%2Ftail", 400},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEnv(t)
+			policy := e.policy(e.a, false)
+			seed(t, e.database, policy, seedOptions{})
+			e.start(binaries.plain)
+			admin := e.mustLogin(harnessAdmin, harnessPassword)
+			if code, _ := e.get(tc.path); code != tc.status {
+				t.Fatalf("original request: %d, want %d", code, tc.status)
+			}
+			if tc.name == "long-path" {
+				// The displayed 256-byte path happens to be an exact target, but
+				// the actual longer request still belongs to the unchanged prefix.
+				policy.Operations = append(policy.Operations, Operation{ID: "exact", API: "a", Method: "GET", Target: truncated, Access: "deny", Auth: "none"})
+			} else {
+				// A fixed raw-target rejection cannot be lifted by a policy change.
+				policy.Operations[0].Access = "deny"
+			}
+			code, staged, body := e.stage(admin, policy, `"r1"`, "impact-target-candidate")
+			if code != 201 {
+				t.Fatalf("stage: %d %s", code, body)
+			}
+			code, body, _ = e.as(admin, "POST", fmt.Sprintf("/admin/candidates/%d/impact", staged.Candidate.ID), "")
+			var impact struct {
+				Flips []json.RawMessage `json:"flips"`
+			}
+			if code != 200 || json.Unmarshal([]byte(body), &impact) != nil || len(impact.Flips) != 0 {
+				t.Errorf("preview changed the request target's meaning: %d %s", code, body)
+			}
+			if code, _, body = e.activate(admin, staged.Candidate.candidateRecord, 60, `"r1"`, "impact-target-activate"); code != 200 {
+				t.Fatalf("activate: %d %s", code, body)
+			}
+			if code, _ := e.get(tc.path); code != tc.status {
+				t.Fatalf("actual request after activation: %d, want %d", code, tc.status)
+			}
+			arrivals := 0
+			if tc.status == 200 {
+				arrivals = 2
+			}
+			e.assertReceipts(arrivals, 0, 0)
+		})
+	}
+}
 
 func TestFetchImpactPreservesIndependentControls(t *testing.T) {
 	for _, blocked := range []bool{false, true} {

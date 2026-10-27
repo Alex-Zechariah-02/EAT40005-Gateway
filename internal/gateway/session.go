@@ -158,7 +158,6 @@ type session struct {
 	credential int64 // administrator credential version at login
 	csrf       string
 	reference  string // non-secret identifier recorded in audit events
-	created    time.Time
 	lastSeen   time.Time
 	expires    time.Time     // absolute end of the session
 	done       chan struct{} // closes when revoked or swept; long-lived readers stop too
@@ -197,7 +196,6 @@ func (s *sessions) create(admin string, credential int64, now time.Time) (string
 		credential: credential,
 		csrf:       newToken(),
 		reference:  hash[:16],
-		created:    now,
 		lastSeen:   now,
 		expires:    now.Add(s.lifetime),
 		done:       make(chan struct{}),

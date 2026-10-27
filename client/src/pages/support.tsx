@@ -1,5 +1,5 @@
 import { CaretRight, ChatsCircle, Receipt } from '@phosphor-icons/react'
-import { rm, when } from '../lib/format'
+import { when } from '../lib/format'
 import { describe } from '../lib/messages'
 import { useQuery } from '../lib/query'
 import { navigate, useLocation } from '../lib/router'
@@ -110,7 +110,6 @@ function TicketDetail({ id, onChanged }: { id: string; onChanged: () => void }) 
         <div>
           <h3 className="mb-2 flex items-center gap-2 font-extrabold"><Receipt size={18} aria-hidden="true" />Linked order</h3>
           {order.data ? <OrderCard order={order.data.order} view="support" wide /> : order.answer ? <ProblemNotice problem={describe(order.answer)!} /> : <Skeleton className="h-32" />}
-          {order.data && <p className="mt-2 text-xs text-ink-3">Paid {rm(order.data.order.total_sen)} by {order.data.order.payment === 'cash' ? 'cash' : 'wallet'}.</p>}
         </div>
       )}
     </div>

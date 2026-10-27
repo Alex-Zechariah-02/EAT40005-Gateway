@@ -12,7 +12,7 @@ import { BarChart } from '../ui/chart'
 import { cx } from '../ui/cx'
 import { Empty, Loading, ProblemNotice, RefreshProblem, Skeleton } from '../ui/notice'
 import { Photo } from '../ui/photo'
-import { ActionButton, Column, OrderCard, Tabs, WorkspaceTitle, useAction } from './staff'
+import { Column, OrderCard, Tabs, WorkspaceTitle, useAction } from './staff'
 
 type View = 'orders' | 'menu' | 'sales'
 
@@ -59,13 +59,13 @@ function OrdersBoard() {
         <Column title="New" hint="Accept to start preparing." count={placed.length}>
           {placed.length === 0 && <p className="px-2 pb-2 text-sm text-ink-3">No new orders. New ones appear here within seconds.</p>}
           {placed.map((o) => (
-            <OrderCard key={o.id} order={o} view="shop" problem={cardProblem(o.id)} action={<ActionButton label="Accept order" busyLabel="Accepting…" busy={action.busy === o.id} onClick={() => void action.run(o.id, `/orders/accept/${encodeURIComponent(o.id)}`, { object: `accepting ${o.id}`, done: 'accepted', check: 'Wait for the board to refresh' })} />} />
+            <OrderCard key={o.id} order={o} view="shop" problem={cardProblem(o.id)} action={<Button block busyLabel="Accepting…" busy={action.busy === o.id} onClick={() => void action.run(o.id, `/orders/accept/${encodeURIComponent(o.id)}`, { object: `accepting ${o.id}`, done: 'accepted', check: 'Wait for the board to refresh' })}>Accept order</Button>} />
           ))}
         </Column>
         <Column title="Being prepared" hint="Mark ready when it’s packed." count={accepted.length}>
           {accepted.length === 0 && <p className="px-2 pb-2 text-sm text-ink-3">Nothing in the kitchen.</p>}
           {accepted.map((o) => (
-            <OrderCard key={o.id} order={o} view="shop" problem={cardProblem(o.id)} action={<ActionButton label="Mark ready for pickup" busyLabel="Updating…" busy={action.busy === o.id} onClick={() => void action.run(o.id, `/orders/ready/${encodeURIComponent(o.id)}`, { object: `marking ${o.id} ready`, done: 'marked ready', check: 'Wait for the board to refresh' })} />} />
+            <OrderCard key={o.id} order={o} view="shop" problem={cardProblem(o.id)} action={<Button block busyLabel="Updating…" busy={action.busy === o.id} onClick={() => void action.run(o.id, `/orders/ready/${encodeURIComponent(o.id)}`, { object: `marking ${o.id} ready`, done: 'marked ready', check: 'Wait for the board to refresh' })}>Mark ready for pickup</Button>} />
           ))}
         </Column>
         <Column title="Waiting for a rider" hint="A rider picks these up from the job board." count={ready.length}>

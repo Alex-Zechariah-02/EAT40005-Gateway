@@ -396,7 +396,7 @@ function EventRows({ events, open, label }: { events: RequestEvent[]; open: (ref
                     Allowed in {e.duration_ms.toFixed(1)} ms
                   </span>
                 ) : (
-                  <span title={e.code ?? undefined}>{e.decision === 'failed' ? `${reasonOf(e.code)}` : reasonOf(e.code)}</span>
+                  <span title={e.code ?? undefined}>{reasonOf(e.code)}</span>
                 )}{' '}
                 <span className="status-chip">{e.status}</span>
               </td>

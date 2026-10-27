@@ -8,7 +8,6 @@ export type View =
   | 'designer'
   | 'policy'
   | 'candidates'
-  | 'provisional'
   | 'overrides'
   | 'accounts'
   | 'history'

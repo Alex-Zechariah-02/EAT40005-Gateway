@@ -340,6 +340,7 @@ const explanations: Record<string, string> = {
   UNKNOWN_REFERENCE: 'It names something the policy does not define.',
   NOT_DENY_ALL: 'The first policy must deny everything.',
   OUTCOME_AUDIT_PENDING: 'The change was committed but its audit record is pending; admission is stopped until the gateway restarts.',
+  outcome_audit_pending: 'The change was committed but its audit record is pending; admission is stopped until the gateway restarts.',
   UNKNOWN_FIELD: 'The document has a field the gateway does not know.',
   DUPLICATE_MEMBER: 'The document repeats a member name.',
   DUPLICATE_ID: 'An identifier is used twice.',

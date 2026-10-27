@@ -109,7 +109,7 @@ func TestConnectionAndConstraints(t *testing.T) {
 	e := newEnv(t)
 	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 
-	plain, err := sql.Open("sqlite", "file:"+e.database)
+	plain, err := sql.Open("sqlite", databaseURI(e.database))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,13 +256,14 @@ func TestStartupRefusesUntrustedDatabase(t *testing.T) {
 		{"dropped table", []string{`DROP TABLE enrolment`}, "schema differs"},
 		{"newer schema version", []string{fmt.Sprintf(`PRAGMA user_version = %d`, databaseVersion+1)}, fmt.Sprintf("schema version %d", databaseVersion+1)},
 		{"altered stored policy", []string{`UPDATE revision SET document = CAST('{"schema_version":4}' AS BLOB) WHERE id = 1`}, "checksum mismatch"},
-		{"dangling confirmed base", []string{`PRAGMA foreign_keys = OFF`, `UPDATE base SET confirmed = 99`}, "reading revision 99"},
+		{"dangling confirmed base", []string{`PRAGMA foreign_keys = OFF`, `UPDATE base SET confirmed = 99`}, "foreign key check failed"},
+		{"dangling revision parent", []string{`PRAGMA foreign_keys = OFF`, `UPDATE revision SET parent = 99 WHERE id = 1`}, "foreign key check failed"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newEnv(t)
 			seed(t, e.database, e.protectedPolicy(), seedOptions{})
-			db, err := sql.Open("sqlite", "file:"+e.database)
+			db, err := sql.Open("sqlite", databaseURI(e.database))
 			if err != nil {
 				t.Fatal(err)
 			}

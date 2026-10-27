@@ -376,11 +376,7 @@ func TestAuditCloseWritesLossCountedWhileClosing(t *testing.T) {
 	a, release := heldAudit(t)
 	closed := make(chan error, 1)
 	go func() { closed <- a.close(context.Background()) }()
-	waitFor(t, time.Now().Add(5*time.Second), "the close to begin", func() bool {
-		a.mu.RLock()
-		defer a.mu.RUnlock()
-		return a.closing
-	})
+	waitFor(t, time.Now().Add(5*time.Second), "the close to begin", func() bool { return isClosing(a) })
 	for range 3 {
 		a.Record(Event{Kind: "request.rejected"})
 	}

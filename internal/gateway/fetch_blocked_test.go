@@ -128,6 +128,25 @@ func TestFetchBlockedAccountSurvivesRollbackAndRestart(t *testing.T) {
 	}
 }
 
+// A block committed and put in force before its outcome event could be
+// written is not reported as a change the gateway could not make.
+func TestFetchCommittedBlockWithPendingOutcome(t *testing.T) {
+	e := newEnv(t)
+	seed(t, e.database, e.protectedPolicy(), seedOptions{})
+	e.start(binaries.fault, "GATEWAY_FAULT=audit-fail-published")
+	admin := e.mustLogin(harnessAdmin, harnessPassword)
+	code, body, _ := e.as(admin, "PUT", "/admin/blocked-accounts/alice", `{"reason":"outcome pending"}`, "Idempotency-Key", "block-outcome-pending")
+	if code != http.StatusServiceUnavailable || !strings.Contains(body, `"outcome_audit_pending"`) {
+		t.Fatalf("committed block with a lost outcome event: %d %s", code, body)
+	}
+	e.stop()
+	e.start(binaries.plain)
+	admin = e.mustLogin(harnessAdmin, harnessPassword)
+	if code, body, _ := e.as(admin, "GET", "/admin/blocked-accounts", ""); code != 200 || !strings.Contains(body, `"subject":"alice"`) {
+		t.Fatalf("committed block after restart: %d %s", code, body)
+	}
+}
+
 func TestFetchAdministrators(t *testing.T) {
 	e := newEnv(t)
 	seed(t, e.database, e.protectedPolicy(), seedOptions{})

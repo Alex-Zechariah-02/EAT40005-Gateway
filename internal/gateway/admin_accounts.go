@@ -66,9 +66,11 @@ func (c *Controller) finishControl(ctx context.Context, t transitionRecord, resu
 		c.logger.Error("recording control publication receipt", "error", err)
 	}
 	crashPoint("after-receipt")
-	_, status := c.finish(ctx, Outcome{Transition: t.ID, Outcome: "committed"}, Event{Kind: t.Kind, Transition: t.ID, Actor: t.Actor, Target: t.Target})
+	outcome, status := c.finish(ctx, Outcome{Transition: t.ID, Outcome: "committed"}, Event{Kind: t.Kind, Transition: t.ID, Actor: t.Actor, Target: t.Target})
 	if status != http.StatusOK {
-		return controlError("gateway_unavailable"), status
+		// The change is committed and in force; only its outcome event is
+		// missing, which "gateway_unavailable" would deny.
+		return controlError(strings.ToLower(outcome.Reason)), status
 	}
 	return body, status
 }

@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve as resolvePath } from 'node:path'
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
-import { adminURL, build, Demo, gatewayIdentity, pageRoutes, raw, siteURL, uiPolicy, webRoot } from './env'
+import { adminURL, applicationDist, build, controls, Demo, gatewayIdentity, pageRoutes, raw, siteURL, uiPolicy, webRoot } from './env'
 import { accessible, record, shot, storage } from './pages'
 
 // The Fetch app as the gateway's data plane serves it, checked before any
@@ -67,7 +67,7 @@ test.describe.serial('Fetch app on the gateway data plane', () => {
   test('the gateway serves the page at / and at each page route, and the flat assets, under the content policy', async () => {
     record('cold-start', { gateway: gatewayIdentity(), pids: Object.keys(demo.pids), web: demo.web })
     expect(Object.keys(demo.pids)).toContain('gateway')
-    const index = readFileSync(resolvePath('dist', 'index.html'), 'utf8')
+    const index = readFileSync(resolvePath(applicationDist, 'index.html'), 'utf8')
 
     // Every page route answers the same page, with the security headers and
     // the gateway's own reference.
@@ -89,7 +89,7 @@ test.describe.serial('Fetch app on the gateway data plane', () => {
 
     // Every built file is served byte for byte from /assets/ with its fixed
     // type; the build holds no other kind of file and nothing in a folder.
-    const assets = readdirSync(resolvePath('dist', 'assets'))
+    const assets = readdirSync(resolvePath(applicationDist, 'assets'))
     expect([...new Set(assets.map((a) => a.split('.').pop()!))].sort()).toEqual(['css', 'js', 'svg', 'webp'])
     for (const asset of assets) {
       const reply = await raw('GET', `${siteURL}/assets/${asset}`)
@@ -97,7 +97,7 @@ test.describe.serial('Fetch app on the gateway data plane', () => {
       expect(reply.headers['content-type'], asset).toBe(assetTypes[asset.split('.').pop()!])
       expect(reply.headers['content-security-policy'], asset).toBe(uiPolicy)
       expect(reply.headers['x-content-type-options'], asset).toBe('nosniff')
-      expect(reply.bytes.equals(readFileSync(resolvePath('dist', 'assets', asset))), asset).toBe(true)
+      expect(reply.bytes.equals(readFileSync(resolvePath(applicationDist, 'assets', asset))), asset).toBe(true)
       expect((await raw('GET', `${adminURL}/assets/${asset}`)).status, `${asset} on the admin listener`).toBe(404)
     }
 
@@ -134,8 +134,8 @@ test.describe.serial('Fetch app on the gateway data plane', () => {
 
     // Each listener answers only on its own loopback host, and nothing has
     // reached a service.
-    await expect(raw('GET', 'http://127.0.0.1:9480/')).rejects.toThrow(/ECONNREFUSED/)
-    await expect(raw('GET', 'http://127.0.0.2:9440/')).rejects.toThrow(/ECONNREFUSED/)
+    await expect(raw('GET', siteURL.replace('127.0.0.2', '127.0.0.1') + '/')).rejects.toThrow(/ECONNREFUSED/)
+    await expect(raw('GET', adminURL.replace('127.0.0.1', '127.0.0.2') + '/')).rejects.toThrow(/ECONNREFUSED/)
     for (const count of Object.values(await demo.counts())) expect(count).toBe(0)
     record('website-paths', { routes: pageRoutes.length, assets: assets.length, probes: seen })
   })
@@ -224,7 +224,7 @@ test.describe.serial('Fetch app on the gateway data plane', () => {
           )
         return { service: await attempt(service), admin: await attempt(admin), sameOrigin: await attempt('/admin/status') }
       },
-      ['http://127.0.0.1:9601/receipts', adminURL + '/admin/status'],
+      [controls.inventory + '/receipts', adminURL + '/admin/status'],
     )
     expect(probes).toEqual({ service: 'blocked', admin: 'blocked', sameOrigin: 'answered 503 application/json' })
     await expect.poll(() => violations.length).toBe(2)
@@ -238,7 +238,7 @@ test.describe.serial('Fetch app on the gateway data plane', () => {
     const secret = demo.file('service.secret').trim()
     const forbidden = ['PRIVATE KEY', 'localhost', ':5173', ':5174', ':5175', 'fetch.dev.fail', 'Coconut rice with slow-cooked beef rendang', secret]
     const found: string[] = []
-    for (const path of files(resolvePath('dist'))) {
+    for (const path of files(applicationDist)) {
       const text = readFileSync(path, 'latin1')
       for (const word of forbidden) if (text.includes(word)) found.push(`${word === secret ? 'service secret' : word} in ${path}`)
     }
@@ -247,7 +247,7 @@ test.describe.serial('Fetch app on the gateway data plane', () => {
     expect(requests.filter((url) => url.includes(secret))).toEqual([])
     await open(site, '/')
     expect(await site.content()).not.toContain(secret)
-    record('no-secrets', { scanned: files(resolvePath('dist')).length, found })
+    record('no-secrets', { scanned: files(applicationDist).length, found })
   })
 
   test('the reachable pages pass the accessibility rules at desktop, tablet and phone widths, and work by keyboard', async () => {

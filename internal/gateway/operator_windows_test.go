@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -19,11 +20,11 @@ func TestNativeOperatorWindowsAccess(t *testing.T) {
 	if out, code := e.runOperator(binaries.plain, nil, "backup", "--output", backup); code != 0 {
 		t.Fatalf("backup exit %d: %s", code, out)
 	}
+	// An open store keeps the -wal and -shm sidecars present for inspection.
 	st, err := openStore(e.database)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.close()
 	paths := []string{e.dir, e.config, e.publicKey, e.database, e.database + "-wal", e.database + "-shm", e.auditLog, backup, manifestPath(backup)}
 	for _, path := range paths {
 		if _, err := os.Stat(path); err != nil {
@@ -41,11 +42,16 @@ func TestNativeOperatorWindowsAccess(t *testing.T) {
 	}
 	t.Logf("DACLs on actual operator artifacts:\n%s", output)
 	t.Log("current user created, read and wrote this deployment; other-user access is NOT TESTED; administrative access is not excluded")
+	// The store's exclusive lock alone would make backup exit 1, so it is
+	// released before the probe and the refusal must name the denied access.
+	if err := st.close(); err != nil {
+		t.Fatal(err)
+	}
 	before := fileSHA256(t, e.database)
 	cmd = exec.Command("pwsh.exe", "-NoProfile", "-Command", `$ErrorActionPreference = 'Stop'; $path = Join-Path $env:GATEWAY_ACL_DIR 'gateway.json'; $saved = Get-Acl -LiteralPath $path; $denied = Get-Acl -LiteralPath $path; $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User; $rule = [System.Security.AccessControl.FileSystemAccessRule]::new($sid, [System.Security.AccessControl.FileSystemRights]::Read, [System.Security.AccessControl.AccessControlType]::Deny); $denied.AddAccessRule($rule); try { Set-Acl -LiteralPath $path -AclObject $denied; & $env:GATEWAY_ACL_BINARY backup --config $path --output (Join-Path $env:GATEWAY_ACL_DIR 'denied.db'); if ($LASTEXITCODE -ne 1) { throw "expected permission refusal exit 1, got $LASTEXITCODE" }; 'access-denied native backup: exit 1' } finally { Set-Acl -LiteralPath $path -AclObject $saved }`)
 	cmd.Env = append(os.Environ(), "GATEWAY_ACL_DIR="+e.dir, "GATEWAY_ACL_BINARY="+binaries.plain)
 	output, err = cmd.CombinedOutput()
-	if err != nil {
+	if err != nil || !strings.Contains(string(output), "Access is denied") {
 		t.Fatalf("test-owned access denial: %v: %s", err, output)
 	}
 	if fileSHA256(t, e.database) != before {

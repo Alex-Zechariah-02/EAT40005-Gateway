@@ -604,7 +604,7 @@ func TestCorruptLifecycleStateAdmitsNothing(t *testing.T) {
 	}{
 		{"rollback target missing", func(t *testing.T, db *sql.DB) {
 			mustExec(t, db, `PRAGMA foreign_keys = OFF`, `DELETE FROM revision WHERE id = 1`)
-		}, "rollback target revision 1"},
+		}, "foreign key check failed"},
 		{"rollback target altered", func(t *testing.T, db *sql.DB) {
 			mustExec(t, db, `UPDATE revision SET document = CAST('{"schema_version":4}' AS BLOB) WHERE id = 1`)
 		}, "rollback target revision 1"},
@@ -629,7 +629,7 @@ func TestCorruptLifecycleStateAdmitsNothing(t *testing.T) {
 			e := newEnv(t)
 			candidate := e.cpaCandidate()
 			seed(t, e.database, e.protectedPolicy(), seedOptions{provisional: &candidate, deadline: time.Now().Add(time.Hour)})
-			db, err := sql.Open("sqlite", "file:"+e.database)
+			db, err := sql.Open("sqlite", databaseURI(e.database))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -771,7 +771,7 @@ func TestLifecycleAuditFailure(t *testing.T) {
 
 func corrupt(t *testing.T, path string) {
 	t.Helper()
-	db, _ := sql.Open("sqlite", "file:"+path)
+	db, _ := sql.Open("sqlite", databaseURI(path))
 	db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
 	db.Close()
 	file, err := os.OpenFile(path, os.O_WRONLY, 0)

@@ -29,7 +29,7 @@ func TestNativeAdministrationIsAbsent(t *testing.T) {
 		}
 	}
 	if len(ports) != len(want) {
-		t.Fatalf("listeners %v, want exactly data and controller ports", ports)
+		t.Fatalf("listeners %v, want exactly the data, admin and metrics ports", ports)
 	}
 
 	for _, addr := range []string{"127.0.0.1:2019", overrideAdmin} {
@@ -70,12 +70,12 @@ func TestNativeAdministrationIsAbsent(t *testing.T) {
 		t.Fatalf("operation outside the policy after the probes: %d", code)
 	}
 
-	// The project channel still changes the effective generation, through
-	// the guarded membership API.
+	// The guarded blocked-accounts API still works, and blocking an account
+	// changes neither the revision nor the effective generation.
 	code, body, _ := e.harnessCall(http.MethodPut, "/admin/blocked-accounts/probe-01", `{"reason":"test containment"}`,
 		"If-Match", `"r1"`, "Idempotency-Key", "native-admin-probe-1")
 	if code != http.StatusOK {
-		t.Fatalf("authorised membership change: %d %s", code, body)
+		t.Fatalf("authorised account block: %d %s", code, body)
 	}
 	if after := e.status(); after.Revision != before.Revision || after.Generation != before.Generation {
 		t.Fatalf("account containment changed policy: %+v", after)

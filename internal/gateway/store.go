@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
+	"path/filepath"
 	"time"
 
 	"modernc.org/sqlite"
@@ -365,11 +367,18 @@ type historyEntry struct {
 	AuditedAt   *time.Time `json:"audited_at,omitempty"`
 }
 
+// databaseURI keeps literal filename characters out of SQLite's URI options
+// and fragment. In particular, a percent escape in a filename is not decoded.
+func databaseURI(path string) string {
+	location := url.URL{Path: filepath.ToSlash(path)}
+	return "file:" + location.EscapedPath()
+}
+
 // connect opens the database with the settings every connection must have
 // and takes the exclusive lock at once, so a second process fails here rather
 // than at its first mutation.
 func connect(path, journal string) (*sql.DB, error) {
-	dsn := "file:" + path +
+	dsn := databaseURI(path) +
 		"?_pragma=locking_mode(EXCLUSIVE)" +
 		"&_pragma=journal_mode(" + journal + ")" +
 		"&_pragma=synchronous(FULL)" +
@@ -436,7 +445,19 @@ func verify(db *sql.DB) error {
 	if version != databaseVersion {
 		return fmt.Errorf("%w: database schema version %d, this gateway needs %d", errUnavailable, version, databaseVersion)
 	}
-	return checkDatabaseSchema(db, databaseVersion)
+	if err := checkDatabaseSchema(db, databaseVersion); err != nil {
+		return err
+	}
+	// quick_check and integrity_check do not check foreign-key consistency.
+	// Enabling enforcement protects new writes, not corrupt existing rows.
+	var violations int
+	if err := db.QueryRow("SELECT COUNT(*) FROM pragma_foreign_key_check").Scan(&violations); err != nil {
+		return fmt.Errorf("%w: foreign key check failed: %v", errUnavailable, err)
+	}
+	if violations != 0 {
+		return fmt.Errorf("%w: foreign key check failed: %d violations", errUnavailable, violations)
+	}
+	return nil
 }
 
 // checkDatabaseSchema compares the database schema with the one the
@@ -818,7 +839,9 @@ func (s *store) commitEnrolment(ctx context.Context, t transitionRecord, e enrol
 	}
 	defer tx.Rollback()
 
-	if err := updateOne(ctx, tx, `DELETE FROM enrolment WHERE administrator = ? AND secret = ?`, e.Name, e.Secret); err != nil {
+	// Hashing and waiting for the controller can outlive the handler's first
+	// expiry check. Consume only an enrolment still valid at this decision.
+	if err := updateOne(ctx, tx, `DELETE FROM enrolment WHERE administrator = ? AND secret = ? AND expires_at > ?`, e.Name, e.Secret, now.UnixMilli()); err != nil {
 		return err
 	}
 	_, err = tx.ExecContext(ctx, `

@@ -33,16 +33,6 @@ func (e *env) unblockAccount(s adminSession, id, key string) (int, string) {
 	return code, body
 }
 
-func storedPolicy(t *testing.T, path string, revision int64) Policy {
-	t.Helper()
-	document := queryString(t, path, `SELECT document FROM revision WHERE id = ?`, revision)
-	p, err := DecodePolicy([]byte(document))
-	if err != nil {
-		t.Fatalf("revision %d: %v", revision, err)
-	}
-	return p
-}
-
 func TestMembershipChangePublishes(t *testing.T) {
 	e := newEnv(t)
 	seed(t, e.database, e.protectedPolicy(), seedOptions{})

@@ -52,7 +52,10 @@ func (e *env) serveNative(policy Policy, timeouts upstreamTimeouts) (*Controller
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	server := httptest.NewServer(h)
+	// As in production, "OPTIONS *" reaches enforcement instead of net/http.
+	server := httptest.NewUnstartedServer(h)
+	server.Config.DisableGeneralOptionsHandler = true
+	server.Start()
 	e.t.Cleanup(server.Close)
 	e.dataAddr = server.Listener.Addr().String()
 	return c, logs
@@ -404,8 +407,7 @@ func TestNativeForwardingRoutingTable(t *testing.T) {
 		{"DELETE /orders/archive HTTP/1.1", 403, nil, "", ""},
 		{"GET http://" + e.b.addr + "/reports HTTP/1.1", 400, nil, "", ""},
 		{"CONNECT " + e.b.addr + " HTTP/1.1", 400, nil, "", ""},
-		// net/http answers "OPTIONS *" itself before any handler runs.
-		{"OPTIONS * HTTP/1.1", 200, nil, "", ""},
+		{"OPTIONS * HTTP/1.1", 400, nil, "", ""},
 	}
 	for _, r := range rows {
 		e.resetReceivers()
@@ -767,10 +769,9 @@ func TestNativeForwardingResponses(t *testing.T) {
 		set(func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "http://"+e.c.addr+"/a/x", http.StatusFound)
 		})
-		code, _ := e.raw("GET /a/x HTTP/1.1\r\nHost: gw\r\nConnection: close\r\n\r\n")
 		resp, _ := e.rawResponse("GET /a/x HTTP/1.1\r\nHost: gw\r\nConnection: close\r\n\r\n")
-		if code != http.StatusFound || resp.Header.Get("Location") != "http://"+e.c.addr+"/a/x" || e.c.count() != 0 {
-			t.Fatalf("redirect: %d, Location %q, receipts at C %d", code, resp.Header.Get("Location"), e.c.count())
+		if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "http://"+e.c.addr+"/a/x" || e.c.count() != 0 {
+			t.Fatalf("redirect: %d, Location %q, receipts at C %d", resp.StatusCode, resp.Header.Get("Location"), e.c.count())
 		}
 	})
 

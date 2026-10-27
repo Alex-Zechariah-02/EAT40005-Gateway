@@ -22,8 +22,9 @@ test.describe.serial('Fetch app development server observation', () => {
     await demo.start()
     vite = await createServer({ configFile: resolve('vite.config.ts') })
     await vite.listen()
+    const developmentURL = `http://localhost:${vite.config.server.port}`
     expect(vite.config.server.host).toBe('localhost')
-    expect(vite.config.server.port).toBe(5174)
+    expect(vite.config.server.port).toBe(Number(process.env.E2E_DEV_PORT ?? 5174))
     expect(vite.config.server.strictPort).toBe(true)
 
     context = await browser.newContext({ viewport: { width: 1440, height: 900 } })
@@ -33,7 +34,7 @@ test.describe.serial('Fetch app development server observation', () => {
       const path = new URL(response.url()).pathname
       if (path.startsWith('/inventory/')) answers.push({ path, status: response.status(), ref: response.headers()['x-request-id'] })
     })
-    await page.goto('http://localhost:5174/', { waitUntil: 'networkidle' })
+    await page.goto(developmentURL + '/', { waitUntil: 'networkidle' })
     await expect(page.getByRole('heading', { level: 1, name: 'What can we fetch for you?' })).toBeVisible()
     // A first start may reload the page once its dependencies are prepared,
     // so the reads are awaited through the reference the page shows.
@@ -49,6 +50,6 @@ test.describe.serial('Fetch app development server observation', () => {
     }
     for (const count of Object.values(await demo.counts())) expect(count).toBe(0)
     await shot(page, 'client-dev-1440')
-    record('client-development-only', { answers, port: 5174, productionAcceptance: false })
+    record('client-development-only', { answers, port: vite.config.server.port, productionAcceptance: false })
   })
 })
