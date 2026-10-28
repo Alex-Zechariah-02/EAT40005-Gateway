@@ -1,10 +1,10 @@
-import type { OverridesView, Revision, Status } from './api'
-import { useGatewayState, useResource } from './hooks'
+import type { Activation, OverridesView, Page, Revision, Status } from './api'
+import { useGatewayState, useRemembered, useResource } from './hooks'
 import { overrideChange } from './overrides'
 import { OverviewLive } from './monitor'
 import { TrialDecision } from './provisional'
 import { admissionText, AdmissionBadge } from './state'
-import { PageHeader, Problem, ReadStamp, TimeOfDay } from './ui'
+import { Badge, MoreDetails, PageHeader, Problem, ReadStamp, TimeOfDay } from './ui'
 import type { ViewProps } from './views'
 
 // Overview answers "is the gateway healthy and what is it enforcing?" at a
@@ -25,6 +25,8 @@ export function Overview({ admin, can, open }: ViewProps) {
       {status && blocked ? <Admission status={status} /> : null}
       {status && (status.admission === 'bootstrap_locked' || status.admission === 'recovery_required') ? (
         <FirstBase recovery={status.admission === 'recovery_required'} manage={can('manage_policy')} goChanges={() => open('candidates')} />
+      ) : status ? (
+        <GettingStarted admin={admin} status={status} open={open} />
       ) : null}
       {status ? <StatusStrip {...{ admin, can, status }} /> : null}
       <OverviewLive admin={admin} history={can('read_history')} />
@@ -45,10 +47,10 @@ function StatusStrip({ admin, can, status }: Pick<ViewProps, 'admin' | 'can'> & 
         <p className="tile-label">Policy in force</p>
         {status.confirmed !== undefined ? (
           <>
-            <p className="tile-value">Revision {status.provisional ?? status.confirmed}</p>
+            <p className="tile-value">Version {status.provisional ?? status.confirmed}</p>
             <p className="tile-note">
               {status.provisional !== undefined ? (
-                <>On trial; confirmed revision {status.confirmed} is the fallback</>
+                <>On trial; version {status.confirmed} returns if it is undone</>
               ) : revision ? (
                 <>
                   Since <TimeOfDay value={revision.created_at} /> · by {revision.actor}
@@ -64,12 +66,16 @@ function StatusStrip({ admin, can, status }: Pick<ViewProps, 'admin' | 'can'> & 
         ) : (
           <>
             <p className="tile-value tile-value-quiet">None yet</p>
-            <p className="tile-note">Nothing is admitted until a first policy is established.</p>
+            <p className="tile-note">
+              {status.admission === 'recovery_required'
+                ? 'Every request is refused until a starting policy is established after the restore.'
+                : 'Every request is refused until a first policy is established.'}
+            </p>
           </>
         )}
         <p className="tile-foot">
           <AdmissionBadge status={status} />
-          {status.generation ? <code className="muted" title="Policy generation served">{status.generation}</code> : null}
+          {status.generation ? <code className="muted" title="Generation in force">{status.generation}</code> : null}
         </p>
         {policy.reply && policy.reply.kind !== 'ok' && !(policy.reply.kind === 'refused' && policy.reply.error === 'no_confirmed_policy') ? (
           <Problem reply={policy.reply} />
@@ -88,7 +94,7 @@ function StatusStrip({ admin, can, status }: Pick<ViewProps, 'admin' | 'can'> & 
                   {rules.length > 1 ? ` · and ${rules.length - 1} more` : null}
                 </>
               ) : (
-                'For incidents: freeze, block or open up an operation for a set time.'
+                'For incidents: freeze, block or open up an endpoint for a set time.'
               )}
             </p>
           </>
@@ -106,13 +112,54 @@ function Admission({ status }: { status: Status }) {
   return (
     <section className="section notice tone-refused admission" role="alert" aria-labelledby="admission-title">
       <h2 id="admission-title" className="notice-title">
-        The gateway is not admitting requests
+        The gateway is not accepting requests
       </h2>
       <p>{status.audit_failed ? admissionText.audit_failed : (admissionText[status.admission] ?? 'Every protected request is refused.')}</p>
-      <p className="hint">
-        Controller state <code>{status.state}</code> · admission <code>{status.admission}</code>
-      </p>
+      <MoreDetails facts={[['Controller state', status.state], ['Admission value', status.admission]]} />
     </section>
+  )
+}
+
+// guideHidden is the page-memory key that hides the Getting started guide
+// until My account shows it again; nothing is stored in the browser.
+export const guideHidden = 'overview.guide.hidden'
+
+// GettingStarted is the first-time guide once a policy is in force: three
+// steps to a first kept or undone change, each ticked from what the gateway
+// reports. It links to the pages that do each step and changes nothing itself.
+function GettingStarted({ admin, status, open }: Pick<ViewProps, 'admin' | 'open'> & { status: Status }) {
+  const [hidden, setHidden] = useRemembered(guideHidden, false)
+  const trials = useResource<Page<Activation>>((signal) => admin.get('/admin/activations?limit=1', signal), [status.revision])
+  if (hidden) return null
+  // The first trial ever is listed first; only one runs at a time, so once it
+  // has ended a trial has been kept or undone.
+  const first = trials.reply?.kind === 'ok' ? trials.reply.body.items[0] : undefined
+  const steps = [
+    { done: status.confirmed !== undefined, text: 'A policy is in force.', go: 'policy' as const, label: 'Policy versions' },
+    { done: first !== undefined, text: 'A draft change has been saved, checked and put on trial.', go: 'candidates' as const, label: 'Changes' },
+    { done: first?.disposition !== undefined, text: 'A trial has ended: the change was kept, or undone.', go: 'candidates' as const, label: 'Changes' },
+  ]
+  const done = steps.filter((step) => step.done).length
+  return (
+    <details className="section card card-pad getting-started">
+      <summary>
+        Getting started · {done} of {steps.length} done
+      </summary>
+      <ol className="setup-steps">
+        {steps.map((step) => (
+          <li key={step.text}>
+            <Badge tone={step.done ? 'ok' : 'neutral'}>{step.done ? 'Done' : 'To do'}</Badge> {step.text}{' '}
+            <button type="button" className="btn-link" onClick={() => open(step.go)}>
+              {step.label}
+            </button>
+          </li>
+        ))}
+      </ol>
+      <p className="hint">Every change goes live on trial first and is undone at its deadline unless someone keeps it. Temporary rules end by themselves.</p>
+      <button type="button" className="btn btn-small" onClick={() => setHidden(true)}>
+        Hide this guide
+      </button>
+    </details>
   )
 }
 
@@ -121,11 +168,11 @@ function Admission({ status }: { status: Status }) {
 function FirstBase(props: { recovery: boolean; manage: boolean; goChanges: () => void }) {
   return (
     <section className="section card setup" aria-labelledby="first-base-title">
-      <h2 id="first-base-title">{props.recovery ? 'Establish a recovery base' : 'Establish the first policy'}</h2>
+      <h2 id="first-base-title">{props.recovery ? 'Establish a starting policy after the restore' : 'Establish the first policy'}</h2>
       <ol className="setup-steps">
-        <li>Stage a complete policy document that denies every operation and grants no permits.</li>
-        <li>Establish it as the {props.recovery ? 'recovery base' : 'first confirmed policy'}. Requests are still refused, but the gateway is ready.</li>
-        <li>Stage the policy you want, put it on trial, check its effect, then confirm it.</li>
+        <li>Save a draft change: a complete policy that denies every endpoint and gives no permissions.</li>
+        <li>Establish it as the {props.recovery ? 'starting policy after the restore' : 'first policy'}. Requests are still refused, but the gateway is ready.</li>
+        <li>Save the policy you want as a draft, put it on trial, check its effect, then keep it.</li>
       </ol>
       {props.manage ? (
         <button type="button" className="btn btn-primary" onClick={props.goChanges}>

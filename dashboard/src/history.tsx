@@ -1,8 +1,17 @@
 import { Fragment, useEffect, useId, useRef, useState } from 'react'
 import { explain, type HistoryEntry } from './api'
 import { usePaged, useRemembered, useResource } from './hooks'
-import { Badge, CodeBlock, Empty, PageHeader, Problem, ReadStamp, ReplyView, ShowMore, TableScroll, Time } from './ui'
+import { actorName, Badge, CodeBlock, Empty, PageHeader, Problem, ReadStamp, ReplyView, ShowMore, TableScroll, Time } from './ui'
 import type { ViewProps } from './views'
+
+// targetWords names a history target in the Dashboard's words; the exact
+// target stays beside it.
+const targetNames: Record<string, string> = { candidate: 'draft change', revision: 'version', override: 'temporary rule' }
+function targetWords(target: string): string {
+  const match = /^(candidate|revision|override)(?: (\d+))?$/.exec(target)
+  if (!match) return target
+  return match[2] ? `${targetNames[match[1]]} ${match[2]}` : targetNames[match[1]]
+}
 
 type Area = 'policy' | 'overrides' | 'accounts' | 'keys' | 'administrators' | 'operator'
 
@@ -10,17 +19,17 @@ type Area = 'policy' | 'overrides' | 'accounts' | 'keys' | 'administrators' | 'o
 // belongs to. A kind not listed is shown by its code.
 const kinds: Record<string, { label: string; area: Area }> = {
   genesis: { label: 'First policy established', area: 'policy' },
-  recovery_base: { label: 'Recovery base established', area: 'policy' },
-  'candidate.create': { label: 'Candidate staged', area: 'policy' },
-  'candidate.withdraw': { label: 'Candidate withdrawn', area: 'policy' },
-  'cpa.activate': { label: 'Provisional activation', area: 'policy' },
-  'cpa.confirm': { label: 'Provisional policy confirmed', area: 'policy' },
-  'cpa.rollback': { label: 'Provisional policy rolled back', area: 'policy' },
-  'cpa.timeout': { label: 'Deadline passed, rolled back', area: 'policy' },
-  publish: { label: 'Policy published', area: 'policy' },
-  'tpo.create': { label: 'Override created', area: 'overrides' },
-  'tpo.revoke': { label: 'Override revoked', area: 'overrides' },
-  'tpo.expire': { label: 'Override expired', area: 'overrides' },
+  recovery_base: { label: 'Starting policy after a restore established', area: 'policy' },
+  'candidate.create': { label: 'Draft change saved', area: 'policy' },
+  'candidate.withdraw': { label: 'Draft change withdrawn', area: 'policy' },
+  'cpa.activate': { label: 'Trial started', area: 'policy' },
+  'cpa.confirm': { label: 'Change kept (confirmed)', area: 'policy' },
+  'cpa.rollback': { label: 'Change undone (rolled back)', area: 'policy' },
+  'cpa.timeout': { label: 'Change undone automatically at the deadline', area: 'policy' },
+  publish: { label: 'Policy put in force', area: 'policy' },
+  'tpo.create': { label: 'Temporary rule added', area: 'overrides' },
+  'tpo.revoke': { label: 'Temporary rule revoked', area: 'overrides' },
+  'tpo.expire': { label: 'Temporary rule ended', area: 'overrides' },
   'account.block': { label: 'Account blocked', area: 'accounts' },
   'account.unblock': { label: 'Account unblocked', area: 'accounts' },
   'keys.reload': { label: 'Signing keys reloaded', area: 'keys' },
@@ -35,7 +44,7 @@ const kinds: Record<string, { label: string; area: Area }> = {
 const areas: { id: Area | 'all'; label: string }[] = [
   { id: 'all', label: 'All areas' },
   { id: 'policy', label: 'Policy lifecycle' },
-  { id: 'overrides', label: 'Temporary overrides' },
+  { id: 'overrides', label: 'Temporary rules' },
   { id: 'accounts', label: 'Blocked accounts' },
   { id: 'keys', label: 'Signing keys' },
   { id: 'administrators', label: 'Administrators' },
@@ -119,8 +128,8 @@ export function History({ admin }: ViewProps) {
                 <label htmlFor={`${id}-outcome`}>Outcome</label>
                 <select id={`${id}-outcome`} className="input" value={outcome} onChange={(e) => choose({ outcome: e.target.value })}>
                   <option value="all">All outcomes</option>
-                  <option value="committed">committed</option>
-                  <option value="rejected">rejected</option>
+                  <option value="committed">Applied</option>
+                  <option value="rejected">Refused</option>
                 </select>
               </div>
               <div className="field">
@@ -160,7 +169,7 @@ export function History({ admin }: ViewProps) {
                   <th scope="col">By</th>
                   <th scope="col">Target</th>
                   <th scope="col">Outcome</th>
-                  <th scope="col">Revision</th>
+                  <th scope="col">Version</th>
                   <th scope="col">Recorded</th>
                   <th scope="col">
                     <span className="visually-hidden">Details</span>
@@ -176,10 +185,13 @@ export function History({ admin }: ViewProps) {
                         <span className="cell-main">{kinds[h.kind]?.label ?? h.kind}</span>
                         <code className="cell-sub">{h.kind}</code>
                       </td>
-                      <td>{h.actor}</td>
-                      <td>{h.target}</td>
+                      <td>{actorName(h.actor)}</td>
                       <td>
-                        {h.outcome === 'committed' ? 'committed' : <Badge tone="refused">{h.outcome}</Badge>}
+                        <span className="cell-main">{targetWords(h.target)}</span>
+                        {targetWords(h.target) !== h.target ? <code className="cell-sub">{h.target}</code> : null}
+                      </td>
+                      <td>
+                        {h.outcome === 'committed' ? 'Applied' : <Badge tone="refused">{h.outcome === 'rejected' ? 'Refused' : h.outcome}</Badge>}
                         {h.reason ? (
                           <>
                             {' '}
@@ -236,15 +248,15 @@ const entryFields: [keyof HistoryEntry, string][] = [
   ['kind', 'Kind'],
   ['actor', 'By'],
   ['target', 'Target'],
-  ['expected_revision', 'Expected revision'],
+  ['expected_revision', 'Based on version'],
   ['outcome', 'Outcome'],
   ['reason', 'Reason'],
-  ['revision', 'Resulting revision'],
-  ['candidate', 'Candidate'],
+  ['revision', 'Resulting version'],
+  ['candidate', 'Draft change'],
   ['recorded_at', 'Recorded'],
   ['published_at', 'Published'],
   ['published_by', 'Published by'],
-  ['audited_at', 'Audited'],
+  ['audited_at', 'Recorded in the security log'],
 ]
 
 function Entry({ admin, id }: { admin: ViewProps['admin']; id: string }) {

@@ -1,7 +1,26 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react'
 import { newKey, type Admin, type HistoryEntry, type Page, type Policy, type Reply, type Revision } from './api'
 import { useGatewayState, useMutation, usePoll, useRemembered, useRereadWhen, useResource, type Resource } from './hooks'
-import { Badge, Confirm, Empty, Field, MutationResult, PageHeader, Problem, ReadStamp, ReplyView, TableScroll, Time, TimeOfDay, type Tone } from './ui'
+import { RequestRules } from './policy'
+import {
+  actorName,
+  Badge,
+  Confirm,
+  Empty,
+  Field,
+  ListToolbar,
+  matches,
+  MoreDetails,
+  MutationResult,
+  PageHeader,
+  Problem,
+  ReadStamp,
+  ReplyView,
+  TableScroll,
+  Time,
+  TimeOfDay,
+  type Tone,
+} from './ui'
 import type { ViewProps } from './views'
 
 // The Monitor and Admin pages: live traffic, request lookup, APIs, accounts,
@@ -502,7 +521,11 @@ function ApiFigures({ traffic }: { traffic: Traffic }) {
               </td>
               <td className="num end">{a.total.toLocaleString()}</td>
               <td className="num end">
-                {a.refused.toLocaleString()} <span className="muted">({a.total ? ((a.refused / a.total) * 100).toFixed(1) : '0.0'}%)</span>
+                {a.refused.toLocaleString()}{' '}
+                <span className="muted">
+                  ({a.total ? ((a.refused / a.total) * 100).toFixed(1) : '0.0'}
+                  %)
+                </span>
               </td>
               <td className="num end">{a.p50_ms.toFixed(1)} ms</td>
               <td className="num end">{a.p95_ms.toFixed(1)} ms</td>
@@ -522,14 +545,15 @@ function apiName(id: string): string {
 }
 
 // Each kind of policy event: what to call its subject and what happened.
-// A revision is named by its number and an account by its ID.
+// A revision is named by its number and an account by its ID. An undo
+// records the revision it restores, so its words say that one is back.
 const timelineKinds: Record<string, { name: string; word: string; tone: Tone }> = {
   genesis: { name: 'revision', word: 'First policy', tone: 'ok' },
-  recovery_base: { name: 'revision', word: 'Recovery base', tone: 'pending' },
+  recovery_base: { name: 'revision', word: 'Starting policy after a restore', tone: 'pending' },
   'cpa.activate': { name: 'revision', word: 'Put on trial', tone: 'pending' },
-  'cpa.confirm': { name: 'revision', word: 'Confirmed', tone: 'ok' },
-  'cpa.rollback': { name: 'revision', word: 'Rolled back', tone: 'neutral' },
-  'cpa.timeout': { name: 'revision', word: 'Rolled back at its deadline', tone: 'neutral' },
+  'cpa.confirm': { name: 'revision', word: 'Kept', tone: 'ok' },
+  'cpa.rollback': { name: 'revision', word: 'Back in force after an undo', tone: 'neutral' },
+  'cpa.timeout': { name: 'revision', word: 'Back in force at the deadline', tone: 'neutral' },
   'tpo.create': { name: 'Temporary rule', word: 'Added', tone: 'pending' },
   'tpo.revoke': { name: 'Temporary rule', word: 'Revoked', tone: 'neutral' },
   'tpo.expire': { name: 'Temporary rule', word: 'Ended', tone: 'neutral' },
@@ -539,7 +563,7 @@ const timelineKinds: Record<string, { name: string; word: string; tone: Tone }> 
 }
 
 function timelineName(entry: HistoryEntry, kind: { name: string }): string {
-  if (kind.name === 'revision') return entry.revision ? `Revision ${entry.revision}` : 'Policy'
+  if (kind.name === 'revision') return entry.revision ? `Version ${entry.revision}` : 'Policy'
   if (kind.name === 'account') return entry.target || 'Account'
   return kind.name
 }
@@ -585,7 +609,7 @@ function PolicyTimeline({ admin }: { admin: Admin }) {
                         </span>
                         <TimeOfDay value={e.recorded_at} />
                       </p>
-                      <p className="timeline-note">by {e.actor}</p>
+                      <p className="timeline-note">by {actorName(e.actor)}</p>
                     </div>
                   </li>
                 )
@@ -785,8 +809,15 @@ export function RequestLookup({ admin }: ViewProps) {
         <Field id={`${id}-subject`} label="Account">
           <input id={`${id}-subject`} className="input mono" value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} spellCheck={false} autoComplete="off" />
         </Field>
-        <Field id={`${id}-op`} label="Operation">
-          <input id={`${id}-op`} className="input mono" value={form.operation} onChange={(e) => setForm({ ...form, operation: e.target.value })} spellCheck={false} autoComplete="off" />
+        <Field id={`${id}-op`} label="Endpoint">
+          <input
+            id={`${id}-op`}
+            className="input mono"
+            value={form.operation}
+            onChange={(e) => setForm({ ...form, operation: e.target.value })}
+            spellCheck={false}
+            autoComplete="off"
+          />
         </Field>
         <Field id={`${id}-decision`} label="Decision">
           <select id={`${id}-decision`} className="input" value={form.decision} onChange={(e) => setForm({ ...form, decision: e.target.value })}>
@@ -876,7 +907,7 @@ function EventDetail({ event }: { event: RequestEvent }) {
         ))}
       </ol>
       {beforeRouting(event) ? (
-        <p className="hint">The gateway decided this before matching it to an operation, so no check ahead of this one ran.</p>
+        <p className="hint">The gateway decided this before matching it to an endpoint, so no check ahead of this one ran.</p>
       ) : null}
       <dl className="facts">
         <div className="fact">
@@ -900,7 +931,7 @@ function EventDetail({ event }: { event: RequestEvent }) {
           </dd>
         </div>
         <div className="fact">
-          <dt>Operation</dt>
+          <dt>Endpoint</dt>
           <dd>{event.operation ? <code>{event.operation}</code> : 'none matched'}</dd>
         </div>
         <div className="fact">
@@ -927,7 +958,7 @@ function EventDetail({ event }: { event: RequestEvent }) {
           </dd>
         </div>
         <div className="fact">
-          <dt>Policy generation</dt>
+          <dt>Policy in force (generation)</dt>
           <dd>
             <code>{event.generation}</code>
           </dd>
@@ -940,8 +971,9 @@ function EventDetail({ event }: { event: RequestEvent }) {
 
 // ApisView shows one block per API: its operations, who may call them, their
 // limits and how the API is answering now.
-export function ApisView({ admin }: ViewProps) {
+export function ApisView({ admin, can }: ViewProps) {
   const state = useGatewayState()
+  const [query, setQuery] = useState('')
   const policy = useResource<Revision>((signal) => admin.get('/admin/policy', signal), [])
   const traffic = useResource<Traffic>((signal) => admin.get('/admin/traffic?window=300', signal), [])
   usePoll(traffic.refresh, 10_000, state.critical)
@@ -950,7 +982,10 @@ export function ApisView({ admin }: ViewProps) {
   const health = traffic.last?.body.by_api ?? []
   return (
     <>
-      <PageHeader title="APIs" lede="Each API behind the gateway: its operations, who may call them, their limits, and its traffic in the last 5 minutes.">
+      <PageHeader
+        title="APIs"
+        lede="Each API behind the gateway: its endpoints, who may call them, their limits, and its traffic in the last 5 minutes."
+      >
         <ReadStamp
           okAt={policy.last?.at ?? null} failed={policy.failed}
           loading={policy.loading}
@@ -964,11 +999,38 @@ export function ApisView({ admin }: ViewProps) {
       <ReplyView reply={policy.reply}>
         {(revision) => {
           const doc = revision.document as Policy | undefined
-          if (!doc) return <Empty title="No confirmed policy is in force." />
+          if (!doc) return <Empty title="No policy is in force yet." />
+          const found = (o: (typeof doc.operations)[number]) =>
+            matches(
+              query,
+              o.api,
+              apiName(o.api),
+              o.id,
+              `${o.method} ${o.target}`,
+              ...doc.permits.filter((p) => p.operation === o.id).map((p) => p.role),
+            )
+          const shown = doc.operations.filter(found).length
           return (
             <>
+              <ListToolbar
+                label="Filter APIs and endpoints"
+                query={query}
+                onQuery={setQuery}
+                shown={shown}
+                total={doc.operations.length}
+                noun={['endpoint', 'endpoints']}
+              >
+                {can('manage_policy') ? (
+                  <a className="btn btn-primary" href="#/designer">
+                    Change endpoints in the designer
+                  </a>
+                ) : null}
+              </ListToolbar>
+              {shown === 0 ? <p className="hint">No API or endpoint matches the filter.</p> : null}
               {doc.apis.map((api) => {
-                const ops = doc.operations.filter((o) => o.api === api.id)
+                const all = doc.operations.filter((o) => o.api === api.id)
+                const ops = all.filter(found)
+                if (ops.length === 0 && all.length > 0) return null
                 const h = health.find((x) => x.api === api.id)
                 const upstream = doc.upstreams.find((u) => u.id === api.upstream)
                 return (
@@ -977,7 +1039,7 @@ export function ApisView({ admin }: ViewProps) {
                       <div>
                         <h2 id={`api-${api.id}`}>{apiName(api.id)}</h2>
                         <p className="hint">
-                          {ops.length} operations · forwards to <code>{upstream?.dial ?? api.upstream}</code>
+                          {all.length} endpoints · service address <code>{upstream?.dial ?? api.upstream}</code>
                         </p>
                       </div>
                       {h ? (
@@ -1004,11 +1066,11 @@ export function ApisView({ admin }: ViewProps) {
                       )}
                     </div>
                     <div className="card-body">
-                      <TableScroll label={`Operations of ${api.id}`}>
+                      <TableScroll label={`Endpoints of ${api.id}`}>
                         <table className="ops-table">
                           <thead>
                             <tr>
-                              <th scope="col">Operation</th>
+                              <th scope="col">Endpoint</th>
                               <th scope="col">Request</th>
                               <th scope="col">Who may call it</th>
                               <th scope="col">Limit</th>
@@ -1053,6 +1115,24 @@ export function ApisView({ admin }: ViewProps) {
                           </tbody>
                         </table>
                       </TableScroll>
+                      {ops.some((o) => o.body || o.headers) ? (
+                        <details className="api-rules">
+                          <summary>Request rules</summary>
+                          {ops
+                            .filter((o) => o.body || o.headers)
+                            .map((o) => (
+                              <div key={o.id}>
+                                <RequestRules operation={o} />
+                                <MoreDetails
+                                  facts={[
+                                    ['Body schema (JSON)', o.body ? JSON.stringify(o.body.schema) : undefined],
+                                    ['Header schema (JSON)', o.headers ? JSON.stringify(o.headers) : undefined],
+                                  ]}
+                                />
+                              </div>
+                            ))}
+                        </details>
+                      ) : null}
                     </div>
                   </section>
                 )
@@ -1072,6 +1152,7 @@ export function ApisView({ admin }: ViewProps) {
 export function AccountsView({ admin, can }: ViewProps) {
   const id = useId()
   const list = useResource<{ items: BlockedAccount[] }>((signal) => admin.get('/admin/blocked-accounts', signal), [])
+  const [query, setQuery] = useState('')
   const recent = useResource<Page<RequestEvent>>((signal) => admin.get('/admin/events?limit=100', signal), [])
   const refresh = () => {
     list.refresh()
@@ -1111,48 +1192,75 @@ export function AccountsView({ admin, can }: ViewProps) {
           </div>
           <div className="card-body">
             <ReplyView reply={list.reply}>
-              {(l) =>
-                l.items.length === 0 ? (
-                  <p className="hint card-empty">No account is blocked.</p>
-                ) : (
-                  <TableScroll label="Table of blocked accounts">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th scope="col">Account</th>
-                          <th scope="col">Reason</th>
-                          <th scope="col">Blocked</th>
-                          {manage ? (
-                            <th scope="col">
-                              <span className="visually-hidden">Actions</span>
-                            </th>
-                          ) : null}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {l.items.map((b) => (
-                          <tr key={b.subject}>
-                            <td>
-                              <code>{b.subject}</code>
-                            </td>
-                            <td>{b.reason}</td>
-                            <td className="nowrap">
-                              <TimeOfDay value={b.blocked_at} /> <span className="muted">by {b.blocked_by}</span>
-                            </td>
-                            {manage ? (
-                              <td className="row-actions">
-                                <button type="button" className="btn btn-small" onClick={() => setConfirming(b.subject)} disabled={unblock.pending}>
-                                  Unblock<span className="visually-hidden"> {b.subject}</span>
-                                </button>
-                              </td>
-                            ) : null}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </TableScroll>
+              {(l) => {
+                const shown = l.items.filter((b) => matches(query, b.subject, b.reason, b.blocked_by))
+                return (
+                  <>
+                    <ListToolbar
+                      label="Filter blocked accounts"
+                      query={query}
+                      onQuery={setQuery}
+                      shown={shown.length}
+                      total={l.items.length}
+                      noun={['blocked account', 'blocked accounts']}
+                    >
+                      {manage ? (
+                        <button type="button" className="btn btn-primary" onClick={() => subjectInput.current?.focus()}>
+                          Block an account
+                        </button>
+                      ) : null}
+                    </ListToolbar>
+                    {l.items.length === 0 ? (
+                      <p className="hint card-empty">No account is blocked.</p>
+                    ) : shown.length === 0 ? (
+                      <p className="hint card-empty">No blocked account matches the filter.</p>
+                    ) : (
+                      <TableScroll label="Table of blocked accounts">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th scope="col">Account</th>
+                              <th scope="col">Reason</th>
+                              <th scope="col">Blocked</th>
+                              {manage ? (
+                                <th scope="col">
+                                  <span className="visually-hidden">Actions</span>
+                                </th>
+                              ) : null}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {shown.map((b) => (
+                              <tr key={b.subject}>
+                                <td>
+                                  <code>{b.subject}</code>
+                                </td>
+                                <td>{b.reason}</td>
+                                <td className="nowrap">
+                                  <TimeOfDay value={b.blocked_at} /> <span className="muted">by {b.blocked_by}</span>
+                                </td>
+                                {manage ? (
+                                  <td className="row-actions">
+                                    <button
+                                      type="button"
+                                      className="btn btn-small"
+                                      onClick={() => setConfirming(b.subject)}
+                                      disabled={unblock.pending}
+                                    >
+                                      Unblock
+                                      <span className="visually-hidden"> {b.subject}</span>
+                                    </button>
+                                  </td>
+                                ) : null}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </TableScroll>
+                    )}
+                  </>
                 )
-              }
+              }}
             </ReplyView>
             <MutationResult
               mutation={unblock}
@@ -1245,7 +1353,8 @@ export function AccountsView({ admin, can }: ViewProps) {
                                 subjectInput.current?.focus()
                               }}
                             >
-                              Block…<span className="visually-hidden"> {e.subject}</span>
+                              Block…
+                              <span className="visually-hidden"> {e.subject}</span>
                             </button>
                           )}
                         </td>
@@ -1447,7 +1556,10 @@ export function PolicyCode({ admin, open }: ViewProps) {
   }, [text])
   return (
     <>
-      <PageHeader title="Policy as code" lede="The whole policy is one JSON document: export it, keep it in Git, and stage changes from a file. Staging only creates a change; it goes live only through a trial you confirm.">
+      <PageHeader
+        title="Policy as code"
+        lede="The whole policy is one JSON document: export it, keep it in Git, and save draft changes from a file. A draft changes nothing; it goes live only through a trial you keep."
+      >
         <ReadStamp okAt={policy.last?.at ?? null} failed={policy.failed} loading={policy.loading} onRefresh={policy.refresh} />
       </PageHeader>
       <ReplyView reply={policy.reply}>
@@ -1455,7 +1567,7 @@ export function PolicyCode({ admin, open }: ViewProps) {
           <section className="section card" aria-labelledby="export-title">
             <div className="card-head card-head-pad">
               <div>
-                <h2 id="export-title">Policy in force · revision {revision.id}</h2>
+                <h2 id="export-title">Policy in force · version {revision.id}</h2>
                 <p className="hint">
                   Checksum <code>{revision.checksum}</code>
                 </p>
@@ -1478,18 +1590,31 @@ export function PolicyCode({ admin, open }: ViewProps) {
                 </a>
               </div>
             </div>
-            <pre className="code-block" tabIndex={0} aria-label={`Policy revision ${revision.id} as JSON`}>
+            <pre className="code-block" tabIndex={0} aria-label={`Policy version ${revision.id} as JSON`}>
               {text}
             </pre>
           </section>
         )}
       </ReplyView>
       <section className="section card card-pad" aria-labelledby="stage-title">
-        <h2 id="stage-title">Stage a change from a file</h2>
-        <p>In this Dashboard, load the file on the Changes page. From a script or CI, the demo tool calls the same Admin API with an administrator session:</p>
-        <pre className="code-block code-block-short" tabIndex={0} aria-label="Commands">{`go run ./cmd/demo policy export -dir <state> -out policy.json
-go run ./cmd/demo policy stage  -dir <state> -file policy.json`}</pre>
-        <p className="hint">The gateway's compiler checks the whole document when it is staged. Nothing changes until the change is put on trial and confirmed.</p>
+        <h2 id="stage-title">Save a draft change from a file</h2>
+        <p>
+          In this Dashboard, load the file on the Changes page. A script sends the same Admin API requests the Dashboard sends. Each needs a signed-in
+          administrator session (its cookie) and that session's CSRF token; saving a draft change (the API calls it a candidate) also needs the
+          version it is based on and a new idempotency key.
+        </p>
+        <pre className="code-block code-block-short" tabIndex={0} aria-label="Admin API requests">{`GET /admin/policy
+
+POST /admin/candidates
+Content-Type: application/json
+If-Match: "r<version in force>"
+Idempotency-Key: <a new key: 16 to 64 letters, digits, _ or ->
+X-CSRF-Token: <the session's CSRF token>
+
+{"policy": <the complete policy document>}`}</pre>
+        <p className="hint">
+          The gateway's compiler checks the whole document when it is saved as a draft. Nothing changes until the draft is put on trial and kept.
+        </p>
         <div className="actions">
           <button type="button" className="btn" onClick={() => open('candidates')}>
             Open Changes
@@ -1566,7 +1691,7 @@ export function ImpactPreview({ admin, candidate }: { admin: Admin; candidate: n
                 <table>
                   <thead>
                     <tr>
-                      <th scope="col">Operation</th>
+                      <th scope="col">Endpoint</th>
                       <th scope="col">Account</th>
                       <th scope="col">Now</th>
                       <th scope="col">With this change</th>

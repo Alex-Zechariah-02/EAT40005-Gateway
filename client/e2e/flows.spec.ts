@@ -60,7 +60,9 @@ async function since(service: string, count: number): Promise<Receipt[]> {
   return (await demo.receipts(service)).slice(count)
 }
 
-const ref = async (page: Page) => ((await page.getByText(/^Ref [0-9a-f]{32}$/).first().textContent()) ?? '').replace(/^Ref\s*/, '')
+// ref reads the full reference a Ref shows in its tooltip (the page shows a
+// short form, and Copy full reference copies this value).
+const ref = async (page: Page) => ((await page.getByTitle(/^Full reference [0-9a-f]{32}$/).first().getAttribute('title')) ?? '').replace(/^Full reference /, '')
 
 test.describe.serial('Fetch roles on the real services', () => {
   test.beforeAll(async () => {
@@ -85,17 +87,41 @@ test.describe.serial('Fetch roles on the real services', () => {
     await demo?.stop()
   })
 
-  test('a customer browses, searches and checks out with cash and with the wallet; each order reaches Orders once', async ({ browser }) => {
+  test('a customer browses, sorts, filters and searches, and checks out with cash and with the wallet; each order reaches Orders once', async ({ browser }) => {
     const priya = await person(browser, 'priya@fetch.test')
     await expect(priya.getByRole('heading', { level: 1, name: 'What can we fetch for you?' })).toBeVisible()
     await expect(priya.getByRole('link', { name: /Warung Kak Ros/ })).toBeVisible()
     await priya.goto(siteURL + '/?q=nasi', { waitUntil: 'networkidle' })
     await expect(priya.getByText('Nasi Lemak Ayam Goreng').first()).toBeVisible()
+    // Results sort by price, and the choice stays in the address.
+    const prices = async () => (await priya.locator('a[href^="/item/"]').allTextContents()).map((text) => Number(/RM\s*([\d.]+)/.exec(text)?.[1]))
+    await priya.getByLabel('Sort by').selectOption({ label: 'Price, high to low' })
+    await expect(priya).toHaveURL(/\/\?q=nasi&sort=price-desc$/)
+    const highToLow = await prices()
+    expect(highToLow.length).toBeGreaterThan(1)
+    expect(highToLow).toEqual([...highToLow].sort((a, b) => b - a))
     // The results name each shop they come from, and each opens the shop.
     const shops = priya.getByRole('navigation', { name: 'Shops in these results' })
     await expect(shops.getByRole('link')).toHaveCount(1)
     await shops.getByRole('link', { name: 'Warung Kak Ros' }).click()
     await expect(priya).toHaveURL(/\/store\/MER-001$/)
+
+    // Fetch Food sorts by delivery fee and can show only open shops; both
+    // choices survive a reload.
+    await priya.goto(siteURL + '/food', { waitUntil: 'networkidle' })
+    await priya.getByLabel('Sort by').selectOption({ label: 'Lowest delivery fee' })
+    await expect(priya).toHaveURL(/\/food\?sort=fee$/)
+    const fees = (await priya.locator('a[href^="/store/"]').filter({ hasText: 'Delivery fee' }).allTextContents()).map((text) => Number(/Delivery fee\s*RM\s*([\d.]+)/.exec(text)?.[1]))
+    expect(fees.length).toBeGreaterThan(1)
+    expect(fees).toEqual([...fees].sort((a, b) => a - b))
+    await priya.getByLabel('Open now').check()
+    await expect(priya).toHaveURL(/\/food\?sort=fee&open=1$/)
+    await expect(priya.getByRole('status').filter({ hasText: /open now/ })).toBeVisible()
+    await expect(priya.getByText('Closed now')).toHaveCount(0)
+    await priya.reload({ waitUntil: 'networkidle' })
+    await expect(priya.getByLabel('Sort by')).toHaveValue('fee')
+    await expect(priya.getByLabel('Open now')).toBeChecked()
+    await shot(priya, 'flows-00-food-sorted')
 
     const before = (await demo.receipts('orders')).length
     await addToBasket(priya, siteURL, 'MER-001', 'Nasi Lemak Ayam Goreng')
@@ -128,8 +154,13 @@ test.describe.serial('Fetch roles on the real services', () => {
     await ros.goto(siteURL + '/merchant', { waitUntil: 'networkidle' })
     await orderCard(ros, order).getByRole('button', { name: 'Accept order' }).click()
     await expect(orderCard(ros, order).getByRole('button', { name: 'Mark ready for pickup' })).toBeVisible()
+    // Her open order page follows the change by itself and says so; a status
+    // read when the page opens is not announced.
+    await expect(aisyah.getByRole('status').filter({ hasText: /^Update: Being prepared at .+\.$/ })).toBeVisible({ timeout: 15_000 })
+    await expect(aisyah.getByRole('heading', { level: 1 })).toHaveText('Being prepared')
     await aisyah.reload({ waitUntil: 'networkidle' })
     await expect(aisyah.getByRole('heading', { level: 1 })).toHaveText('Being prepared')
+    await expect(aisyah.getByText(/^Update:/)).toHaveCount(0)
     await orderCard(ros, order).getByRole('button', { name: 'Mark ready for pickup' }).click()
     await expect(orderCard(ros, order).getByRole('button')).toHaveCount(0)
 
@@ -143,6 +174,20 @@ test.describe.serial('Fetch roles on the real services', () => {
     await expect(orderCard(amir, order)).toHaveCount(0)
     await aisyah.reload({ waitUntil: 'networkidle' })
     await expect(aisyah.getByRole('heading', { level: 1 })).toHaveText('Delivered')
+
+    // The receipt prints without the site's header, footer or buttons.
+    const header = aisyah.locator('header').first()
+    const print = aisyah.locator('button', { hasText: 'Print receipt' })
+    await expect(header).toBeVisible()
+    await expect(print).toBeVisible()
+    await aisyah.emulateMedia({ media: 'print' })
+    await expect(aisyah.getByText(`Receipt · ${order} · placed `)).toBeVisible()
+    await expect(header).toBeHidden()
+    await expect(aisyah.locator('footer').first()).toBeHidden()
+    await expect(print).toBeHidden()
+    await expect(aisyah.getByText(/^Order placed\./)).toBeHidden()
+    await shot(aisyah, 'flows-02-receipt-print')
+    await aisyah.emulateMedia({ media: null })
 
     // Orders recorded exactly one change per step.
     const statuses = (await demo.receipts('orders'))
@@ -419,7 +464,7 @@ test.describe.serial('Fetch roles on the real services', () => {
     const stale = amir.getByRole('alert').filter({ hasText: 'What’s shown below is from the last successful check.' })
     await expect(stale).toContainText('Your account can’t do this right now.')
     await expect(stale).toContainText('Answered by the Fetch gateway · 403')
-    await expect(stale.getByText(/^Ref [0-9a-f]{32}$/)).toBeVisible()
+    await expect(stale.getByTitle(/^Full reference [0-9a-f]{32}$/)).toBeVisible()
     await expect(board).toBeVisible()
     await shot(amir, 'flows-07-refresh-refused')
     await api.resolve('rollback')

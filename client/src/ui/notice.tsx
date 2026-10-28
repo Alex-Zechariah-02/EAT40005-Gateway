@@ -6,8 +6,17 @@ import { Link } from '../lib/router'
 import { Button } from './button'
 import { cx } from './cx'
 
-// RefTag shows the reference the gateway put on an answer, with a copy
-// button, so a person can quote it to Fetch support.
+// shortRef shows the gateway's 32-character reference as its first eight
+// characters, grouped ("6F1C-A9E2"). Anything else is shown as sent.
+export function shortRef(value: string): string {
+  if (!/^[0-9a-f]{32}$/i.test(value)) return value
+  const head = value.slice(0, 8).toUpperCase()
+  return `${head.slice(0, 4)}-${head.slice(4)}`
+}
+
+// RefTag shows the reference the gateway put on an answer in a short,
+// readable form; the full reference is its tooltip and what the copy button
+// copies, so support can still look it up exactly.
 export function RefTag({ value }: { value: string }) {
   const [copied, setCopied] = useState(false)
   const copy = () => {
@@ -20,9 +29,9 @@ export function RefTag({ value }: { value: string }) {
     )
   }
   return (
-    <span className="inline-flex max-w-full items-center gap-1 rounded-md bg-sunken py-0.5 pr-0.5 pl-2 text-xs text-ink-2 ring-1 ring-line">
-      Ref <span className="min-w-0 font-semibold tracking-tight break-all text-ink tabular-nums">{value}</span>
-      <button type="button" onClick={copy} className="relative flex size-6 items-center justify-center rounded text-ink-3 hover:bg-surface hover:text-ink" aria-label={copied ? 'Reference copied' : 'Copy reference'}>
+    <span className="inline-flex max-w-full items-center gap-1 rounded-md bg-sunken py-0.5 pr-0.5 pl-2 text-xs text-ink-2 ring-1 ring-line" title={`Full reference ${value}`}>
+      Ref <span className="min-w-0 font-semibold tracking-tight break-all text-ink tabular-nums">{shortRef(value)}</span>
+      <button type="button" onClick={copy} className="relative flex size-6 items-center justify-center rounded text-ink-3 hover:bg-surface hover:text-ink" aria-label={copied ? 'Full reference copied' : 'Copy full reference'}>
         {copied ? <Check size={13} weight="bold" /> : <Copy size={13} />}
       </button>
     </span>

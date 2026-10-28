@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import type { Admin, MutationRequest, Outcome, Reply, Status } from './api'
+import type { Handoff, View } from './views'
 
 // useResource loads one server read when the view opens and on refresh. A
 // newer load or leaving the view aborts the older one, so an earlier answer
@@ -151,11 +152,18 @@ export function useMutation<T = Outcome>(admin: Admin, onSettled: () => void) {
     if (busy.current) return
     busy.current = true
     setPhase({ state: 'pending', request })
+    // The register's lifetime is taken when the request is sent: if the
+    // administrator signs out before the answer arrives, the answer belongs
+    // to a page state that no longer exists and changes nothing on screen.
+    const since = outcomes?.lifetime()
     const reply = await admin.send<T>(request)
     busy.current = false
+    if (outcomes && since !== outcomes.lifetime()) return
     setPhase({ state: 'replied', request, reply })
-    if (request.key !== undefined && reply.kind === 'unknown') outcomes?.add(request)
-    if (request.key !== undefined && (reply.kind === 'ok' || reply.kind === 'refused')) outcomes?.settle(request)
+    if (outcomes && since !== undefined && request.key !== undefined) {
+      if (reply.kind === 'unknown') outcomes.add(request, since)
+      if (reply.kind === 'ok' || reply.kind === 'refused') outcomes.settle(request, since)
+    }
     if (reply.kind !== 'unknown') onSettled()
   }
 
@@ -185,9 +193,13 @@ export interface Unresolved {
 
 export interface OutcomeRegister {
   items: Unresolved[]
-  add(request: MutationRequest): void
+  // lifetime changes each time the register is cleared by signing out. A
+  // request records it when sent and passes it back with its answer, so an
+  // answer from before the clear is ignored.
+  lifetime(): number
+  add(request: MutationRequest, since: number): void
   // settle drops a change whose view received a definite answer.
-  settle(request: MutationRequest): void
+  settle(request: MutationRequest, since: number): void
   update(id: string, change: Partial<Unresolved>): void
   forget(id: string): void
 }
@@ -220,6 +232,10 @@ export function useGatewayState(): Gateway {
 // administrator moves between views. It belongs to the signed-in shell, so
 // signing out or a new sign-in forgets it; nothing goes to browser storage.
 export const ViewMemory = createContext<Map<string, unknown> | null>(null)
+
+// Navigate opens a view from a part of the page that is not a view itself,
+// such as the header's search.
+export const Navigate = createContext<((view: View, handoff?: Handoff) => void) | null>(null)
 
 export function useRemembered<T>(key: string, initial: T): [T, (value: T) => void] {
   const memory = useContext(ViewMemory)

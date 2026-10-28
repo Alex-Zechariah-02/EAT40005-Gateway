@@ -26,11 +26,15 @@ import {
   splitKey,
   type BoxKey,
   type BoxKind,
+  kindNames,
   type DesignerDraft,
   type Positions,
 } from './designer-model'
+import { closeOtherMenus, Templates } from './designer-templates'
+import { StepByStep } from './designer-wizards'
 import { trace, traceExplanation } from './designer-trace'
 import { Badge, ChangeList, Confirm, Empty, Field, MutationResult, PageHeader, Problem, ReadStamp, Remaining } from './ui'
+import { controls } from './provisional'
 import type { ViewProps } from './views'
 
 type Mode = 'draft' | 'confirmed' | 'provisional'
@@ -76,6 +80,7 @@ export function Designer({
   const [refused, setRefused] = useState<{ box?: BoxKey; edge?: string; code: string }>()
   const [showChanges, setShowChanges] = useState(false)
   const [checkMessage, setCheckMessage] = useState('')
+  const [templateNote, setTemplateNote] = useState('')
   const review = useRef<HTMLButtonElement>(null)
   const positionsTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const submitted = useRef<Policy | null>(null)
@@ -254,12 +259,12 @@ export function Designer({
     setSelection(null)
   }
   async function checkCandidates() {
-    setCheckMessage('Reading staged changes…')
+    setCheckMessage('Reading draft changes…')
     const answer = await admin.get<Page<Candidate>>('/admin/candidates')
     setCheckMessage(
       answer.kind === 'ok'
-        ? `${answer.body.items.length} staged changes listed. Look for this draft on the Changes page; until you find it, whether it was staged stays unknown.`
-        : 'The staged changes could not be read. Whether this draft was staged stays unknown; try Check again.',
+        ? `${answer.body.items.length} draft changes listed. Look for this draft on the Changes page; until you find it, whether it was saved stays unknown.`
+        : 'The draft changes could not be read. Whether this draft was saved stays unknown; try Check again.',
     )
   }
   const currentOperation = document?.operations.find((item) => item.id === what) ?? document?.operations[0]
@@ -287,10 +292,10 @@ export function Designer({
     <>
       <PageHeader
         title="Policy"
-        lede="The policy as a picture: who may call which operation, the checks each request meets in the gateway's fixed order, and where it is forwarded. Edit a draft here and stage it as a change; nothing is in force until a trial of it is confirmed."
+        lede="The policy as a picture: who may call which endpoint, the checks each request meets in the gateway's fixed order, and where it is forwarded. Edit a draft here and save it as a draft change; nothing is in force until a trial of it is kept."
       >
         <a className="btn btn-small" href="#/policy">
-          Revisions and tables
+          Versions and tables
         </a>
         <ReadStamp okAt={policy.last?.at ?? null} failed={policy.failed} loading={policy.loading || overrides.loading || provisional.loading} onRefresh={refresh} />
       </PageHeader>
@@ -313,8 +318,8 @@ export function Designer({
         <>
           {pending ? (
             <div className="notice tone-pending">
-              Revision {pending.activation.revision} is on trial until {new Date(pending.activation.deadline).toLocaleString()}. Putting
-              another change on trial is refused until it is confirmed or rolled back.
+              Version {pending.activation.revision} is on trial until {new Date(pending.activation.deadline).toLocaleString()}. Putting another change
+              on trial is refused until it is kept or undone.
               <Remaining until={pending.activation.deadline} onPassed={refresh} />
             </div>
           ) : null}
@@ -332,7 +337,7 @@ export function Designer({
             <>
               <Problem reply={provisional.reply} />
               <button className="btn btn-small" type="button" onClick={provisional.refresh}>
-                Retry provisional state
+                Retry reading the trial
               </button>
             </>
           ) : null}
@@ -340,14 +345,14 @@ export function Designer({
             <div className="segmented" aria-label="Policy mode">
               {(['draft', 'confirmed', ...(pendingId !== undefined ? ['provisional'] : [])] as Mode[]).map((choice) => (
                 <button className="btn" type="button" key={choice} aria-pressed={mode === choice} onClick={() => changeMode(choice)}>
-                  {choice === 'draft' ? 'Draft' : choice === 'confirmed' ? `Confirmed r${current.id}` : `On trial r${pendingId}`}
+                  {choice === 'draft' ? 'Draft' : choice === 'confirmed' ? `In force · version ${current.id}` : `On trial · version ${pendingId}`}
                 </button>
               ))}
             </div>
             <p className="designer-draft-state">
               {dirty
-                ? `Unsaved draft · ${changed.length} ${changed.length === 1 ? 'change' : 'changes'} against r${draft.baseRevision}`
-                : `No draft changes against r${draft.baseRevision}`}
+                ? `Unsaved draft · ${changed.length} ${changed.length === 1 ? 'change' : 'changes'} against version ${draft.baseRevision}`
+                : `No draft changes against version ${draft.baseRevision}`}
             </p>
             <div className="designer-toolbar-actions">
               <button
@@ -366,7 +371,7 @@ export function Designer({
                 <input type="checkbox" checked={showLive} onChange={(event) => setShowLive(event.target.checked)} /> Show what is in force
               </label>
               {editable ? (
-                <details className="designer-add">
+                <details className="designer-add" onToggle={closeOtherMenus}>
                   <summary className="btn">Add</summary>
                   <div>
                     {(['role', 'operation', 'api', 'upstream'] as BoxKind[]).map((kind) => (
@@ -380,17 +385,35 @@ export function Designer({
                             event.currentTarget.closest('details')?.removeAttribute('open')
                           }}
                         >
-                          Add {kind === 'api' ? 'API' : kind}
+                          Add {kindNames[kind].one}
                         </button>
                         {kind === 'operation' && !document.apis.length ? (
                           <p className="hint">Add an API first.</p>
                         ) : kind === 'api' && !document.upstreams.length ? (
-                          <p className="hint">Add an upstream first.</p>
+                          <p className="hint">Add a service address first.</p>
                         ) : null}
                       </div>
                     ))}
                   </div>
                 </details>
+              ) : null}
+              {editable && document ? (
+                <>
+                  <StepByStep
+                    policy={document}
+                    apply={(next, summary) => {
+                      update(next)
+                      setTemplateNote(`Applied to the draft: ${summary} Nothing is saved: review it, then choose Save draft change.`)
+                    }}
+                  />
+                  <Templates
+                    policy={document}
+                    apply={(next, summary) => {
+                      update(next)
+                      setTemplateNote(`Template applied to the draft: ${summary} Nothing is saved: review it, then choose Save draft change.`)
+                    }}
+                  />
+                </>
               ) : null}
               {can('manage_policy') ? (
                 <>
@@ -403,25 +426,30 @@ export function Designer({
                     Discard draft
                   </button>
                   <button className="btn btn-primary" type="button" disabled={!canStage} onClick={() => setStageConfirm(true)}>
-                    Stage as a change
+                    Save draft change
                   </button>
                 </>
               ) : null}
             </div>
           </div>
+          {templateNote && mode === 'draft' ? (
+            <p role="status" className="hint">
+              {templateNote}
+            </p>
+          ) : null}
           {!can('manage_policy') ? (
             <p className="notice tone-neutral">
-              Read-only administrator. Inspect the policy in every view; the Gateway requires manage_policy to accept changes.
+              Read-only administrator: you can inspect the policy in every view. Changing it needs the “Change the policy” permission (manage_policy).
             </p>
           ) : null}
           {tab === 'json' && editable && json !== serialised ? (
-            <p className="hint">Apply JSON before staging. The draft stays unchanged until it is applied.</p>
+            <p className="hint">Apply the JSON before saving the draft change. The draft stays unchanged until it is applied.</p>
           ) : null}
           {stale ? (
             <section className="notice tone-pending">
               <p>
-                The confirmed policy changed to r{current.id} since your draft was started from r{draft.baseRevision}. Your draft
-                keeps its own changes; staging it unchanged would be refused.
+                The policy in force changed to version {current.id} since your draft was started from version {draft.baseRevision}. Your draft keeps
+                its own changes; saving it unchanged would be refused.
               </p>
               <div className="actions">
                 <button className="btn" type="button" aria-expanded={showChanges} onClick={() => setShowChanges((value) => !value)}>
@@ -448,7 +476,7 @@ export function Designer({
             unknown={
               phase.state === 'replied' && phase.reply.kind === 'unknown' ? (
                 <div role="alert" className="notice tone-unknown">
-                  <p>No answer: the change may or may not have been staged.</p>
+                  <p>No answer from the gateway: the draft may or may not have been saved.</p>
                   <button className="btn" type="button" onClick={() => void checkCandidates()}>
                     Check
                   </button>{' '}
@@ -461,7 +489,7 @@ export function Designer({
             }
             success={(body) => (
               <>
-                <p className="notice-title">The gateway checked it: staged as change {body.candidate.id}. Nothing is in force yet.</p>
+                <p className="notice-title">The gateway checked it: saved as draft change {body.candidate.id}. Nothing is in force yet.</p>
                 <button ref={review} className="btn" type="button" onClick={() => open('candidates', { candidate: body.candidate.id })}>
                   Preview its impact and put it on trial
                 </button>
@@ -607,8 +635,8 @@ export function Designer({
           </div>
           <Confirm
             open={stageConfirm}
-            title="Stage this draft as a change?"
-            confirmLabel="Stage as a change"
+            title="Save this as a draft change?"
+            confirmLabel="Save draft change"
             onCancel={() => setStageConfirm(false)}
             onConfirm={() => {
               setStageConfirm(false)
@@ -623,13 +651,11 @@ export function Designer({
               })
             }}
           >
-            <p>The gateway checks the whole document. Nothing is in force until the change is put on trial and confirmed.</p>
+            <p>The gateway checks the whole document. Nothing is in force until the draft change is put on trial and kept.</p>
             <ul>
               {changed.map((change) => (
                 <li key={`${change.control}:${change.target}`}>
-                  <code>
-                    {change.control}: {change.target}
-                  </code>
+                  {controls[change.control] ?? change.control}: <code>{change.target}</code>
                 </li>
               ))}
             </ul>
@@ -648,6 +674,7 @@ export function Designer({
               setBuffers({})
               mutation.clear()
               setRefused(undefined)
+              setTemplateNote('')
             }}
           >
             <p>Your changes are lost.</p>
@@ -667,7 +694,10 @@ export function Designer({
               setDeleteKey(null)
             }}
           >
-            <p>The box and its permits are removed from this draft. Nothing changes in the gateway until the draft is staged and put on trial.</p>
+            <p>
+              The box and its permissions are removed from this draft. Nothing changes in the gateway until it is saved as a draft change and put on
+              trial.
+            </p>
           </Confirm>
         </>
       ) : null}
@@ -675,7 +705,7 @@ export function Designer({
         <>
           <Problem reply={provisionalDocument.reply} />
           <button type="button" className="btn" onClick={provisionalDocument.refresh}>
-            Retry provisional document
+            Retry reading the version on trial
           </button>
         </>
       ) : null}
@@ -735,7 +765,7 @@ function TracePanel({
           ))}
         </ol>
       ) : (
-        <p className="hint">Add an operation to trace a request.</p>
+        <p className="hint">Add an endpoint to trace a request.</p>
       )}
       <p className="notice tone-neutral">{traceExplanation}</p>
     </section>

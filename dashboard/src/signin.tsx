@@ -3,6 +3,14 @@ import { request, type Reply, type SessionInfo } from './api'
 import { useResource } from './hooks'
 import { describedBy, Field, Problem } from './ui'
 
+// The gateway's state in plain words; the exact value stays beside it.
+const gatewayStates: Record<string, string> = {
+  normal: 'Ready',
+  bootstrap_locked: 'New installation, waiting for its first policy',
+  recovery_required: 'Restored from a backup, waiting for a starting policy',
+  unavailable: 'Unavailable',
+}
+
 // SignIn offers the two ways in: a password sign-in, and the first sign-in of
 // an enrolled administrator with the one-time secret the operator was given.
 export function SignIn(props: { signedIn: (session: SessionInfo) => void }) {
@@ -13,8 +21,16 @@ export function SignIn(props: { signedIn: (session: SessionInfo) => void }) {
     <section className="entry-card" aria-labelledby="signin-title">
       <h1 id="signin-title">{mode === 'password' ? 'Sign in' : 'First sign-in'}</h1>
       <p className="entry-state">
-        Gateway state:{' '}
-        {health.reply?.kind === 'ok' ? <code>{health.reply.body.state}</code> : health.loading ? 'reading…' : 'not available'}
+        Gateway:{' '}
+        {health.reply?.kind === 'ok' ? (
+          <>
+            {gatewayStates[health.reply.body.state] ?? health.reply.body.state} <code className="muted">{health.reply.body.state}</code>
+          </>
+        ) : health.loading ? (
+          'reading…'
+        ) : (
+          'not available'
+        )}
       </p>
       <div className="segmented" role="group" aria-label="Sign-in method">
         <button type="button" aria-pressed={mode === 'password'} onClick={() => setMode('password')}>

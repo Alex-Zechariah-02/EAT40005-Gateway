@@ -1,14 +1,16 @@
 import { lazy, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { SignOut } from '@phosphor-icons/react'
 import { adminClient, request, type Admin, type Permission, type Reply, type SessionInfo, type Status } from './api'
-import { GatewayState, inactive, Outcomes, usePoll, useRereadWhen, useResource, ViewMemory, type Gateway } from './hooks'
+import { GatewayState, inactive, Navigate, Outcomes, usePoll, useRereadWhen, useResource, ViewMemory, type Gateway } from './hooks'
 import { Icon, type IconName } from './icons'
 import { UnresolvedChanges, useOutcomeRegister } from './outcomes'
 import { Problem, time, TimeOfDay } from './ui'
 import { admissionText, Brand } from './state'
 import { SignIn } from './signin'
-import { Overview } from './overview'
+import { guideHidden, Overview } from './overview'
+import { Notifications } from './notices'
 import { PolicyView } from './policy'
+import { Roles } from './roles'
 import { Candidates } from './candidates'
 import { Overrides } from './overrides'
 import { History } from './history'
@@ -43,6 +45,7 @@ const navigation: { label: string; items: NavItem[] }[] = [
     label: 'Policy',
     items: [
       { id: 'designer', label: 'Policy', icon: 'permit', needs: 'read' },
+      { id: 'roles', label: 'Roles', icon: 'roles', needs: 'read' },
       { id: 'candidates', label: 'Changes', icon: 'candidates', needs: 'read' },
       { id: 'overrides', label: 'Temporary rules', icon: 'overrides', needs: 'read' },
       { id: 'accounts', label: 'Accounts', icon: 'accounts', needs: 'read' },
@@ -65,7 +68,8 @@ const titles: Record<View, string> = {
   lookup: 'Request lookup',
   apis: 'APIs',
   designer: 'Policy',
-  policy: 'Policy revisions',
+  roles: 'Roles',
+  policy: 'Policy versions',
   candidates: 'Changes',
   overrides: 'Temporary rules',
   accounts: 'Accounts',
@@ -110,7 +114,7 @@ export function App() {
       const facts = lastStatus.current
       const trial =
         !explicit && facts?.provisional !== undefined && facts.deadline
-          ? ` Revision ${facts.provisional} was on trial when this page last read the gateway: unless someone confirms it, the gateway rolls back to revision ${facts.confirmed} at ${time(facts.deadline)} by itself. Sign in again to see its current state.`
+          ? ` Version ${facts.provisional} was on trial when this page last read the gateway: unless someone keeps it, the gateway undoes it and returns to version ${facts.confirmed} at ${time(facts.deadline)} by itself. Sign in again to see its current state.`
           : ''
       if (explicit) clearOutcomes()
       lastStatus.current = undefined
@@ -323,6 +327,7 @@ function Shell(props: {
   return (
     <GatewayState.Provider value={gateway}>
     <ViewMemory.Provider value={memory}>
+    <Navigate.Provider value={open}>
       <a className="visually-hidden" href="#content">
         Skip to content
       </a>
@@ -389,24 +394,25 @@ function Shell(props: {
           </div>
         </aside>
         <main id="content" className="page" tabIndex={-1}>
+          <Notifications status={facts} view={view} />
           {/* The Overview shows the gateway's state in full; every other page
               says so at the top when the gateway refuses everything. */}
           {facts && view !== 'overview' && (facts.admission !== 'ready' || facts.audit_failed) ? (
             <p className="banner tone-refused" role="status">
-              <strong>The gateway is not admitting requests.</strong> {admissionText[facts.admission] ?? 'Every protected request is refused.'}{' '}
+              <strong>The gateway is not accepting requests.</strong> {admissionText[facts.admission] ?? 'Every protected request is refused.'}{' '}
               <a href="#/overview">Open the Overview</a>
             </p>
           ) : null}
           {facts?.stored_authority === 'unreadable' ? (
             <p className="banner tone-unknown" role="status">
-              <strong>The gateway could not read its stored policy.</strong> Which revision is confirmed or on trial is not known from its latest
+              <strong>The gateway could not read its stored policy.</strong> Which version is in force or on trial is not known from its latest
               answer; nothing here means there is none.
             </p>
           ) : null}
           {trialOutlivesSession ? (
             <p className="banner tone-pending">
-              <strong>Your session ends at <TimeOfDay value={session.expires_at} />, before revision {facts?.provisional}'s trial deadline.</strong>{' '}
-              Sign in again before then to confirm or roll it back; otherwise the gateway rolls it back by itself at the deadline.
+              <strong>Your session ends at <TimeOfDay value={session.expires_at} />, before version {facts?.provisional}'s trial deadline.</strong>{' '}
+              Sign in again before then to keep or undo it; otherwise the gateway undoes it by itself at the deadline.
             </p>
           ) : null}
           {paused && (view === 'overview' || view === 'traffic' || view === 'apis') ? (
@@ -425,6 +431,7 @@ function Shell(props: {
               <Designer {...viewProps} draft={designerDraft} setDraft={setDesignerDraft} />
             </Suspense>
           ) : null}
+          {view === 'roles' ? <Roles {...viewProps} /> : null}
           {view === 'policy' ? <PolicyView {...viewProps} /> : null}
           {view === 'candidates' ? <Candidates {...viewProps} draft={draft} candidate={candidate} /> : null}
           {view === 'overrides' ? <Overrides {...viewProps} /> : null}
@@ -432,9 +439,18 @@ function Shell(props: {
           {view === 'history' ? <History {...viewProps} /> : null}
           {view === 'code' ? <PolicyCode {...viewProps} /> : null}
           {view === 'team' ? <TeamView {...viewProps} /> : null}
-          {view === 'account' ? <Account admin={admin} session={session} signedOut={signedOut} /> : null}
+          {view === 'account' ? <Account
+              admin={admin}
+              session={session}
+              signedOut={signedOut}
+              showGuide={() => {
+                memory.set(guideHidden, false)
+                open('overview')
+              }}
+            /> : null}
         </main>
       </div>
+    </Navigate.Provider>
     </ViewMemory.Provider>
     </GatewayState.Provider>
   )

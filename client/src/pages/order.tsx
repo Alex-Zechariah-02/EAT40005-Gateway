@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from 'react'
-import { CheckCircle, ChefHat, Lifebuoy, MapPin, Moped, Package, Receipt, XCircle } from '@phosphor-icons/react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { CheckCircle, ChefHat, Lifebuoy, MapPin, Moped, Package, Printer, Receipt, XCircle } from '@phosphor-icons/react'
 import { outcomeOfWrite } from '../lib/api'
 import { rm, statusNames, time, when } from '../lib/format'
 import { describe, type Problem } from '../lib/messages'
@@ -53,6 +53,16 @@ function OrderView({ order, justPlaced, onChanged, refresh }: { order: Order; ju
   const [problem, setProblem] = useState<Problem | null>(null)
   const reached = new Map(order.timeline.map((t) => [t.status, t.at]))
   const cancelled = order.status === 'cancelled'
+  // A status that changes while the page is open is announced politely; the
+  // first status read is not, and focus never moves.
+  const seen = useRef(order.status)
+  const [update, setUpdate] = useState('')
+  useEffect(() => {
+    if (seen.current === order.status) return
+    seen.current = order.status
+    const at = reached.get(order.status)
+    setUpdate(`Update: ${order.status === 'cancelled' ? 'Order cancelled' : statusNames[order.status]}${at ? ` at ${time(at)}` : ''}.`)
+  }, [order.status])
 
   const cancel = async () => {
     setConfirming(false)
@@ -68,7 +78,7 @@ function OrderView({ order, justPlaced, onChanged, refresh }: { order: Order; ju
   return (
     <div className="mx-auto mt-8 max-w-[860px]">
       {justPlaced && !cancelled && (
-        <div role="status" className="mb-6 flex items-center gap-3 rounded-2xl bg-ok-soft p-4 text-ok">
+        <div role="status" className="mb-6 flex items-center gap-3 rounded-2xl bg-ok-soft p-4 text-ok print:hidden">
           <CheckCircle size={22} weight="fill" aria-hidden="true" />
           <p className="font-bold">Order placed. {order.merchant_name} has it now.</p>
         </div>
@@ -81,9 +91,13 @@ function OrderView({ order, justPlaced, onChanged, refresh }: { order: Order; ju
         </div>
       </div>
       {refresh}
+      <p role="status" className={cx('mt-4 rounded-2xl bg-brand-soft p-4 font-bold text-brand-strong print:hidden', !update && 'sr-only')}>
+        {update}
+      </p>
+      <p className="hidden print:mt-2 print:block print:text-sm">Receipt · {order.id} · placed {when(order.created_at)}</p>
 
       {!cancelled ? (
-        <ol className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-5" aria-label="Order progress">
+        <ol className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-5 print:hidden" aria-label="Order progress">
           {steps.map((step, index) => {
             const at = reached.get(step.status)
             const current = order.status === step.status
@@ -126,6 +140,10 @@ function OrderView({ order, justPlaced, onChanged, refresh }: { order: Order; ju
           </dl>
         </section>
         <div className="flex flex-col gap-4">
+          <Button variant="secondary" block onClick={() => window.print()} className="print:hidden">
+            <Printer size={18} aria-hidden="true" />
+            Print receipt
+          </Button>
           <section className="rounded-3xl bg-surface p-6 shadow-card" aria-labelledby="address-heading">
             <h2 id="address-heading" className="flex items-center gap-2 text-lg font-extrabold tracking-[-0.015em]"><MapPin size={18} aria-hidden="true" />Delivering to</h2>
             <address className="mt-3 text-sm text-ink-2 not-italic">
@@ -137,9 +155,9 @@ function OrderView({ order, justPlaced, onChanged, refresh }: { order: Order; ju
             {order.note && <p className="mt-3 rounded-xl bg-sunken p-3 text-sm text-ink-2">Note: {order.note}</p>}
           </section>
           {order.status === 'placed' && (
-            <Button variant="danger" block onClick={() => setConfirming(true)} busy={busy} busyLabel="Cancelling…">Cancel order</Button>
+            <Button variant="danger" block onClick={() => setConfirming(true)} busy={busy} busyLabel="Cancelling…" className="print:hidden">Cancel order</Button>
           )}
-          <ButtonLink to={`/help?order=${encodeURIComponent(order.id)}`} variant="secondary" block><Lifebuoy size={18} aria-hidden="true" />Get help with this order</ButtonLink>
+          <ButtonLink to={`/help?order=${encodeURIComponent(order.id)}`} variant="secondary" block className="print:hidden"><Lifebuoy size={18} aria-hidden="true" />Get help with this order</ButtonLink>
         </div>
       </div>
       <ConfirmDialog

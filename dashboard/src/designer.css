@@ -60,6 +60,19 @@
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-overlay);
 }
+.designer-templates > div {
+  width: min(22rem, calc(100vw - 32px));
+}
+.designer-templates section {
+  display: grid;
+  gap: 6px;
+  padding-block-start: 8px;
+  border-block-start: 1px solid var(--rule);
+}
+.designer-templates h3 {
+  margin: 0;
+  font-size: var(--text-sm);
+}
 .designer-tab-row {
   display: flex;
   flex-wrap: wrap;

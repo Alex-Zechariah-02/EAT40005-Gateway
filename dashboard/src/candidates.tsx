@@ -1,18 +1,22 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { newKey, type Candidate, type Outcome, type Revision, type Status } from './api'
-import { differences } from './diff'
+import { differences, removedApis } from './diff'
 import { useGatewayState, useMutation, usePaged, useRereadWhen, useResource } from './hooks'
 import { ImpactPreview } from './monitor'
 import { ActivationHistory, TrialDecision } from './provisional'
 import {
   Badge,
   ChangeList,
+  ChangeSet,
   CodeBlock,
   Confirm,
   describedBy,
   duration,
   Field,
   fieldError,
+  ListToolbar,
+  matches,
+  MoreDetails,
   MutationResult,
   PageHeader,
   Problem,
@@ -22,6 +26,7 @@ import {
   TableScroll,
   time,
   Time,
+  TypedConfirmation,
 } from './ui'
 import type { ViewProps } from './views'
 
@@ -38,6 +43,7 @@ export function Candidates({ admin, can, draft, candidate }: ViewProps & { draft
   const policy = useResource<Revision>((signal) => admin.get('/admin/policy', signal), [])
   const [selected, setSelected] = useState<number | null>(candidate ?? null)
   const [trials, setTrials] = useState(0)
+  const [query, setQuery] = useState('')
   useEffect(() => {
     if (candidate !== undefined) setSelected(candidate)
   }, [candidate])
@@ -62,12 +68,23 @@ export function Candidates({ admin, can, draft, candidate }: ViewProps & { draft
   const confirmed = policy.reply?.kind === 'ok' ? policy.reply.body : undefined
   const status = state.facts
   const manage = can('manage_policy')
+  const shown = list.items.filter((c) =>
+    matches(
+      query,
+      c.id,
+      `change ${c.id}`,
+      statusWords[c.status] ?? c.status,
+      c.actor,
+      c.parent ? `version ${c.parent}` : undefined,
+      c.deny_all ? 'denies everything' : undefined,
+    ),
+  )
 
   return (
     <>
       <PageHeader
         title="Changes"
-        lede="A change is a complete proposed policy. The gateway checks it when it is staged; you can preview its effect on recent traffic; it then goes live on trial and rolls back by itself unless someone confirms it."
+        lede="A draft change is a complete proposed policy. The gateway checks it when it is saved; you can preview its effect on recent traffic; it then goes live on trial and is undone by itself unless someone keeps it."
       >
         <ReadStamp okAt={list.last?.at ?? null} failed={list.failed} loading={list.loading || policy.loading} onRefresh={refresh} />
       </PageHeader>
@@ -78,10 +95,10 @@ export function Candidates({ admin, can, draft, candidate }: ViewProps & { draft
 
       <section className="section card" aria-labelledby="staged-title">
         <div className="card-head card-head-pad">
-          <h2 id="staged-title">Staged changes</h2>
+          <h2 id="staged-title">Draft changes</h2>
           {manage ? (
             <a className="card-link" href="#stage-title">
-              Stage a change
+              New draft change
             </a>
           ) : null}
         </div>
@@ -89,7 +106,7 @@ export function Candidates({ admin, can, draft, candidate }: ViewProps & { draft
           {list.reply && list.reply.kind !== 'ok' ? <Problem reply={list.reply} /> : null}
           {list.reply?.kind === 'ok' && list.items.length === 0 ? (
             <p className="hint card-empty">
-              Nothing staged yet.{' '}
+              No draft changes yet.{' '}
               {manage ? (
                 <>
                   Draft one in the <a href="#/designer">Policy</a> designer, or paste a document below.
@@ -98,21 +115,33 @@ export function Candidates({ admin, can, draft, candidate }: ViewProps & { draft
             </p>
           ) : null}
           {list.items.length > 0 ? (
-            <TableScroll label="Staged changes">
+            <ListToolbar
+              label="Filter draft changes"
+              query={query}
+              onQuery={setQuery}
+              shown={shown.length}
+              total={list.items.length}
+              more={list.next !== undefined}
+              noun={['draft change', 'draft changes']}
+            />
+          ) : null}
+          {list.items.length > 0 && shown.length === 0 ? <p className="hint card-empty">No loaded draft change matches the filter.</p> : null}
+          {shown.length > 0 ? (
+            <TableScroll label="Draft changes">
               <table>
                 <thead>
                   <tr>
                     <th scope="col">Change</th>
                     <th scope="col">State</th>
                     <th scope="col">Based on</th>
-                    <th scope="col">Staged</th>
+                    <th scope="col">Saved</th>
                     <th scope="col">
                       <span className="visually-hidden">Review</span>
                     </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {list.items.map((c) => (
+                  {shown.map((c) => (
                     <tr key={c.id} aria-current={selected === c.id ? 'true' : undefined}>
                       <td className="num">
                         <strong>{c.id}</strong>
@@ -121,13 +150,14 @@ export function Candidates({ admin, can, draft, candidate }: ViewProps & { draft
                       <td>
                         <CandidateStatus status={c.status} /> {c.active ? <Badge tone="ok">in force</Badge> : null}
                       </td>
-                      <td>{c.parent ? `revision ${c.parent}` : 'no confirmed policy'}</td>
+                      <td>{c.parent ? `version ${c.parent}` : 'no version in force'}</td>
                       <td>
                         <Time value={c.created_at} /> <span className="muted">by {c.actor}</span>
                       </td>
                       <td className="row-actions">
                         <button type="button" className="btn btn-small" onClick={() => setSelected(c.id)} aria-pressed={selected === c.id}>
-                          Review<span className="visually-hidden"> change {c.id}</span>
+                          Review
+                          <span className="visually-hidden"> change {c.id}</span>
                         </button>
                       </td>
                     </tr>
@@ -155,10 +185,10 @@ export function Candidates({ admin, can, draft, candidate }: ViewProps & { draft
 
 const steps = [
   { name: 'Draft', text: 'Edit the policy in the Policy designer, or load a JSON document.' },
-  { name: 'Checked', text: 'Staging runs the gateway’s own compiler over the whole document. Nothing changes yet.' },
+  { name: 'Checked', text: 'Saving a draft runs the gateway’s own compiler over the whole document. Nothing changes yet.' },
   { name: 'Impact preview', text: 'Replays recent requests to show who would be refused or allowed differently.' },
-  { name: 'On trial', text: 'In force from the next request, with a deadline. Roll back at any time.' },
-  { name: 'Confirmed', text: 'Becomes the permanent policy. Without confirmation, the gateway rolls back by itself.' },
+  { name: 'On trial', text: 'In force from the next request, with a deadline. Undo it at any time.' },
+  { name: 'Kept', text: 'Stays in force for good. Unless it is kept, the gateway undoes it by itself at the deadline.' },
 ]
 
 // Lifecycle shows how a change goes live, with the step the gateway reports
@@ -182,23 +212,22 @@ function Lifecycle({ status }: { status?: Status }) {
   )
 }
 
+const statusWords: Record<string, string> = {
+  validated: 'Checked',
+  established: 'Put in force',
+  quarantined: 'Set aside after a restore',
+  withdrawn: 'Withdrawn',
+}
+
 export function CandidateStatus({ status }: { status: string }) {
-  switch (status) {
-    case 'validated':
-      return (
-        <Badge tone="neutral" glyph="ok">
-          Checked
-        </Badge>
-      )
-    case 'established':
-      return <Badge tone="ok">Established</Badge>
-    case 'quarantined':
-      return <Badge tone="refused">Quarantined</Badge>
-    case 'withdrawn':
-      return <Badge tone="neutral">Withdrawn</Badge>
-    default:
-      return <Badge tone="neutral">{status}</Badge>
-  }
+  const words = statusWords[status] ?? status
+  if (status === 'validated')
+    return (
+      <Badge tone="neutral" glyph="ok">
+        {words}
+      </Badge>
+    )
+  return <Badge tone={status === 'established' ? 'ok' : status === 'quarantined' ? 'refused' : 'neutral'}>{words}</Badge>
 }
 
 function StageForm(props: {
@@ -246,10 +275,10 @@ function StageForm(props: {
   return (
     <section className="section card card-pad" aria-labelledby="stage-title">
       <div className="card-head">
-        <h2 id="stage-title">Stage a change</h2>
+        <h2 id="stage-title">Save a draft change</h2>
         {props.confirmed?.document ? (
           <button type="button" className="btn btn-small" onClick={() => (text.trim() === '' ? startFromConfirmed() : setReplacing(true))}>
-            Start from revision {props.confirmed.id}
+            Start from version {props.confirmed.id}
           </button>
         ) : null}
       </div>
@@ -277,19 +306,25 @@ function StageForm(props: {
         </Field>
         <div className="actions">
           <button type="submit" className="btn btn-primary" disabled={mutation.pending || props.ifMatch === undefined || text.trim() === ''}>
-            {mutation.pending ? 'Staging…' : 'Stage and check'}
+            {mutation.pending ? 'Saving…' : 'Save draft and check'}
           </button>
         </div>
       </form>
-      <Confirm open={replacing} title="Replace the document being edited?" confirmLabel="Replace it" onCancel={() => setReplacing(false)} onConfirm={startFromConfirmed}>
-        <p>The text in the editor is replaced by confirmed revision {props.confirmed?.id}. Nothing is sent to the gateway.</p>
+      <Confirm
+        open={replacing}
+        title="Replace the document being edited?"
+        confirmLabel="Replace it"
+        onCancel={() => setReplacing(false)}
+        onConfirm={startFromConfirmed}
+      >
+        <p>The text in the editor is replaced by version {props.confirmed?.id}, the version in force. Nothing is sent to the gateway.</p>
       </Confirm>
       <MutationResult<{ receipt: Outcome; candidate: Candidate }>
         mutation={mutation}
         onRefresh={props.changed}
         success={(body) => (
           <>
-            <p className="notice-title">The gateway checked it: staged as change {body.candidate.id}. Nothing is in force yet.</p>
+            <p className="notice-title">The gateway checked it: saved as draft change {body.candidate.id}. Nothing is in force yet.</p>
             <div className="actions">
               <button type="button" className="btn" onClick={() => props.review(body.candidate.id)}>
                 Review change {body.candidate.id}
@@ -310,7 +345,7 @@ type Action = 'activate' | 'withdraw' | 'genesis' | 'recovery'
 // decision. It is advice only: the gateway accepts 1 to 86400 seconds.
 const adviseTrialSeconds = 120
 const shortTrialAdvice =
-  'Under 2 minutes leaves little time for real requests to arrive, to check how they were decided and to decide. Unless someone confirms it in time, the gateway rolls the change back by itself.'
+  'Under 2 minutes leaves little time for real requests to arrive, to check how they were decided and to decide. Unless someone keeps it in time, the gateway undoes it by itself.'
 
 function CandidateDetail(props: {
   id: number
@@ -336,6 +371,12 @@ function CandidateDetail(props: {
   const candidate = detail.reply?.kind === 'ok' ? detail.reply.body : undefined
   const usable = candidate?.status === 'validated'
   const changes = props.confirmed?.document && candidate?.document ? differences(props.confirmed.document, candidate.document) : null
+  // The riskiest trials are confirmed by typing a word: a policy that denies
+  // everything, or one that removes a whole API.
+  const removed = changes ? removedApis(changes) : []
+  const confirmWord = candidate?.deny_all ? 'deny all' : removed.length > 0 ? removed[0] : ''
+  const [typed, setTyped] = useState('')
+  useEffect(() => setTyped(''), [asking])
 
   // Opening a change for review moves focus to it.
   useEffect(() => {
@@ -385,30 +426,36 @@ function CandidateDetail(props: {
           <dl className="facts facts-inline">
             <div className="fact">
               <dt>Based on</dt>
-              <dd>{candidate.parent ? `confirmed revision ${candidate.parent}` : 'no confirmed policy'}</dd>
+              <dd>{candidate.parent ? `version ${candidate.parent}` : 'no version in force'}</dd>
             </div>
             <div className="fact">
               <dt>Denies everything</dt>
               <dd>{candidate.deny_all ? 'yes' : 'no'}</dd>
             </div>
             <div className="fact">
-              <dt>Staged</dt>
+              <dt>Saved</dt>
               <dd>
                 <Time value={candidate.created_at} /> by {candidate.actor}
               </dd>
             </div>
             <div className="fact">
-              <dt>Checksum</dt>
+              <dt>Exact form</dt>
               <dd>
-                <code className="hash" title={candidate.checksum}>
-                  {candidate.checksum.slice(0, 16)}…
-                </code>
+                <MoreDetails facts={[['Checksum (SHA-256)', candidate.checksum]]} />
               </dd>
             </div>
           </dl>
 
-          <h3>Differences from the confirmed policy</h3>
-          {changes ? changes.length === 0 ? <p className="hint">No differences.</p> : <ChangeList changes={changes} /> : <p className="hint">No confirmed policy to compare with.</p>}
+          <h3>Differences from the version in force</h3>
+          {changes ? (
+            changes.length === 0 ? (
+              <p className="hint">No differences.</p>
+            ) : (
+              <ChangeList changes={changes} />
+            )
+          ) : (
+            <p className="hint">No version is in force to compare with.</p>
+          )}
 
           <details className="document">
             <summary>Full document</summary>
@@ -430,7 +477,7 @@ function CandidateDetail(props: {
                   <Field
                     id={`${formId}-seconds`}
                     label="Trial length (seconds)"
-                    hint="1 to 86400. Unless someone confirms the change within this time, the gateway returns to the current confirmed policy by itself."
+                    hint="1 to 86400. Unless someone keeps the change within this time, the gateway undoes it and returns to the version in force now by itself."
                     error={secondsError}
                   >
                     <input
@@ -469,7 +516,7 @@ function CandidateDetail(props: {
               {props.mode === 'recovery_required' && candidate.deny_all ? (
                 <div className="actions">
                   <button type="button" className="btn btn-primary" onClick={() => setAsking('recovery')} disabled={mutation.pending}>
-                    Establish as the recovery base
+                    Establish as the starting policy after a restore
                   </button>
                 </div>
               ) : null}
@@ -489,10 +536,10 @@ function CandidateDetail(props: {
           <>
             {o.provisional ? (
               <p className="notice-title">
-                Revision {o.provisional} is on trial and in force. Confirm it before {time(o.deadline)}, at the top of this page, or it rolls back.
+                Version {o.provisional} is on trial and in force. Keep it before {time(o.deadline)}, at the top of this page, or it is undone.
               </p>
             ) : o.revision ? (
-              <p className="notice-title">Established: revision {o.revision} is the confirmed policy.</p>
+              <p className="notice-title">Established: version {o.revision} is the policy in force.</p>
             ) : sent === 'withdraw' ? (
               <p className="notice-title">Withdrawn: change {props.id} can no longer be put on trial.</p>
             ) : (
@@ -503,14 +550,41 @@ function CandidateDetail(props: {
         )}
       />
 
-      <Confirm open={asking === 'activate'} title={`Put change ${props.id} on trial?`} confirmLabel="Put on trial" onCancel={() => setAsking(null)} onConfirm={() => act('activate')}>
+      <Confirm
+        open={asking === 'activate'}
+        title={`Put change ${props.id} on trial?`}
+        confirmLabel="Put on trial"
+        disabled={confirmWord !== '' && typed.trim() !== confirmWord}
+        onCancel={() => setAsking(null)}
+        onConfirm={() => act('activate')}
+      >
         <p>It is enforced from the next request.</p>
+        {changes && changes.length > 0 ? <ChangeSet changes={changes} /> : null}
         <p>
-          Unless someone confirms it within {Number.isInteger(period) && period > 0 ? duration(period) : `${seconds} seconds`}, the gateway rolls back to the
-          current confirmed policy{props.confirmed ? `, revision ${props.confirmed.id}` : ''}.
+          Unless someone keeps it within {Number.isInteger(period) && period > 0 ? duration(period) : `${seconds} seconds`}, the gateway undoes it and
+          returns to the version in force now
+          {props.confirmed ? `, version ${props.confirmed.id}` : ''}.
         </p>
-        {changes ? <p className="hint">{changes.length === 0 ? 'No differences from the confirmed policy.' : `${changes.length} differences from the confirmed policy.`}</p> : null}
+        {changes ? (
+          <p className="hint">
+            {changes.length === 0
+              ? 'No differences from the version in force.'
+              : changes.length === 1
+                ? 'One difference from the version in force.'
+                : `${changes.length} differences from the version in force.`}
+          </p>
+        ) : null}
         {shortTrial ? <p className="notice tone-pending">{shortTrialAdvice}</p> : null}
+        {confirmWord ? (
+          <>
+            <p className="notice tone-refused">
+              {candidate?.deny_all
+                ? 'This policy denies every request: Fetch stops working for everyone until it is undone.'
+                : `This change removes API ${removed.join(', ')} whole: its endpoints can no longer be called.`}
+            </p>
+            <TypedConfirmation word={confirmWord} value={typed} onChange={setTyped} />
+          </>
+        ) : null}
       </Confirm>
       <Confirm open={asking === 'withdraw'} title={`Withdraw change ${props.id}?`} confirmLabel="Withdraw change" danger onCancel={() => setAsking(null)} onConfirm={() => act('withdraw')}>
         <p>It can no longer be put on trial. The policy in force does not change.</p>
@@ -519,10 +593,15 @@ function CandidateDetail(props: {
         open={asking === 'genesis' || asking === 'recovery'}
         title={`Establish change ${props.id}?`}
         confirmLabel="Establish"
+        disabled={typed.trim() !== 'deny all'}
         onCancel={() => setAsking(null)}
         onConfirm={() => asking && act(asking)}
       >
-        <p>This policy, which admits nothing, becomes the confirmed {asking === 'recovery' ? 'recovery base' : 'first policy'}. Later changes go through trials.</p>
+        <p>
+          This policy, which lets no request through, becomes the {asking === 'recovery' ? 'starting policy after a restore' : 'first policy'}, in
+          force at once. Later changes go through trials.
+        </p>
+        <TypedConfirmation word="deny all" value={typed} onChange={setTyped} />
       </Confirm>
     </section>
   )

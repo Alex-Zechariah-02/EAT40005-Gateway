@@ -162,15 +162,17 @@ test.describe.serial('Fetch app on the gateway data plane', () => {
     const shown: string[] = []
     for (const problem of await problems.all()) {
       await expect(problem).toContainText('Answered by the Fetch gateway · 503')
-      const ref = ((await problem.getByText(/^Ref /).textContent()) ?? '').replace(/^Ref\s*/, '').trim()
+      const ref = ((await problem.getByTitle(/^Full reference /).getAttribute('title')) ?? '').replace(/^Full reference /, '')
       expect(answers.get(ref), ref).toEqual({ status: 503, service: undefined })
+      // The page shows the reference's first eight characters, grouped.
+      await expect(problem.getByText(`Ref ${ref.slice(0, 4).toUpperCase()}-${ref.slice(4, 8).toUpperCase()}`, { exact: true })).toBeVisible()
       shown.push(ref)
     }
     await shot(site, '01-home-not-admitting')
 
     // Try again asks again and shows the new answer's reference.
     await problems.first().getByRole('button', { name: 'Try again' }).click()
-    await expect(problems.first().getByText(/^Ref /)).not.toHaveText(`Ref ${shown[0]}`)
+    await expect(problems.first().getByTitle(/^Full reference /)).not.toHaveAttribute('title', `Full reference ${shown[0]}`)
 
     // Signing in reaches the gateway too, and its refusal carries a Ref.
     await open(site, '/signin')
@@ -179,7 +181,7 @@ test.describe.serial('Fetch app on the gateway data plane', () => {
     await site.getByRole('button', { name: 'Sign in', exact: true }).click()
     const refusal = site.getByRole('alert').filter({ hasText: 'Answered by the Fetch gateway · 503' })
     await expect(refusal).toBeVisible()
-    const ref = ((await refusal.getByText(/^Ref /).textContent()) ?? '').replace(/^Ref\s*/, '').trim()
+    const ref = ((await refusal.getByTitle(/^Full reference /).getAttribute('title')) ?? '').replace(/^Full reference /, '')
     expect(answers.get(ref)?.status).toBe(503)
     await shot(site, '02-signin-not-admitting')
     for (const count of Object.values(await demo.counts())) expect(count).toBe(0)
@@ -304,6 +306,17 @@ test.describe.serial('Fetch app on the gateway data plane', () => {
       }
     }
     await site.setViewportSize({ width: 1440, height: 900 })
+
+    // The demonstration disclosure lives behind one badge in the header; the
+    // footer reads like a working product, and the badge leads to the lab.
+    await open(site, '/')
+    await expect(site.getByRole('contentinfo')).not.toContainText('Security lab')
+    await expect(site.getByRole('contentinfo')).not.toContainText('demonstration')
+    await site.getByRole('banner').getByText('Demo', { exact: true }).click()
+    await expect(site.getByText('Fetch is a demonstration. Every shop, person and order is fictional.')).toBeVisible()
+    await site.getByRole('banner').getByRole('link', { name: 'Security lab' }).click()
+    await expect(site).toHaveURL(/\/lab$/)
+    await expect(site.getByText('Fetch is a demonstration. Every shop, person and order is fictional.')).toBeHidden()
 
     // From the top of the page, the keyboard reaches the search box and Sign
     // in, each with a visible focus ring, drawn on the control or on the

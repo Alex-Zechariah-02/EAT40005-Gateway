@@ -10,6 +10,7 @@ import {
   enrol,
   expectLayoutOnlyStorage,
   go,
+  moreDetail,
   record,
   resolve,
   revokeOverride,
@@ -85,9 +86,9 @@ async function applyJson(document: Policy) {
 }
 
 async function stagedDraft(): Promise<number> {
-  await page.getByRole('button', { name: 'Stage as a change', exact: true }).click()
-  await dialogButton(page, 'Stage as a change').click()
-  const result = page.getByText(/^The gateway checked it: staged as change \d+\. Nothing is in force yet\.$/)
+  await page.getByRole('button', { name: 'Save draft change', exact: true }).click()
+  await dialogButton(page, 'Save draft change').click()
+  const result = page.getByText(/^The gateway checked it: saved as draft change \d+\. Nothing is in force yet\.$/)
   await expect(result).toBeVisible()
   return Number((await result.textContent())!.match(/change (\d+)/)![1])
 }
@@ -157,8 +158,9 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
     await capture('designer-no-confirmed-policy')
     await stage(page, { file: demo.path('deny-all.json') })
     await page.getByRole('button', { name: 'Establish as the first policy' }).click()
+    await page.getByRole('dialog').getByLabel('Type deny all to confirm').fill('deny all')
     await dialogButton(page, 'Establish').click()
-    await expect(page.getByText('Established: revision 1 is the confirmed policy.')).toBeVisible()
+    await expect(page.getByText('Established: version 1 is the policy in force.')).toBeVisible()
     await stage(page, { file: demo.path('baseline.json') })
     await activate(page, 300)
     await resolve(page, 'confirm')
@@ -182,8 +184,8 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
       expect(checkLabels.map((label) => label.split(' ')[0])).toEqual([
         'Route',
         'Access',
-        'Token',
-        'Permit',
+        'Sign-in',
+        'Role',
         'Rate',
         'Body',
         'Record',
@@ -191,7 +193,7 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
       ])
       expect(checkLabels[0]).toBe(`Route ${operation.method} ${operation.target}`)
       expect(checkLabels[1]).toBe(`Access ${operation.access}`)
-      expect(checkLabels[2]).toBe(`Token ${operation.auth === 'none' ? 'public' : 'required'}`)
+      expect(checkLabels[2]).toBe(`Sign-in ${operation.auth === 'none' ? 'public' : 'required'}`)
     }
     await capture('designer-baseline-canvas')
     const zoom = await page
@@ -259,7 +261,7 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
     // The staged draft now equals the new confirmed policy, so it follows it
     // instead of offering the permit again as an unstaged change.
     await designer()
-    await expect(page.getByText(`No draft changes against r${(await currentPolicy()).id}`, { exact: true })).toBeVisible()
+    await expect(page.getByText(`No draft changes against version ${(await currentPolicy()).id}`, { exact: true })).toBeVisible()
     record('designer-permit-drag', {
       candidate,
       receipts: receipts.map(({ method, target, status, subject }) => ({ method, target, status, subject })),
@@ -270,12 +272,12 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
   test('public, wrong-kind and reversed connections preserve the document and show the reason', async () => {
     const before = await currentPolicy()
     await connectHandles('role:CUSTOMER', 'operation:inventory.categories')
-    await expect(page.getByText('This operation is public (no token), so no role can be given a permit for it.')).toBeVisible()
+    await expect(page.getByText('This endpoint is public (no sign-in), so no role can be given permission for it.')).toBeVisible()
     await capture('designer-refused-public-connection')
     await connectHandles('role:CUSTOMER', 'api:inventory')
     await expect(page.getByText('Arrows go roles → operations → APIs → upstreams.')).toBeVisible()
     await connectHandles('operation:inventory.stock.read', `upstream:${baseline.apis.find((api) => api.id === 'inventory')!.upstream}`)
-    await expect(page.getByRole('button', { name: 'Stage as a change', exact: true })).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Save draft change', exact: true })).toBeDisabled()
     await page.getByRole('tab', { name: 'JSON', exact: true }).click()
     expect(JSON.parse(await page.getByLabel('Complete policy document (JSON)').inputValue())).toEqual(before.document)
     await page.getByRole('tab', { name: 'Canvas', exact: true }).click()
@@ -285,7 +287,7 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
   test('Form, JSON and canvas stay synchronised and invalid JSON prevents switching', async () => {
     await page.getByRole('tab', { name: 'Form', exact: true }).click()
     await page
-      .getByRole('region', { name: 'operation reports.summary', exact: true })
+      .getByRole('region', { name: 'Endpoint reports.summary', exact: true })
       .getByLabel('Request count', { exact: true })
       .fill('2')
     await capture('designer-form-rate')
@@ -323,7 +325,7 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
 
   test('Renaming a role renames its permits, and the Gateway refuses a permit for a role the document lacks', async () => {
     await page.getByRole('tab', { name: 'Form', exact: true }).click()
-    await page.getByRole('region', { name: 'role CUSTOMER', exact: true }).getByLabel('Role ID', { exact: true }).fill('BUYER')
+    await page.getByRole('region', { name: 'Role CUSTOMER', exact: true }).getByLabel('Role ID', { exact: true }).fill('BUYER')
     await page.getByRole('tab', { name: 'JSON', exact: true }).click()
     const editor = page.getByLabel('Complete policy document (JSON)', { exact: true })
     const document: Policy = JSON.parse(await editor.inputValue())
@@ -338,12 +340,13 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
     await page.getByRole('button', { name: 'Apply JSON', exact: true }).click()
     await expect(page.locator('#designer-json-document-error')).toHaveCount(0)
     const before = (await candidates()).length
-    await page.getByRole('button', { name: 'Stage as a change', exact: true }).click()
+    await page.getByRole('button', { name: 'Save draft change', exact: true }).click()
     const response = page.waitForResponse((reply) => reply.request().method() === 'POST' && reply.url() === adminURL + '/admin/candidates')
-    await dialogButton(page, 'Stage as a change').click()
+    await dialogButton(page, 'Save draft change').click()
     expect((await response).status()).toBe(400)
-    const refusal = page.getByRole('alert').filter({ hasText: 'Refused (HTTP 400)' })
-    await expect(refusal).toContainText(`Field: permits[${document.permits.length - 1}].role`)
+    const refusal = page.getByRole('alert').filter({ has: page.locator('.more-details dd code', { hasText: /^400$/ }) })
+    await expect(refusal).toHaveClass(/tone-refused/)
+    await expect(moreDetail(refusal, 'Field')).toHaveText(`permits[${document.permits.length - 1}].role`)
     expect(await candidates()).toHaveLength(before)
     await capture('designer-missing-role-refused')
     await discard()
@@ -353,12 +356,12 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
 
   test('Typing a new ID never merges a box into another box with the same ID on the way', async () => {
     await page.getByRole('tab', { name: 'Form', exact: true }).click()
-    const field = page.getByRole('region', { name: 'role RIDER', exact: true }).getByLabel('Role ID', { exact: true })
+    const field = page.getByRole('region', { name: 'Role RIDER', exact: true }).getByLabel('Role ID', { exact: true })
     await field.fill('')
     await field.pressSequentially('CUSTOMER')
     // Each valid prefix was applied as it was typed; the clashing one is not.
     await expect(page.getByText('Another role already uses the ID CUSTOMER. The draft keeps the ID CUSTOME until this is changed.')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Stage as a change', exact: true })).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Save draft change', exact: true })).toBeDisabled()
     // The region is named after the box's current ID, so keep typing in the focused field.
     await page.keyboard.press('X')
     await page.getByRole('tab', { name: 'JSON', exact: true }).click()
@@ -377,8 +380,8 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
     document.upstreams[0].dial = 'localhost:9501'
     const before = (await candidates()).length
     await applyJson(document)
-    await page.getByRole('button', { name: 'Stage as a change', exact: true }).click()
-    await dialogButton(page, 'Stage as a change').click()
+    await page.getByRole('button', { name: 'Save draft change', exact: true }).click()
+    await dialogButton(page, 'Save draft change').click()
     await expect(page.getByRole('alert').filter({ hasText: 'INVALID_UPSTREAM' })).toBeVisible()
     await expect(node(`upstream:${document.upstreams[0].id}`).locator('.designer-box')).toHaveClass(/is-refused/)
     await expect(page.getByRole('complementary', { name: 'Selected policy box' })).toContainText(document.upstreams[0].id)
@@ -402,11 +405,11 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
     await activate(secondPage, 300)
     await resolve(secondPage, 'confirm')
     const newRevision = (await currentPolicy()).id
-    await page.getByRole('button', { name: 'Stage as a change', exact: true }).click()
-    await dialogButton(page, 'Stage as a change').click()
-    await expect(page.getByText(`The confirmed policy changed to r${newRevision} since your draft was started from r`)).toBeVisible()
+    await page.getByRole('button', { name: 'Save draft change', exact: true }).click()
+    await dialogButton(page, 'Save draft change').click()
+    await expect(page.getByText(`The policy in force changed to version ${newRevision} since your draft was started from version`)).toBeVisible()
     await page.getByRole('button', { name: 'Show what changed', exact: true }).click()
-    await expect(page.getByText('operations: changed orders.all')).toBeVisible()
+    await expect(page.getByText('endpoints: changed orders.all')).toBeVisible()
     expect(JSON.parse(await page.getByLabel('Complete policy document (JSON)').inputValue())).toEqual(mine)
     await capture('designer-stale-revision')
     await page.getByRole('button', { name: `Keep my draft and base it on r${newRevision}`, exact: true }).click()
@@ -438,20 +441,20 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
         await route.abort('connectionreset')
       } else await route.continue()
     })
-    await page.getByRole('button', { name: 'Stage as a change', exact: true }).click()
-    await dialogButton(page, 'Stage as a change').click()
+    await page.getByRole('button', { name: 'Save draft change', exact: true }).click()
+    await dialogButton(page, 'Save draft change').click()
     await expect(page.getByText("Sent; waiting for the gateway's answer…")).toBeVisible()
     await capture('designer-staging-pending')
     releaseAnswer()
-    await expect(page.getByText('No answer: the change may or may not have been staged.')).toBeVisible()
+    await expect(page.getByText('No answer from the gateway: the draft may or may not have been saved.')).toBeVisible()
     await page.waitForTimeout(500)
     expect(posts).toHaveLength(1)
     expect((await candidates()).length).toBe(before + 1)
     await capture('designer-staging-answer-lost')
     await page.getByRole('button', { name: 'Check', exact: true }).click()
-    await expect(page.getByText(/staged changes listed\. Look for this draft on the Changes page/)).toBeVisible()
+    await expect(page.getByText(/draft changes listed\. Look for this draft on the Changes page/)).toBeVisible()
     await page.getByRole('button', { name: 'Send the same request again', exact: true }).click()
-    await expect(page.getByText(/^The gateway checked it: staged as change \d+\. Nothing is in force yet\.$/)).toBeVisible()
+    await expect(page.getByText(/^The gateway checked it: saved as draft change \d+\. Nothing is in force yet\.$/)).toBeVisible()
     expect(posts).toHaveLength(2)
     expect(posts[1]).toEqual(posts[0])
     expect((await candidates()).length).toBe(before + 1)
@@ -463,7 +466,7 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
 
   test('live overrides and provisional markers refresh only on explicit reads and actual deadlines', async () => {
     const override = await createOverride(page, {
-      action: 'Exception: let a role call an operation',
+      action: 'Allow temporarily: let a role call an endpoint',
       operation: 'inventory.stock.read',
       role: 'CUSTOMER',
       seconds: 120,
@@ -479,14 +482,14 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
     await stage(page, { text: JSON.stringify(proposed) })
     const revision = await activate(page, 300)
     await designer()
-    await page.getByRole('button', { name: /^Confirmed r\d+$/ }).click()
-    await expect(node('operation:reports.summary')).toContainText(`changed in provisional r${revision}`)
+    await page.getByRole('button', { name: /^In force · version \d+$/ }).click()
+    await expect(node('operation:reports.summary')).toContainText(`changed in the trial of version ${revision}`)
     await capture('designer-provisional-markers')
     await resolve(page, 'rollback')
     await revokeOverride(page, override)
     await designer()
     await expect(page.locator(`.react-flow__edge[data-id="override:${override}"]`)).toHaveCount(0)
-    await expect(page.getByText(`changed in provisional r${revision}`)).toHaveCount(0)
+    await expect(page.getByText(`changed in the trial of version ${revision}`)).toHaveCount(0)
     record('designer-live-markers', { override, revision, noPolling: true, removedOnRevocationAndRollback: true })
   })
 
@@ -496,7 +499,7 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
     await page.getByLabel('What', { exact: true }).selectOption('orders.all')
     await page.getByLabel('Who', { exact: true }).selectOption('role:CUSTOMER')
     const trace = page.getByRole('complementary', { name: 'Trace policy document' })
-    await expect(trace).toContainText('403: no permit')
+    await expect(trace).toContainText('403: no permission')
     await expect(trace.locator('li').filter({ hasText: 'Blocked list' })).toContainText('403 account_blocked')
     await expect(trace.locator('li').last()).toContainText('not reached')
     await capture('designer-trace-refused')
@@ -510,6 +513,70 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
     expect(requests.length).toBe(start)
     await page.getByRole('button', { name: 'Trace', exact: true }).click()
     record('designer-trace', { requests: 0, cases: ['no permit', 'forward', 'public'] })
+  })
+
+  test('a template only prepares the draft; the gateway checks it like any other change when it is saved', async () => {
+    await designer()
+    await page.getByText('Templates', { exact: true }).click()
+    await page.getByRole('button', { name: 'Apply: limit sign-in attempts', exact: true }).click()
+    await expect(page.getByText('Template applied to the draft: accounts.login limited to 5 requests per 60 s per client address.', { exact: false })).toBeVisible()
+    // Nothing was sent: the draft only changed in this page.
+    await expect(page.getByText(/^The gateway checked it/)).toHaveCount(0)
+    const expected: Policy = structuredClone(baseline)
+    expected.operations.find((operation) => operation.id === 'accounts.login')!.rate = { algorithm: 'sliding-window', count: 5, window_seconds: 60, key: 'client_address' }
+    const candidate = await stagedDraft()
+    const stored = await api('GET', `/admin/candidates/${candidate}`)
+    expect(stored.body.document).toEqual(expected)
+    // A template that cannot apply says why and leaves the draft as it is.
+    await page.getByText('Templates', { exact: true }).click()
+    await page.getByLabel('Endpoint', { exact: true }).selectOption('orders.create')
+    await page.getByLabel('Requests per window', { exact: true }).fill('100000')
+    await page.getByRole('button', { name: 'Apply: tighten the limit', exact: true }).click()
+    await expect(page.getByText(/already allows \d+ per window; enter a lower number\.$/)).toBeVisible()
+    await capture('designer-template-applied')
+    await page.getByRole('button', { name: 'Discard draft', exact: true }).click()
+    await dialogButton(page, 'Discard draft').click()
+  })
+
+  test('a step-by-step wizard ends on a review and only edits the draft; the gateway checks it when it is saved', async () => {
+    await designer()
+    await page.getByText('Step by step', { exact: true }).click()
+    await page.getByRole('button', { name: 'Give a role access', exact: true }).click()
+    const wizard = page.getByRole('dialog', { name: 'Give a role access' })
+    await wizard.getByLabel('Role', { exact: true }).selectOption('CUSTOMER')
+    await wizard.getByRole('button', { name: 'Next', exact: true }).click()
+    // Each step's heading takes focus; Next waits until a new endpoint is chosen.
+    await expect(wizard.getByRole('heading', { name: 'Step 2 of 3: Choose endpoints' })).toBeFocused()
+    await expect(wizard.getByRole('button', { name: 'Next', exact: true })).toBeDisabled()
+    await expect(wizard.getByText('Choose at least one endpoint CUSTOMER cannot call yet.')).toBeVisible()
+    await wizard.getByRole('checkbox', { name: /^reports\.summary \(/ }).check()
+    await wizard.getByRole('button', { name: 'Next', exact: true }).click()
+    const added = wizard.getByRole('region', { name: 'Added (1)' })
+    await expect(added).toContainText('CUSTOMER can now call reports.summary')
+    await expect(wizard.getByRole('region', { name: /^(Changed|Removed)/ })).toHaveCount(0)
+    await capture('designer-wizard-review')
+    await wizard.getByRole('button', { name: 'Apply to the draft', exact: true }).click()
+    await expect(wizard).toHaveCount(0)
+    await expect(page.getByText('Applied to the draft: CUSTOMER can now call 1 more endpoint.', { exact: false })).toBeVisible()
+    // Nothing was sent: the draft only changed in this page.
+    await expect(page.getByText(/^The gateway checked it/)).toHaveCount(0)
+    const candidate = await stagedDraft()
+    const stored = await api('GET', `/admin/candidates/${candidate}`)
+    expect(stored.body.document.permits).toHaveLength(baseline.permits.length + 1)
+    expect(stored.body.document.permits).toContainEqual({ role: 'CUSTOMER', operation: 'reports.summary' })
+    // A rate limit left as it is cannot be applied, and Cancel changes nothing.
+    await page.getByText('Step by step', { exact: true }).click()
+    await page.getByRole('button', { name: 'Change a rate limit', exact: true }).click()
+    const rate = page.getByRole('dialog', { name: 'Change a rate limit' })
+    await rate.getByLabel('Endpoint', { exact: true }).selectOption('orders.create')
+    await rate.getByRole('button', { name: 'Next', exact: true }).click()
+    await rate.getByRole('button', { name: 'Next', exact: true }).click()
+    await expect(rate.getByText('This is already the limit in the draft. Go back and choose another.')).toBeVisible()
+    await expect(rate.getByRole('button', { name: 'Apply to the draft', exact: true })).toBeDisabled()
+    await rate.getByRole('button', { name: 'Cancel', exact: true }).click()
+    await expect(rate).toHaveCount(0)
+    await page.getByRole('button', { name: 'Discard draft', exact: true }).click()
+    await dialogButton(page, 'Discard draft').click()
   })
 
   test('only box positions survive reload and Reset restores the automatic layout', async () => {
@@ -552,7 +619,7 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
     await signIn(readerPage, 'reader', password)
     await go(readerPage, 'Policy')
     await expect(readerPage.getByText(/Read-only administrator/)).toBeVisible()
-    await expect(readerPage.getByRole('button', { name: 'Stage as a change', exact: true })).toHaveCount(0)
+    await expect(readerPage.getByRole('button', { name: 'Save draft change', exact: true })).toHaveCount(0)
     await expect(readerPage.locator('.react-flow__handle')).toHaveCount(0)
     await capture('designer-read-only-canvas', readerPage)
     await readerPage.getByRole('tab', { name: 'Form', exact: true }).click()
@@ -594,7 +661,7 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
       await page.mouse.up()
     }
     await page.setViewportSize({ width: 1440, height: 900 })
-    // Scan the canvas with its side panel showing a selected box.
+    // Scan the canvas with its side form showing a selected box.
     await node('role:CUSTOMER').click()
     await expect(page.getByRole('heading', { name: 'Role CUSTOMER', level: 2 })).toBeVisible()
     for (const view of ['Canvas', 'Form', 'JSON']) {
@@ -631,12 +698,12 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
     await permit.focus()
     await page.keyboard.press('Space')
     await expect(permit).toBeChecked()
-    await page.getByRole('button', { name: 'Stage as a change', exact: true }).focus()
+    await page.getByRole('button', { name: 'Save draft change', exact: true }).focus()
     await page.keyboard.press('Enter')
     await expect(page.getByRole('dialog')).toBeVisible()
     await page.keyboard.press('Tab')
     await page.keyboard.press('Enter')
-    await expect(page.getByText(/^The gateway checked it: staged as change \d+\. Nothing is in force yet\.$/)).toBeVisible()
+    await expect(page.getByText(/^The gateway checked it: saved as draft change \d+\. Nothing is in force yet\.$/)).toBeVisible()
     await capture('designer-keyboard-staged')
     await discard()
     await page.evaluate(() => {
@@ -677,9 +744,9 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
     await expect(page.locator('.designer-box-operation')).toHaveCount(40)
     await capture('designer-worst-canvas')
     await page.getByRole('tab', { name: 'Form', exact: true }).click()
-    await expect(page.getByRole('region', { name: `role ${longRole}`, exact: true })).toBeVisible()
+    await expect(page.getByRole('region', { name: `Role ${longRole}`, exact: true })).toBeVisible()
     await capture('designer-worst-form')
-    await expect(page.getByRole('region', { name: 'api unused-api', exact: true })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'API unused-api', exact: true })).toBeVisible()
     await page.getByRole('tab', { name: 'JSON', exact: true }).click()
     await expect(page.getByLabel('Complete policy document (JSON)', { exact: true })).toHaveValue(JSON.stringify(document, null, 2))
     await capture('designer-worst-json')

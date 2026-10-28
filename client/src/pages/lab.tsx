@@ -377,7 +377,7 @@ export function LabPage() {
 
       <p className="mt-10 max-w-[70ch] text-sm text-ink-3">
         Address-based flooding (public search and sign-in) runs from a local terminal with <code className="font-mono text-ink-2">demo attack -from 127.0.0.50</code>, so this
-        browser’s address stays usable. Copy any Ref into the Dashboard’s request lookup to see which check decided it.{' '}
+        browser’s address stays usable. Use Copy full reference beside any Ref and paste it into the Dashboard’s request lookup to see which check decided it.{' '}
         <Link to="/" className="font-semibold text-brand hover:underline">
           Back to Fetch
         </Link>

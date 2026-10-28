@@ -26,12 +26,12 @@ export function trace(policy: Policy, who: string, operation: Operation): TraceS
   )
   step(
     'Access',
-    operation.access === 'deny' ? '403 forbidden: the operation is denied' : 'The operation allows requests.',
+    operation.access === 'deny' ? '403 forbidden: the endpoint is denied' : 'The endpoint allows requests.',
     operation.access === 'deny',
   )
   const isPublic = operation.auth === 'none'
   step(
-    'Token',
+    'Sign-in',
     isPublic
       ? 'not checked (public)'
       : who === 'none'
@@ -47,7 +47,7 @@ export function trace(policy: Policy, who: string, operation: Operation): TraceS
   )
   const roles = who.startsWith('role:') ? [who.slice(5)] : []
   const permitted = policy.permits.some((permit) => permit.operation === operation.id && roles.includes(permit.role))
-  step('Permit', isPublic ? 'not applicable' : permitted ? 'A held role has a permit.' : '403: no permit', !isPublic && !permitted, !isPublic)
+  step('Role', isPublic ? 'not applicable' : permitted ? 'A held role has permission.' : '403: no permission', !isPublic && !permitted, !isPublic)
   step(
     'Rate',
     operation.rate
@@ -61,10 +61,10 @@ export function trace(policy: Policy, who: string, operation: Operation): TraceS
     operation.headers && typeof operation.headers === 'object'
       ? (operation.headers as { properties?: Record<string, unknown> }).properties
       : undefined
-  step('Body and headers', `${body}${headers ? `; declared headers: ${Object.keys(headers).join(', ')}` : ''}`)
-  step('Event record', 'recorded before forwarding (503 if the event log cannot be written)')
+  step('Body', `${body}${headers ? `; declared headers: ${Object.keys(headers).join(', ')}` : ''}`)
+  step('Record', 'recorded in the security log before forwarding (503 if it cannot be written)')
   const api = policy.apis.find((item) => item.id === operation.api)
   const upstream = policy.upstreams.find((item) => item.id === api?.upstream)
-  step('Forward', `${operation.api} → ${upstream?.id ?? 'missing upstream'} ${upstream?.dial ?? ''}`)
+  step('Forward', `${operation.api} → ${upstream?.id ?? 'missing service address'} ${upstream?.dial ?? ''}`)
   return steps
 }

@@ -7,7 +7,13 @@ import type { Policy } from './api'
 
 export interface Change {
   kind: 'added' | 'changed' | 'removed'
-  // text names the item, as "section: kind name".
+  // section is the document's list the item belongs to, and id its name
+  // there (a permission is named "ROLE → operation"); empty for the
+  // document's own fields.
+  section: string
+  id: string
+  // text names the item, as "section: kind name", with the section in plain
+  // words; details keep the document's own member names.
   text: string
   // details list the members that differ, for a changed item.
   details: string[]
@@ -16,6 +22,13 @@ export interface Change {
 type Item = Record<string, unknown>
 
 const sections = ['upstreams', 'apis', 'operations', 'roles', 'permits'] as const
+const sectionNames: Record<(typeof sections)[number], string> = {
+  upstreams: 'service addresses',
+  apis: 'APIs',
+  operations: 'endpoints',
+  roles: 'roles',
+  permits: 'permissions',
+}
 
 // canonical writes a JSON value with object members sorted, so the order in
 // which a document was written never shows as a difference.
@@ -68,21 +81,45 @@ export function differences(before: Policy, after: Policy): Change[] {
     for (const [id, item] of now) {
       const previous = old.get(id)
       if (!previous) {
-        changes.push({ kind: 'added', text: `${section}: added ${id}`, details: [] })
+        changes.push({ kind: 'added', section, id, text: `${sectionNames[section]}: added ${id}`, details: [] })
       } else if (canonical(previous) !== canonical(item)) {
-        changes.push({ kind: 'changed', text: `${section}: changed ${id}`, details: members(previous, item) })
+        changes.push({ kind: 'changed', section, id, text: `${sectionNames[section]}: changed ${id}`, details: members(previous, item) })
       }
     }
     for (const id of old.keys()) {
-      if (!now.has(id)) changes.push({ kind: 'removed', text: `${section}: removed ${id}`, details: [] })
+      if (!now.has(id)) changes.push({ kind: 'removed', section, id, text: `${sectionNames[section]}: removed ${id}`, details: [] })
     }
   }
   if (before.profile !== after.profile || before.schema_version !== after.schema_version) {
     changes.push({
       kind: 'changed',
+      section: '',
+      id: '',
       text: 'profile or schema version changed',
       details: members({ profile: before.profile, schema_version: before.schema_version }, { profile: after.profile, schema_version: after.schema_version }),
     })
   }
   return changes
+}
+
+const nouns: Record<string, string> = { upstreams: 'Service address', apis: 'API', operations: 'Endpoint', roles: 'Role' }
+
+// plainChange says one difference as a sentence, for the review before a
+// trial. The exact member names stay in the details.
+export function plainChange(change: Change): string {
+  if (change.section === 'permits') {
+    const [role, operation] = change.id.split(' → ')
+    if (change.kind === 'added') return `${role} can now call ${operation}`
+    if (change.kind === 'removed') return `${role} can no longer call ${operation}`
+  }
+  const noun = nouns[change.section] ?? 'The document'
+  if (change.kind === 'changed') return `${noun}${change.id ? ` ${change.id}` : ''}: ${change.details.join('; ')}`
+  if (change.section === 'apis' && change.kind === 'removed') return `API ${change.id} removed, so its endpoints can no longer be routed`
+  return `${noun} ${change.id} ${change.kind}`
+}
+
+// removedApis lists the APIs a change removes whole: the riskiest kind of
+// edit, confirmed by typing the API's ID.
+export function removedApis(changes: Change[]): string[] {
+  return changes.filter((change) => change.section === 'apis' && change.kind === 'removed').map((change) => change.id)
 }

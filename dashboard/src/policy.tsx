@@ -24,15 +24,15 @@ export function PolicyView({ admin, can, open }: ViewProps) {
   return (
     <>
       <PageHeader
-        title="Policy revisions"
+        title="Policy versions"
         lede={
           revision ? (
             <>
-              Revision {revision.id}, {origins[revision.origin] ?? revision.origin}, by {revision.actor} at <Time value={revision.created_at} />.
+              Version {revision.id}, {origins[revision.origin] ?? revision.origin}, by {revision.actor} at <Time value={revision.created_at} />.
               Profile <code>{revision.document?.profile}</code>.
             </>
           ) : (
-            'The confirmed policy as tables, and every revision ever published.'
+            'The policy in force as tables, and every version ever put in force.'
           )
         }
       >
@@ -44,8 +44,8 @@ export function PolicyView({ admin, can, open }: ViewProps) {
         <ReadStamp okAt={policy.last?.at ?? null} failed={policy.failed} loading={policy.loading || revisions.loading} onRefresh={refresh} />
       </PageHeader>
       {none ? (
-        <Empty title="No confirmed policy is in force.">
-          <p>A new or restored installation admits nothing until an administrator establishes a policy that denies everything.</p>
+        <Empty title="No policy is in force yet.">
+          <p>A new or restored installation refuses every request until an administrator establishes a policy that denies everything.</p>
           <button type="button" className="btn" onClick={() => open('candidates')}>
             Go to Changes
           </button>
@@ -55,14 +55,14 @@ export function PolicyView({ admin, can, open }: ViewProps) {
       {revision?.document ? <PolicyTables policy={revision.document} /> : null}
 
       <section className="section" aria-labelledby="revisions-title">
-        <h2 id="revisions-title">Policy revisions</h2>
-        <p className="section-lede">Every revision ever published, oldest first. Inspect one to compare it with the confirmed policy.</p>
+        <h2 id="revisions-title">Policy versions</h2>
+        <p className="section-lede">Every version ever put in force, oldest first. Inspect one to compare it with the version in force.</p>
         {revisions.reply && revisions.reply.kind !== 'ok' ? <Problem reply={revisions.reply} /> : null}
-        <TableScroll label="Policy revisions">
+        <TableScroll label="Policy versions">
           <table>
             <thead>
               <tr>
-                <th scope="col">Revision</th>
+                <th scope="col">Version</th>
                 <th scope="col">Parent</th>
                 <th scope="col">Origin</th>
                 <th scope="col">By</th>
@@ -77,7 +77,7 @@ export function PolicyView({ admin, can, open }: ViewProps) {
               {revisions.items.map((r) => (
                 <tr key={r.id} aria-current={inspected === r.id ? 'true' : undefined}>
                   <td className="num">
-                    {r.id} {r.id === revision?.id ? <Badge tone="ok">confirmed</Badge> : null}
+                    {r.id} {r.id === revision?.id ? <Badge tone="ok">in force</Badge> : null}
                   </td>
                   <td className="num">{r.parent ?? ''}</td>
                   <td>{origins[r.origin] ?? r.origin}</td>
@@ -92,7 +92,7 @@ export function PolicyView({ admin, can, open }: ViewProps) {
                   </td>
                   <td className="row-actions">
                     <button type="button" className="btn btn-small" onClick={() => setInspected(r.id)} aria-pressed={inspected === r.id}>
-                      Inspect<span className="visually-hidden"> revision {r.id}</span>
+                      Inspect<span className="visually-hidden"> version {r.id}</span>
                     </button>
                   </td>
                 </tr>
@@ -118,10 +118,10 @@ export function PolicyView({ admin, can, open }: ViewProps) {
 
 // How each revision came to be, as the controller records it.
 const origins: Record<string, string> = {
-  genesis: 'first policy (genesis)',
-  recovery_base: 'recovery base',
-  membership: 'subject membership change',
-  publish: 'activated candidate',
+  genesis: 'first policy',
+  recovery_base: 'starting policy after a restore',
+  membership: 'account membership change',
+  publish: 'kept from a trial',
 }
 
 function RevisionDetail(props: {
@@ -144,9 +144,9 @@ function RevisionDetail(props: {
     <section className="section panel detail" aria-labelledby="revision-title">
       <div className="detail-head">
         <h2 id="revision-title" ref={heading} tabIndex={-1}>
-          Revision {props.id}
+          Version {props.id}
         </h2>
-        {isConfirmed ? <Badge tone="ok">confirmed</Badge> : null}
+        {isConfirmed ? <Badge tone="ok">in force</Badge> : null}
       </div>
       {detail.loading ? <p className="hint">Reading from the gateway…</p> : null}
       <ReplyView reply={detail.reply}>
@@ -160,7 +160,7 @@ function RevisionDetail(props: {
                 </dd>
               </div>
               <div className="fact">
-                <dt>Parent revision</dt>
+                <dt>Previous version</dt>
                 <dd>{r.parent ?? 'none'}</dd>
               </div>
               <div className="fact">
@@ -177,10 +177,10 @@ function RevisionDetail(props: {
               </div>
             </dl>
             {isConfirmed ? (
-              <p className="hint">This is the confirmed policy shown above.</p>
+              <p className="hint">This is the version in force, shown above.</p>
             ) : props.confirmed?.document && r.document ? (
               <>
-                <h3>Changes from the confirmed policy (revision {props.confirmed.id}) to this revision</h3>
+                <h3>Changes from the version in force (version {props.confirmed.id}) to this version</h3>
                 <p className="hint">Computed by this page for review.</p>
                 {(() => {
                   const changes = differences(props.confirmed.document, r.document)
@@ -190,12 +190,12 @@ function RevisionDetail(props: {
             ) : null}
             <details className="document">
               <summary>Full document</summary>
-              <CodeBlock label={`Revision ${r.id} document`}>{JSON.stringify(r.document, null, 2)}</CodeBlock>
+              <CodeBlock label={`Version ${r.id} document`}>{JSON.stringify(r.document, null, 2)}</CodeBlock>
             </details>
             <div className="actions">
               {props.propose && r.document && !isConfirmed ? (
                 <button type="button" className="btn btn-primary" onClick={() => r.document && props.propose?.(r.document)}>
-                  Start a change from this revision
+                  Start a draft change from this version
                 </button>
               ) : null}
               <button type="button" className="btn" onClick={props.close}>
@@ -204,7 +204,7 @@ function RevisionDetail(props: {
             </div>
             {props.propose && !isConfirmed ? (
               <p className="hint">
-                Opens the document in Candidates. Nothing changes until it is staged, activated and confirmed there.
+                Opens the document in Changes. Nothing changes until it is saved as a draft, put on trial and kept there.
               </p>
             ) : null}
           </>
@@ -219,15 +219,15 @@ function PolicyTables({ policy: p }: { policy: Policy }) {
   return (
     <>
       <section className="section" aria-labelledby="operations-title">
-        <h2 id="operations-title">Operations</h2>
+        <h2 id="operations-title">Endpoints</h2>
         <p className="section-lede">
-          Each operation is one method and path the gateway admits. Anything else is refused by default.
+          Each endpoint is one method and path the gateway accepts. Anything else is refused by default.
         </p>
-        <TableScroll label="Operations">
+        <TableScroll label="Endpoints">
           <table>
             <thead>
               <tr>
-                <th scope="col">Operation</th>
+                <th scope="col">Endpoint</th>
                 <th scope="col">Method and path, API</th>
                 <th scope="col">Access</th>
                 <th scope="col">Token</th>
@@ -265,7 +265,7 @@ function PolicyTables({ policy: p }: { policy: Policy }) {
         <section className="section" aria-labelledby="rules-title">
           <h2 id="rules-title">Request rules</h2>
           <p className="section-lede">
-            What the gateway checks in a request before forwarding it. An operation without a body rule accepts no body.
+            What the gateway checks in a request before forwarding it. An endpoint without a body rule accepts no body.
           </p>
           <div className="rules">
             {checked.map((o) => (
@@ -276,13 +276,13 @@ function PolicyTables({ policy: p }: { policy: Policy }) {
       ) : null}
 
       <section className="section">
-        <h2>Upstreams</h2>
-        <p className="section-lede">Each API's requests go only to its upstream, a fixed loopback address.</p>
-        <TableScroll label="Upstreams">
+        <h2>Service addresses</h2>
+        <p className="section-lede">Each API's requests go only to its service address, a fixed address on this computer.</p>
+        <TableScroll label="Service addresses">
           <table>
             <thead>
               <tr>
-                <th scope="col">Upstream</th>
+                <th scope="col">Service address</th>
                 <th scope="col">Address</th>
                 <th scope="col">APIs</th>
               </tr>
@@ -317,16 +317,16 @@ function PermitMatrix({ policy: p }: { policy: Policy }) {
   const permitted = (role: string, operation: string) => p.permits.some((permit) => permit.role === role && permit.operation === operation)
   return (
     <section className="section" aria-labelledby="permits-title">
-      <h2 id="permits-title">Role permits</h2>
+      <h2 id="permits-title">Role permissions</h2>
       <p className="section-lede">
-        An account may call an operation only when a role from its sign-in token holds a permit for it. The gateway ignores roles this policy does
+        An account may call an endpoint only when a role from its sign-in token has permission for it. The gateway ignores roles this policy does
         not define.
       </p>
-      <TableScroll label="Role permits">
+      <TableScroll label="Role permissions">
         <table className="matrix">
           <thead>
             <tr>
-              <th scope="col">Operation</th>
+              <th scope="col">Endpoint</th>
               {p.roles.map((r) => (
                 <th scope="col" key={r.id}>
                   {r.id}
@@ -362,7 +362,7 @@ function PermitMatrix({ policy: p }: { policy: Policy }) {
                         <span className="matrix-no" aria-hidden="true">
                           –
                         </span>
-                        <span className="visually-hidden">no permit</span>
+                        <span className="visually-hidden">no permission</span>
                       </td>
                     ),
                   )
@@ -451,7 +451,10 @@ function within(node: Schema, place: Rule['place'], field: string): Rule[] {
   return list
 }
 
-function RequestRules({ operation: o }: { operation: Operation }) {
+// RequestRules states an endpoint's body and header rules in words. It
+// describes the policy only: the gateway's compiler and request check stay
+// the only validator.
+export function RequestRules({ operation: o }: { operation: Operation }) {
   const body = o.body ? (o.body.schema as Schema) : undefined
   const headers = o.headers as Schema | undefined
   const list = [...rules(body, 'body'), ...rules(headers, 'header')]

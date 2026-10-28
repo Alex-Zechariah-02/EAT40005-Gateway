@@ -11,6 +11,7 @@ import {
   Code,
   UsersThree,
   UserCircle,
+  UserList,
 } from '@phosphor-icons/react'
 
 // The navigation's icons, one per view.
@@ -27,6 +28,7 @@ const icons = {
   team: UsersThree,
   account: UserCircle,
   permit: ShieldCheck,
+  roles: UserList,
 }
 export type IconName = keyof typeof icons
 

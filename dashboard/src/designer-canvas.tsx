@@ -21,10 +21,12 @@ import '@xyflow/react/dist/base.css'
 import type { ControlChange, Operation, Override, Policy } from './api'
 import { automaticLayout, columnX } from './designer-layout'
 import {
+  capital,
   connectionReason,
   connect,
   copy,
   deleteReason,
+  kindNames,
   splitKey,
   type BoxKey,
   type BoxKind,
@@ -79,9 +81,9 @@ export function checks(
   return [
     { name: 'Route', value: `${operation.method} ${operation.target}`, tone: 'neutral' },
     { name: 'Access', value: operation.access, tone: operation.access === 'deny' ? 'refused' : 'neutral' },
-    { name: 'Token', value: operation.auth === 'none' ? 'public' : 'required', tone: operation.auth === 'none' ? 'pending' : 'neutral' },
+    { name: 'Sign-in', value: operation.auth === 'none' ? 'public' : 'required', tone: operation.auth === 'none' ? 'pending' : 'neutral' },
     {
-      name: 'Permit',
+      name: 'Role',
       value: operation.auth === 'none' ? 'n/a' : String(policy.permits.filter((permit) => permit.operation === operation.id).length),
       tone: 'neutral',
     },
@@ -104,7 +106,7 @@ export function checks(
       tone: operation.body || operation.headers ? 'neutral' : null,
     },
     { name: 'Record', value: 'always', tone: 'neutral' },
-    { name: 'Forward', value: `${operation.api} → ${api?.upstream ?? 'missing upstream'}`, tone: 'neutral' },
+    { name: 'Forward', value: `${operation.api} → ${api?.upstream ?? 'missing service address'}`, tone: 'neutral' },
   ]
 }
 function until(iso: string): string {
@@ -153,7 +155,7 @@ const PolicyBox = memo(function PolicyBox({ data }: NodeProps<PolicyNode>) {
           <strong className="designer-box-title">{data.id || '(empty ID)'}</strong>
           {upstream ? (
             <p className="designer-object-id">
-              <code>{upstream.dial || 'Dial address needed'}</code>
+              <code>{upstream.dial || 'Address needed'}</code>
             </p>
           ) : null}
         </>
@@ -161,7 +163,7 @@ const PolicyBox = memo(function PolicyBox({ data }: NodeProps<PolicyNode>) {
       {data.issues.length ? <Badge tone="pending">Incomplete</Badge> : null}
       {data.refused ? <Badge tone="refused">Refused: {data.refused}</Badge> : null}
       {denied ? <Badge tone="refused">denied until {until(denied.expires_at)}</Badge> : null}
-      {data.changed ? <Badge tone="pending">changed in provisional r{data.changed}</Badge> : null}
+      {data.changed ? <Badge tone="pending">changed in the trial of version {data.changed}</Badge> : null}
       {data.editable && data.kind !== 'upstream' ? (
         <Handle type="source" position={Position.Right} role="button" tabIndex={-1} aria-label={`Connect from ${data.kind} ${data.id}`} />
       ) : null}
@@ -264,7 +266,7 @@ function CanvasGraph(props: CanvasProps) {
           className: `designer-node-${kind}`,
           selected: props.selection === key,
           ariaRole: 'group',
-          ariaLabel: `${kind === 'api' ? 'API' : kind[0].toUpperCase() + kind.slice(1)} ${item.id}${operation ? `, ${operation.method} ${operation.target}` : ''}`,
+          ariaLabel: `${capital(kindNames[kind].one)} ${item.id}${operation ? `, ${operation.method} ${operation.target}` : ''}`,
           data: {
             kind,
             id: item.id,
@@ -284,7 +286,7 @@ function CanvasGraph(props: CanvasProps) {
         id: `column:${kind}`,
         type: 'heading',
         position: { x: headingX[kind], y: firstY - 18 - 16 },
-        data: { label: { role: 'Roles', operation: 'Operations', api: 'APIs', upstream: 'Upstreams' }[kind] },
+        data: { label: capital(kindNames[kind].many) },
         selectable: false,
         draggable: false,
         connectable: false,
@@ -299,7 +301,7 @@ function CanvasGraph(props: CanvasProps) {
       const marker = override
         ? `${modified === 'removed' ? 'removed' : 'temporary'} until ${until(override.expires_at)}`
         : provisional
-          ? `changed in provisional r${props.provisional?.revision}`
+          ? `changed in the trial of version ${props.provisional?.revision}`
           : ''
       edges.push({
         id,
@@ -322,7 +324,7 @@ function CanvasGraph(props: CanvasProps) {
         `permit:${permit.role}:${permit.operation}`,
         `role:${permit.role}`,
         `operation:${permit.operation}`,
-        `Permit: ${permit.role} may call ${permit.operation}`,
+        `Permission: ${permit.role} may call ${permit.operation}`,
         false,
         props.overlays.find(
           (override) => override.control === 'permit' && override.role === permit.role && override.operation === permit.operation,
@@ -338,7 +340,7 @@ function CanvasGraph(props: CanvasProps) {
           `override:${override.id}`,
           `role:${override.role}`,
           `operation:${override.operation}`,
-          `Temporary permit: ${override.role} may call ${override.operation}`,
+          `Temporary permission: ${override.role} may call ${override.operation}`,
           false,
           override,
         )
@@ -354,7 +356,7 @@ function CanvasGraph(props: CanvasProps) {
         )
     for (const api of props.policy.apis)
       if (props.policy.upstreams.some((upstream) => upstream.id === api.upstream))
-        edge(`upstream:${api.id}`, `api:${api.id}`, `upstream:${api.upstream}`, `API ${api.id} uses upstream ${api.upstream}`, true)
+        edge(`upstream:${api.id}`, `api:${api.id}`, `upstream:${api.upstream}`, `API ${api.id} uses service address ${api.upstream}`, true)
     return { nodes, edges }
   }, [
     props.policy,
@@ -441,8 +443,8 @@ function CanvasGraph(props: CanvasProps) {
           } else
             setMessage(
               selectedEdge.id.startsWith('route:')
-                ? 'An operation must route to one API. Draw an arrow to another API to change it.'
-                : 'An API must use one upstream. Draw an arrow to another upstream to change it.',
+                ? 'An endpoint must route to one API. Draw an arrow to another API to change it.'
+                : 'An API must use one service address. Draw an arrow to another service address to change it.',
             )
         }}
       >
@@ -491,7 +493,7 @@ function CanvasGraph(props: CanvasProps) {
         </p>
       ) : null}
       <p className="designer-legend">
-        Solid = permit or route · dashed amber = temporary · dashed muted red = removed. Every temporary marker states its expiry.
+        Solid = permission or route · dashed amber = temporary · dashed muted red = removed. Every temporary marker states its expiry.
         Drag the background or use the arrow keys to move around; Fit shows the whole policy. Canvas drawn with{' '}
         <a href="https://reactflow.dev" target="_blank" rel="noopener noreferrer">
           React Flow

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { committedAnyway, describe, explain, type Admin, type HistoryEntry, type MutationRequest, type Reply } from './api'
+import { committedAnyway, committedMessage, describe, explain, type Admin, type HistoryEntry, type MutationRequest, type Reply } from './api'
 import { useGatewayState, type OutcomeRegister, type Unresolved } from './hooks'
 import { Glyph, clock } from './ui'
 
@@ -14,19 +14,26 @@ function settlement(reply: Reply<unknown>): Unresolved['settled'] {
   if (reply.kind === 'ok') return { tone: 'ok', text: 'Applied: the gateway answered with its receipt.' }
   if (reply.kind !== 'refused') return undefined
   const code = reply.outcome?.reason ?? reply.error
-  if (committedAnyway(reply)) return { tone: 'pending', text: `Applied, with a problem (${code}): ${explain(code)}` }
-  return { tone: 'refused', text: `Not applied: refused with ${code}. ${explain(code)}` }
+  if (committedAnyway(reply)) {
+    const words = committedMessage(code)
+    return { tone: 'pending', text: `${words.title}. ${words.action} (${code})` }
+  }
+  return { tone: 'refused', text: `Not applied: the gateway refused it. ${explain(code)} (${code})` }
 }
 
 // useOutcomeRegister keeps the changes whose answer was lost for the signed-in
 // administrator, in this page's memory only. A new sign-in by the same
 // administrator, after the session ended, still sees them; signing out
-// clears them.
+// clears them. Clearing also starts a new lifetime: a request sent before
+// it, whose answer arrives later, can neither list itself again nor settle
+// anything, even when the same administrator has signed in again since.
 export function useOutcomeRegister(admin: string | null): OutcomeRegister & { clear: () => void } {
   const [items, setItems] = useState<Unresolved[]>([])
+  const lifetime = useRef(0)
+  const current = useCallback(() => lifetime.current, [])
   const add = useCallback(
-    (request: MutationRequest) => {
-      if (!admin) return
+    (request: MutationRequest, since: number) => {
+      if (!admin || since !== lifetime.current) return
       const id = transitionOf(admin, request)
       setItems((list) => [
         ...list.filter((item) => item.id !== id),
@@ -42,13 +49,16 @@ export function useOutcomeRegister(admin: string | null): OutcomeRegister & { cl
   // A definite answer to a resend made in the view settles the change there,
   // where the answer is shown, so it is no longer listed.
   const settle = useCallback(
-    (request: MutationRequest) => {
-      if (admin) forget(transitionOf(admin, request))
+    (request: MutationRequest, since: number) => {
+      if (admin && since === lifetime.current) forget(transitionOf(admin, request))
     },
     [admin, forget],
   )
-  const clear = useCallback(() => setItems([]), [])
-  return useMemo(() => ({ items, add, settle, update, forget, clear }), [items, add, settle, update, forget, clear])
+  const clear = useCallback(() => {
+    lifetime.current++
+    setItems([])
+  }, [])
+  return useMemo(() => ({ items, lifetime: current, add, settle, update, forget, clear }), [items, current, add, settle, update, forget, clear])
 }
 
 // UnresolvedChanges lists, at the top of every page, the administrator's
@@ -80,7 +90,7 @@ export function UnresolvedChanges(props: { admin: Admin; name: string; register:
           register.update(item.id, {
             settled: entry.audited_at
               ? { tone: 'ok', text: `Applied: the gateway recorded it at ${at}.` }
-              : { tone: 'pending', text: `Applied at ${at}, but its audit record is pending, so the gateway admits nothing until it restarts.` },
+              : { tone: 'pending', text: `Applied at ${at}, but the security log has not recorded it yet, so the gateway refuses every request until it restarts.` },
           })
         } else {
           register.update(item.id, { settled: { tone: 'refused', text: `Not applied: the gateway refused it at ${at} (${entry.reason}). ${explain(entry.reason ?? '')}` } })

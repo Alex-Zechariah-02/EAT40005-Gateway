@@ -1,11 +1,19 @@
 import { useEffect, useId, useState, type FormEvent } from 'react'
 import type { Admin, SessionInfo } from './api'
 import { useMutation } from './hooks'
-import { describedBy, Field, fieldError, MutationResult, PageHeader, Tags, Time } from './ui'
+import { describedBy, Field, fieldError, MutationResult, PageHeader, Time } from './ui'
+
+// The administrator permissions in plain words; the exact names stay beside them.
+const permissionWords: Record<string, string> = {
+  read: 'View the gateway',
+  read_history: 'View the history',
+  manage_subjects: 'Block and unblock accounts',
+  manage_policy: 'Change the policy',
+}
 
 // Account shows the signed-in administrator's permissions and session, and
 // changes their password. A password change ends all of their sessions.
-export function Account(props: { admin: Admin; session: SessionInfo; signedOut: (message: string) => void }) {
+export function Account(props: { admin: Admin; session: SessionInfo; signedOut: (message: string) => void; showGuide: () => void }) {
   const id = useId()
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
@@ -49,7 +57,19 @@ export function Account(props: { admin: Admin; session: SessionInfo; signedOut: 
           <div className="fact">
             <dt>Permissions</dt>
             <dd>
-              <Tags items={props.session.permissions} code />
+              <ul className="permission-list">
+                {props.session.permissions.map((permission) => (
+                  <li key={permission}>
+                    {permissionWords[permission] ?? permission} <code className="muted">{permission}</code>
+                  </li>
+                ))}
+              </ul>
+            </dd>
+          </div>
+          <div className="fact">
+            <dt>Gateway address</dt>
+            <dd>
+              <code>{window.location.host}</code>
             </dd>
           </div>
           <div className="fact">
@@ -60,6 +80,9 @@ export function Account(props: { admin: Admin; session: SessionInfo; signedOut: 
           </div>
         </dl>
         <p className="hint">The session also ends after a period without activity, set by the operator.</p>
+        <button type="button" className="btn btn-small" onClick={props.showGuide}>
+          Show the Getting started guide
+        </button>
       </section>
       <section className="section panel narrow" aria-labelledby={`${id}-password`}>
         <h2 id={`${id}-password`}>Change password</h2>

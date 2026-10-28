@@ -3,13 +3,14 @@ import { Basket, CaretRight, ForkKnife, MagnifyingGlass, Storefront as ShopIcon 
 import { rm } from '../lib/format'
 import { describe } from '../lib/messages'
 import { useQuery } from '../lib/query'
-import { Link, useLocation } from '../lib/router'
+import { Link, navigate, useLocation } from '../lib/router'
 import type { Category, List, Merchant, SearchHit } from '../lib/types'
 import { StockBadge } from '../ui/badge'
 import { ButtonLink } from '../ui/button'
 import { Empty, Loading, ProblemNotice, Skeleton } from '../ui/notice'
 import { Photo } from '../ui/photo'
 import { ShopGrid } from './parts'
+import { withParam } from './section'
 
 export function Home() {
   const { params } = useLocation()
@@ -98,11 +99,21 @@ function ShopSection({ title, to, more, query, categories }: { title: string; to
   )
 }
 
+// The item orders a search can show; Relevance keeps Inventory's order.
+const itemSorts: { value: string; label: string; compare?: (a: SearchHit, b: SearchHit) => number }[] = [
+  { value: '', label: 'Relevance' },
+  { value: 'price-asc', label: 'Price, low to high', compare: (a, b) => a.item.price_sen - b.item.price_sen },
+  { value: 'price-desc', label: 'Price, high to low', compare: (a, b) => b.item.price_sen - a.item.price_sen },
+]
+
 function SearchResults({ q }: { q: string }) {
+  const { path, params } = useLocation()
+  const sort = itemSorts.find((s) => s.value === (params.get('sort') ?? '')) ?? itemSorts[0]
   const tooShort = q.length < 2
   const results = useQuery<List<SearchHit>>(tooShort ? null : `/inventory/search?q=${encodeURIComponent(q)}`)
   const problem = results.answer && results.answer.kind !== 'ok' ? describe(results.answer) : null
-  const hits = results.data?.items ?? []
+  const hits = [...(results.data?.items ?? [])]
+  if (sort.compare) hits.sort(sort.compare)
   const shops = [...new Map(hits.map((hit) => [hit.merchant.id, hit.merchant])).values()]
   return (
     <section className="mt-8">
@@ -125,7 +136,23 @@ function SearchResults({ q }: { q: string }) {
         />
       ) : (
         <>
-          <p className="mt-1 text-ink-2" role="status">{hits.length === 1 ? 'One item' : `${hits.length} items`} from {shops.length === 1 ? 'one shop' : `${shops.length} shops`}</p>
+          <div className="mt-1 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-ink-2" role="status">{hits.length === 1 ? 'One item' : `${hits.length} items`} from {shops.length === 1 ? 'one shop' : `${shops.length} shops`}</p>
+            <label className="flex items-center gap-2 text-sm font-semibold text-ink-2">
+              Sort by
+              <select
+                value={sort.value}
+                onChange={(event) => navigate(withParam(path, params, 'sort', event.target.value), { replace: true })}
+                className="rounded-lg bg-surface px-3 py-2 font-semibold text-ink ring-1 ring-line"
+              >
+                {itemSorts.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           <nav aria-label="Shops in these results" className="mt-5 flex flex-wrap gap-2">
             {shops.map((shop) => (
               <Link key={shop.id} to={`/store/${shop.id}`} className="inline-flex max-w-full items-center gap-2 rounded-full bg-surface px-4 py-2 text-sm font-bold text-ink shadow-card ring-1 ring-line hover:shadow-raised">

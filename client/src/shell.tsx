@@ -36,18 +36,34 @@ export function Shell({ children }: { children: ReactNode }) {
       <main id="main" className="mx-auto w-full max-w-[1320px] flex-1 px-4 pb-24 sm:px-8">
         {children}
       </main>
-      <footer className="border-t border-line">
+      <footer className="border-t border-line print:hidden">
         <div className="mx-auto flex max-w-[1320px] flex-wrap items-center justify-between gap-3 px-4 py-6 text-sm text-ink-3 sm:px-8">
-          <p>Fetch is a demonstration platform. Every shop, person and order is fictional.</p>
-          <p className="flex flex-wrap gap-x-4">
-            <span>Prices in Malaysian ringgit.</span>
-            <Link to="/lab" className="font-semibold text-ink-2 hover:text-ink hover:underline">
-              Security lab
-            </Link>
-          </p>
+          <p>Prices in Malaysian ringgit.</p>
         </div>
       </footer>
     </div>
+  )
+}
+
+// DemoBadge is the one place that says this site is a demonstration; every
+// other screen reads like a working product. It also leads to the security lab.
+function DemoBadge() {
+  return (
+    <details className="group relative shrink-0">
+      <summary className="cursor-pointer list-none rounded-full bg-warn-soft px-2.5 py-1 text-xs font-bold text-warn ring-1 ring-warn/30 hover:ring-warn/60 [&::-webkit-details-marker]:hidden">
+        Demo
+      </summary>
+      <div className="absolute top-full left-0 z-40 mt-2 w-[min(18rem,calc(100vw-2rem))] rounded-xl bg-surface p-4 text-sm text-ink-2 shadow-raised ring-1 ring-line">
+        <p>Fetch is a demonstration. Every shop, person and order is fictional.</p>
+        <Link
+          to="/lab"
+          onClick={(event) => event.currentTarget.closest('details')?.removeAttribute('open')}
+          className="mt-2 inline-block font-semibold text-brand underline-offset-2 hover:underline"
+        >
+          Security lab
+        </Link>
+      </div>
+    </details>
   )
 }
 
@@ -65,9 +81,12 @@ function ShopHeader({ user }: { user: User | null }) {
   const count = basketCount(basket)
   const { path } = useLocation()
   return (
-    <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">
-      <div className="mx-auto flex h-18 max-w-[1320px] items-center gap-2 px-4 sm:gap-4 sm:px-8 lg:gap-8">
-        <Logo />
+    <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur print:hidden">
+      <div className="mx-auto flex min-h-18 max-w-[1320px] flex-wrap items-center gap-2 px-4 py-2 sm:gap-4 sm:px-8 lg:gap-8">
+        <div className="flex shrink-0 flex-col items-start gap-0.5 sm:flex-row sm:items-center sm:gap-2">
+          <Logo />
+          <DemoBadge />
+        </div>
         <div className="hidden min-w-0 flex-1 items-center rounded-full bg-sunken ring-1 ring-line md:flex">
           <AddressPicker />
           <span className="h-6 w-px shrink-0 bg-line-strong" aria-hidden="true" />
@@ -106,7 +125,10 @@ function StaffHeader({ user }: { user: User }) {
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">
       <div className="mx-auto flex min-h-16 max-w-[1320px] flex-wrap items-center gap-x-6 gap-y-1 px-4 py-2 sm:px-8">
-        <Logo to={user.home} suffix="for partners" />
+        <div className="flex items-center gap-2">
+          <Logo to={user.home} suffix="for partners" />
+          <DemoBadge />
+        </div>
         <nav aria-label="Workspaces" className="flex items-center gap-1">
           {mine.map((w) => (
             <Link key={w.to} to={w.to} aria-current={path === w.to ? 'page' : undefined} className={cx('rounded-lg px-3 py-2 text-sm font-semibold', path === w.to ? 'bg-brand-soft text-brand-strong' : 'text-ink-2 hover:bg-sunken hover:text-ink')}>

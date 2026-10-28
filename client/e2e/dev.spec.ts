@@ -38,9 +38,9 @@ test.describe.serial('Fetch app development server observation', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'What can we fetch for you?' })).toBeVisible()
     // A first start may reload the page once its dependencies are prepared,
     // so the reads are awaited through the reference the page shows.
-    const shown = page.getByText(/^Ref [0-9a-f]{32}$/).first()
+    const shown = page.getByTitle(/^Full reference [0-9a-f]{32}$/).first()
     await expect(shown).toBeVisible({ timeout: 30_000 })
-    const ref = (await shown.textContent())!.replace(/^Ref\s*/, '')
+    const ref = (await shown.getAttribute('title'))!.replace(/^Full reference /, '')
     // Each API read was answered by the gateway, which recorded it under its
     // reference; the page shows one of them.
     expect(answers.map((a) => a.ref)).toContain(ref)

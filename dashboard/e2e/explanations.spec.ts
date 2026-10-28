@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { explain } from '../src/api'
+import { committedMessage, explain, message } from '../src/api'
 
 // Every error and refusal code the Admin API can send, as the gateway's
 // source produced them on 28 October 2026: the protected Admin API's own
@@ -69,12 +69,18 @@ const controllerReasons = [
   'UNSUPPORTED_FEATURE',
 ]
 
-const fallback = explain('a_code_no_gateway_sends')
+const fallback = message('a_code_no_gateway_sends')
 
-test('every code the Admin API can send has its own plain explanation, and an unknown code still gets one', () => {
-  expect(fallback).toContain('no description')
-  const missing = [...adminCodes, ...controllerReasons, ...controllerReasons.map((code) => code.toLowerCase())].filter((code) => explain(code) === fallback)
+test('every code the Admin API can send has its own plain title and next step, and an unknown code still gets one', () => {
+  expect(fallback.action).toContain('no description')
+  const codes = [...adminCodes, ...controllerReasons, ...controllerReasons.map((code) => code.toLowerCase())]
+  const missing = codes.filter((code) => {
+    const words = message(code)
+    return (words.title === fallback.title && words.action === fallback.action) || !words.title || !words.action
+  })
   expect(missing).toEqual([])
   // A lost answer is never described as "nothing changed".
   for (const code of ['gateway_unavailable', 'STORE_ERROR', 'store_error']) expect(explain(code)).not.toMatch(/nothing (was )?changed/i)
+  // A committed change whose answer reports a problem is always titled as applied.
+  for (const code of ['OUTCOME_AUDIT_PENDING', 'PUBLICATION_FAILED', 'STORE_ERROR', 'unavailable']) expect(committedMessage(code).title).toMatch(/^Applied, but/)
 })

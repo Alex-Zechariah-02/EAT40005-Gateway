@@ -10,7 +10,7 @@ One website for every role; after signing in each person lands on their own home
 
 | Role | Home | What they do |
 |---|---|---|
-| Customer | `/` | Browse Fetch Food and Fetch Mart, search, add from one shop at a time, check out with cash on delivery or the Fetch wallet, follow the order, cancel it while it is new, ask for help with a reference |
+| Customer | `/` | Browse Fetch Food and Fetch Mart, sort shops by delivery time or fee and show only open ones, search and sort results by price, add from one shop at a time, check out with cash on delivery or the Fetch wallet, follow the order (the page says when its status changes), print a receipt, cancel it while it is new, ask for help with a reference |
 | Merchant | `/merchant` | Accept new orders and mark them ready; change prices, availability and stock; see their own sales |
 | Rider | `/rider` | Take a ready order from the job board, then mark it delivered |
 | Support agent | `/support` | Answer and resolve tickets, with the linked order and the request reference |
@@ -23,7 +23,8 @@ The demonstration accounts and their shared password are on the sign-in page. Fe
 
 - **Sign-in:** Fetch Accounts issues a 15-minute token. It lives only in this tab's `sessionStorage`, so it survives a reload, ends when the tab closes, and each tab can be a different person. The app refreshes it silently before it expires. Changing person cancels pending requests and clears what was shown.
 - **Storage:** `sessionStorage` holds the session, the basket and the delivery address for this tab; `localStorage` holds only the chosen appearance (`fetch.theme`). No cookies.
-- **Errors:** every problem is said in plain words with who answered (the gateway or a named service) and the gateway's reference, **Ref**, which support and the Dashboard's request lookup use.
+- **Errors:** every problem is said in plain words with who answered (the gateway or a named service) and the gateway's reference, **Ref**, shown in a short form; its copy button copies the full reference, which support and the Dashboard's request lookup use.
+- **Demo badge:** the header's **Demo** badge is the one place that says the site is a demonstration; it holds the note that every shop, person and order is fictional, and the link to the security lab.
 - **Unknown outcomes:** when a change gets no clear answer, the app says it may or may not have been applied and never sends it again by itself. Checkout sends an `Idempotency-Key`, so an explicit "Send the same order again" is safe.
 - **Roles only choose screens.** The gateway decides what each request may do, and the APIs check ownership.
 
@@ -61,7 +62,7 @@ npm run e2e
 ```
 
 - `site.spec.ts` checks the app as the gateway serves it before any policy exists: the page at `/` and every page route, each asset byte for byte with its fixed type, the content policy and security headers, each listener on its own loopback host, the bundled typeface, the gateway's refusal shown with the reference of the very answer, same-origin requests only, the tab's storage, the built files free of secrets and development hosts, and accessibility at phone, tablet and desktop widths.
-- `flows.spec.ts` signs in as every Fetch role through Fetch Accounts, with the baseline policy confirmed, and checks each step against the services' own receipts: ordering with cash and the wallet, an order moved through every status by the shop, a rider and the customer, menu, price and stock changes, refused cancels and out-of-stock orders with their references, support tickets, operations reports, a lost checkout answer that is never resent by itself, a blocked account, the security lab, a policy trial and its rollback, refused refreshes and other customers' orders shown with their references, the per-tab session, accessibility when signed in, a service that is down and a gateway that cannot record.
+- `flows.spec.ts` signs in as every Fetch role through Fetch Accounts, with the baseline policy confirmed, and checks each step against the services' own receipts: sorting, filtering and searching, ordering with cash and the wallet, an order moved through every status by the shop, a rider and the customer (whose open order page announces the change) and its printed receipt, menu, price and stock changes, refused cancels and out-of-stock orders with their references, support tickets, operations reports, a lost checkout answer that is never resent by itself, a blocked account, the security lab, a policy trial and its rollback, refused refreshes and other customers' orders shown with their references, the per-tab session, accessibility when signed in, a service that is down and a gateway that cannot record.
 - `dev.spec.ts` checks that the development server sends API paths to the gateway; it is a development observation, not acceptance.
 
 The tests serve `dist/`, or the existing build named by `E2E_APP_DIST`. They also build `../dashboard` for the admin listener, unless `DASHBOARD_DIST` names a built dashboard to use instead. Optional: `E2E_EVIDENCE` names a file for JSON-lines evidence (backend source manifests, statuses, references and receipts, never secrets), and `E2E_SHOTS` a directory for screenshots.

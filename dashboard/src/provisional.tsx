@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { newKey, type Activation, type Admin, type Outcome, type ProvisionalView, type Reply, type Status } from './api'
 import { useGatewayState, useMutation, usePaged, usePoll, useRereadWhen, useResource } from './hooks'
 import { reasonOf, type Traffic } from './monitor'
-import { age, Badge, clock, Confirm, Empty, MutationResult, Problem, Receipt, Remaining, ShowMore, staleAfterMs, TableScroll, Time, TimeOfDay } from './ui'
+import { actorName, age, Badge, clock, Confirm, Empty, MutationResult, Problem, Receipt, Remaining, ShowMore, staleAfterMs, TableScroll, Time, TimeOfDay } from './ui'
 
 // trafficWindow is the smallest traffic window, in seconds, that reaches back
 // to the start of the trial; a trial older than an hour is counted over the
@@ -101,7 +101,7 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
     ])
     if (mine !== checks.current) return
     if (trial.kind === 'refused' && trial.error === 'no_provisional') {
-      setCheck({ phase: 'blocked', why: 'No change is on trial any more: it was confirmed or rolled back elsewhere, or its deadline passed. Nothing was sent.' })
+      setCheck({ phase: 'blocked', why: 'No change is on trial any more: it was kept or undone elsewhere, or its deadline passed. Nothing was sent.' })
       state.refresh()
       return
     }
@@ -109,24 +109,24 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
       const why = trial.kind === 'unknown' ? trial.message : trial.kind === 'refused' ? `HTTP ${trial.status} ${trial.error}` : 'cancelled'
       setCheck({
         phase: 'blocked',
-        why: `The trial could not be read again (${why}), so it cannot be confirmed from here. Rolling back stays possible, and the gateway rolls back by itself at the deadline.`,
+        why: `The trial could not be read again (${why}), so it cannot be kept from here. Undoing it stays possible, and the gateway undoes it by itself at the deadline.`,
       })
       return
     }
     if (trial.body.activation.revision !== before.revision) {
-      setCheck({ phase: 'blocked', why: `A different change is on trial now, revision ${trial.body.activation.revision}. Nothing was sent.` })
+      setCheck({ phase: 'blocked', why: `A different change is on trial now, version ${trial.body.activation.revision}. Nothing was sent.` })
       state.refresh()
       return
     }
     const reasons: string[] = []
     if (whileOpen) reasons.push("The gateway's status changed while this dialog was open.")
     if (trial.body.activation.deadline !== before.deadline) reasons.push('Its deadline is different from the one you were looking at.')
-    if (trial.body.generation !== before.generation) reasons.push('The policy generation serving it changed.')
+    if (trial.body.generation !== before.generation) reasons.push('The policy that requests use changed (a new generation is in force).')
     if (status.kind === 'ok' && JSON.stringify(status.body.overrides ?? []) !== before.overrides) reasons.push('The temporary rules in force changed.')
     if (before.failed.length > 0) reasons.push(`An earlier read of ${before.failed.join(' and ')} had failed, so what you saw may not have been current.`)
     if (status.kind !== 'ok') reasons.push("The gateway's status could not be read again.")
     if (figures.kind !== 'ok') reasons.push("The trial's traffic could not be read again.")
-    if (before.trafficAt === null) reasons.push('No traffic figures for the trial were shown when you chose Confirm.')
+    if (before.trafficAt === null) reasons.push('No traffic figures for the trial were shown when you chose Keep change.')
     else if (Date.now() - before.trafficAt.getTime() > staleAfterMs) reasons.push(`The traffic figures you were looking at were read ${age(before.trafficAt)}.`)
     if (figures.kind === 'ok' && sinceStart(figures.body, before.activatedAt).total === 0) {
       reasons.push('No request has been decided since the trial started, so nothing shows yet how the change behaves.')
@@ -193,7 +193,7 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
       success={(o) => (
         <>
           <p className="notice-title">
-            {o.disposition === 'confirmed' ? `Confirmed: revision ${o.revision} is now the permanent policy.` : `Rolled back: revision ${o.revision} is in force again.`}
+            {o.disposition === 'confirmed' ? `Kept: version ${o.revision} is now the policy in force.` : `Undone: version ${o.revision} is in force again.`}
           </p>
           {variant === 'full' ? <Receipt outcome={o} /> : null}
         </>
@@ -207,16 +207,30 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
     variant === 'full' && asked ? (
       <Confirm
         open={asking === 'confirm'}
-        title={`Confirm revision ${asked.activation.revision} permanently?`}
-        confirmLabel={`Confirm revision ${asked.activation.revision}`}
+        title={`Keep version ${asked.activation.revision}?`}
+        confirmLabel="Keep change"
         disabled={!ready || (ready.reasons.length > 0 && !reviewed)}
         onCancel={cancel}
         onConfirm={confirm}
       >
         <p>
-          Revision {asked.activation.revision} becomes the confirmed policy and no longer rolls back by itself. Revision {asked.activation.rollback_target} stops
-          being the rollback target.
+          Version {asked.activation.revision} stays in force and is no longer undone at the deadline. Version {asked.activation.rollback_target} is then no
+          longer restored by an undo.
         </p>
+        <p className="hint">The Admin API calls this “confirm”.</p>
+        {asked.changes.length > 0 ? (
+          <div className="change-set">
+            <h3>What stays in force ({asked.changes.length} {asked.changes.length === 1 ? 'change' : 'changes'})</h3>
+            <ul>
+              {asked.changes.slice(0, 8).map((c) => (
+                <li key={`${c.control}:${c.target}`}>
+                  {controls[c.control] ?? c.control} <code>{c.target}</code>
+                </li>
+              ))}
+            </ul>
+            {asked.changes.length > 8 ? <p className="hint">And {asked.changes.length - 8} more, listed on the trial card.</p> : null}
+          </div>
+        ) : null}
           <p className="hint" role="status">
             {check.phase === 'reading' ? "Reading the gateway's current state…" : ready ? `Read again at ${clock(ready.at.toISOString(), true)}.` : ''}
           </p>
@@ -224,7 +238,7 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
           {check.phase === 'blocked' ? <p className="notice tone-refused">{check.why}</p> : null}
           {ready && ready.reasons.length > 0 ? (
             <div className="notice tone-pending">
-              <p className="notice-title">Before confirming, note:</p>
+              <p className="notice-title">Before keeping it, note:</p>
               <ul className="check-reasons">
                 {ready.reasons.map((reason) => (
                   <li key={reason}>{reason}</li>
@@ -244,15 +258,16 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
       {view ? (
         <Confirm
           open={asking === 'rollback'}
-          title={`Roll back to revision ${view.activation.rollback_target}?`}
-          confirmLabel={`Roll back to revision ${view.activation.rollback_target}`}
+          title={`Undo the change and return to version ${view.activation.rollback_target}?`}
+          confirmLabel="Undo change"
           danger
           onCancel={() => setAsking(null)}
           onConfirm={rollback}
         >
           <p>
-            Revision {view.activation.rollback_target} is enforced again from the next request, and the trial of revision {view.activation.revision} ends.
+            Version {view.activation.rollback_target} is in force again from the next request, and the trial of version {view.activation.revision} ends.
           </p>
+          <p className="hint">The Admin API calls this “roll back”.</p>
         </Confirm>
       ) : null}
     </>
@@ -276,7 +291,7 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
             <>
               <p className="tile-value tile-value-quiet">None</p>
               <p className="tile-note">
-                {mutation.phase.state === 'replied' ? null : 'Changes go live on trial first and roll back unless confirmed.'}
+                {mutation.phase.state === 'replied' ? null : 'Changes go live on trial first and are undone at the deadline unless kept.'}
               </p>
             </>
           )}
@@ -289,10 +304,10 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
         <div className="tile-row">
           <div>
             <p className="tile-label tile-label-tone">Change on trial</p>
-            <p className="tile-value">Revision {view.activation.revision}</p>
+            <p className="tile-value">Version {view.activation.revision}</p>
           </div>
           <div className="tile-end">
-            <p className="tile-label">Rolls back in</p>
+            <p className="tile-label">Undone in</p>
             <p className="tile-countdown">
               <Remaining key={view.activation.deadline} until={view.activation.deadline} onPassed={refresh} format="clock" />
             </p>
@@ -306,11 +321,11 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
           <div className="actions">
             {manage ? (
               <button type="button" className="btn btn-small" onClick={() => setAsking('rollback')} disabled={mutation.pending}>
-                Roll back
+                Undo change
               </button>
             ) : null}
             <a className="btn btn-small btn-primary" href="#/candidates">
-              {manage ? 'Review and confirm' : 'Open Changes'}
+              {manage ? 'Review and keep' : 'Open Changes'}
             </a>
           </div>
         </div>
@@ -331,14 +346,14 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
         <section className="section card trial tone-pending" aria-labelledby="trial-title">
           <div className="trial-main">
             <p className="tile-label tile-label-tone">Change on trial</p>
-            <h2 id="trial-title">Revision {view.activation.revision} is in force but not confirmed</h2>
+            <h2 id="trial-title">Version {view.activation.revision} is on trial</h2>
             <div className="trial-clock">
               <p className="tile-countdown">
                 <Remaining key={view.activation.deadline} until={view.activation.deadline} onPassed={refresh} format="clock" />
               </p>
               <p className="hint">
-                left to confirm, until <Time value={view.activation.deadline} />. Then the gateway rolls back to revision {view.activation.rollback_target} by
-                itself.
+                left to keep it, until <Time value={view.activation.deadline} />. Then the gateway undoes it and returns to version{' '}
+                {view.activation.rollback_target} by itself.
               </p>
             </div>
             <DeadlineBar from={view.activation.activated_at} until={view.activation.deadline} />
@@ -346,31 +361,36 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
             {manage ? (
               <div className="actions">
                 <button type="button" className="btn" onClick={() => setAsking('rollback')} disabled={mutation.pending}>
-                  Roll back to revision {view.activation.rollback_target}
+                  Undo change
                 </button>
                 <button type="button" className="btn btn-primary" onClick={askConfirm} disabled={mutation.pending}>
-                  Confirm revision {view.activation.revision}
+                  Keep change
                 </button>
               </div>
             ) : null}
             <TrialTraffic traffic={traffic} activatedAt={view.activation.activated_at} />
           </div>
           <div className="trial-side">
-            <h3>What changed from revision {view.activation.rollback_target}</h3>
+            <h3>What changed from version {view.activation.rollback_target}</h3>
             {view.changes.length === 0 ? (
               <p className="hint">Nothing, as the gateway reports it.</p>
             ) : (
-              <ul className="changes">
-                {view.changes.map((c) => (
-                  <li key={`${c.control}:${c.target}`} className="change change-changed">
-                    <span className="change-control">{controls[c.control] ?? c.control}</span> <code>{c.target}</code>
-                  </li>
-                ))}
-              </ul>
+              <>
+                <p className="hint">
+                  {view.changes.length} {view.changes.length === 1 ? 'change' : 'changes'}, as the gateway reports them.
+                </p>
+                <ChangedControls changes={view.changes.slice(0, shownChanges)} />
+                {view.changes.length > shownChanges ? (
+                  <details className="more-changes">
+                    <summary>Show the other {view.changes.length - shownChanges}</summary>
+                    <ChangedControls changes={view.changes.slice(shownChanges)} />
+                  </details>
+                ) : null}
+              </>
             )}
             <dl className="facts facts-compact">
               <div className="fact">
-                <dt>From candidate</dt>
+                <dt>From draft change</dt>
                 <dd>{view.activation.candidate}</dd>
               </div>
               <div className="fact">
@@ -380,8 +400,8 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
                 </dd>
               </div>
               <div className="fact">
-                <dt>Generation served</dt>
-                <dd>{view.generation ? <code>{view.generation}</code> : 'not the serving generation'}</dd>
+                <dt>Generation in force</dt>
+                <dd>{view.generation ? <code>{view.generation}</code> : 'not the generation in force'}</dd>
               </div>
             </dl>
           </div>
@@ -486,23 +506,38 @@ function DeadlineBar(props: { from: string; until: string }) {
   )
 }
 
-// The kinds of control the gateway reports as changed. A permit target is
-// written "ROLE:operation".
-const controls: Record<string, string> = {
-  upstream: 'upstream',
+// A long list of changed controls shows this many, then the rest on request.
+const shownChanges = 12
+
+function ChangedControls({ changes }: { changes: ProvisionalView['changes'] }) {
+  return (
+    <ul className="changes">
+      {changes.map((c) => (
+        <li key={`${c.control}:${c.target}`} className="change change-changed">
+          <span className="change-control">{controls[c.control] ?? c.control}</span> <code>{c.target}</code>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+// The kinds of control the gateway reports as changed, in plain words. A
+// permit target is written "ROLE:operation".
+export const controls: Record<string, string> = {
+  upstream: 'service address',
   api: 'API',
-  operation: 'operation',
+  operation: 'endpoint',
   rate: 'rate limit',
   role: 'role',
-  permit: 'permit',
-  subject: 'subject',
+  permit: 'permission',
+  subject: 'account',
 }
 
 const dispositions: Record<string, { tone: 'ok' | 'neutral' | 'refused'; word: string }> = {
-  confirmed: { tone: 'ok', word: 'Confirmed' },
-  rolled_back: { tone: 'neutral', word: 'Rolled back' },
-  timed_out: { tone: 'neutral', word: 'Rolled back at deadline' },
-  quarantined: { tone: 'refused', word: 'Quarantined' },
+  confirmed: { tone: 'ok', word: 'Kept' },
+  rolled_back: { tone: 'neutral', word: 'Undone' },
+  timed_out: { tone: 'neutral', word: 'Undone at the deadline' },
+  quarantined: { tone: 'refused', word: 'Set aside after a restore' },
 }
 
 // ActivationHistory lists every trial and how it ended.
@@ -518,8 +553,8 @@ export function ActivationHistory({ admin, reads }: { admin: Admin; reads: unkno
           <table>
             <thead>
               <tr>
-                <th scope="col">Revision</th>
-                <th scope="col">From candidate</th>
+                <th scope="col">Version</th>
+                <th scope="col">From draft change</th>
                 <th scope="col">Started</th>
                 <th scope="col">Deadline</th>
                 <th scope="col">How it ended</th>
@@ -544,8 +579,8 @@ export function ActivationHistory({ admin, reads }: { admin: Admin; reads: unkno
                     )}
                     {a.resolved_at ? (
                       <span className="cell-sub">
-                        <Time value={a.resolved_at} /> by {a.resolved_by}
-                        {a.disposition && a.disposition !== 'confirmed' ? ` · back to revision ${a.rollback_target}` : null}
+                        <Time value={a.resolved_at} /> by {actorName(a.resolved_by)}
+                        {a.disposition && a.disposition !== 'confirmed' ? ` · back to version ${a.rollback_target}` : null}
                       </span>
                     ) : null}
                   </td>

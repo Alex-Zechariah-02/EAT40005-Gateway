@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from 'react'
 import type { Operation, Policy } from './api'
-import { copy, deleteReason, rename, sections, splitKey, type BoxKey, type BoxKind, type Issue } from './designer-model'
+import { capital, copy, deleteReason, kindNames, rename, sections, splitKey, type BoxKey, type BoxKind, type Issue } from './designer-model'
+import { RequestRules } from './policy'
 import { Badge, Confirm, Field, TableScroll, describedBy } from './ui'
 
 interface FormProps {
@@ -18,7 +19,7 @@ export function Issues({ issues, onSelect }: { issues: Issue[]; onSelect: (key: 
       <h2>
         Issues <Badge tone={issues.length ? 'pending' : 'neutral'}>{issues.length}</Badge>
       </h2>
-      <p className="hint">Checks in this page. The Gateway validates the whole document when you stage it.</p>
+      <p className="hint">Checks in this page. The gateway checks the whole document when you save it as a draft change.</p>
       {issues.length ? (
         <ul>
           {issues.map((issue, index) => (
@@ -36,7 +37,7 @@ export function Issues({ issues, onSelect }: { issues: Issue[]; onSelect: (key: 
           ))}
         </ul>
       ) : (
-        <p className="hint">No drawing issue. Make a change, then stage it for the Gateway to validate.</p>
+        <p className="hint">No drawing issue. Make a change, then save it as a draft change for the gateway to check.</p>
       )}
     </section>
   )
@@ -65,7 +66,7 @@ function SchemaEditor({
     onIssue(null)
   }, [serialised])
   return (
-    <Field id={id} label={label} hint="The Gateway checks the schema subset when you stage this document." error={error || undefined} wide>
+    <Field id={id} label={label} hint="The gateway checks the schema subset when you save this as a draft change." error={error || undefined} wide>
       <textarea
         id={id}
         className="input code-input"
@@ -130,7 +131,7 @@ export function ObjectForm({
   const blockedDelete = deleteReason(policy, selection)
   function idProblem(value: string): string | null {
     if (!value) return 'Enter an ID.'
-    if (value !== id && policy[sections[kind]].some((entry) => entry.id === value)) return `Another ${kind} already uses the ID ${value}.`
+    if (value !== id && policy[sections[kind]].some((entry) => entry.id === value)) return `Another ${kindNames[kind].one} already uses the ID ${value}.`
     return null
   }
 
@@ -180,14 +181,14 @@ export function ObjectForm({
   }
 
   return (
-    <section className="designer-object" data-box={selection} aria-label={`${kind} ${id}`}>
+    <section className="designer-object" data-box={selection} aria-label={`${capital(kindNames[kind].one)} ${id}`}>
       <Title className="designer-object-title">
-        {kind === 'api' ? 'API' : kind[0].toUpperCase() + kind.slice(1)} <code>{id || '(empty ID)'}</code>
+        {capital(kindNames[kind].one)} <code>{id || '(empty ID)'}</code>
       </Title>
       <div className="form-grid">
         {input(
           'id',
-          `${kind === 'api' ? 'API' : kind[0].toUpperCase() + kind.slice(1)} ID`,
+          `${capital(kindNames[kind].one)} ID`,
           idText,
           (value) => {
             setIdText(value)
@@ -201,22 +202,22 @@ export function ObjectForm({
           idText !== id && idProblem(idText)
             ? `${idProblem(idText)} The draft keeps the ID ${id || '(empty)'} until this is changed.`
             : kind === 'role'
-              ? 'Changing a role ID changes its permits. Tokens that still carry the old name lose them.'
+              ? 'Changing a role ID changes its permissions. Tokens that still carry the old name lose them.'
               : 'Changing an ID also changes its references in this draft.',
         )}
         {kind === 'upstream'
           ? input(
               'dial',
-              'Dial address',
+              'Address',
               (item as Policy['upstreams'][number]).dial,
               (dial) => patch({ dial }),
-              'Literal loopback IP:port, for example 127.0.0.1:9504.',
+              'A service address on this computer, for example 127.0.0.1:9504.',
             )
           : null}
         {kind === 'api'
           ? select(
               'upstream',
-              'Upstream',
+              'Service address',
               (item as Policy['apis'][number]).upstream,
               policy.upstreams.map((upstream) => upstream.id),
               (upstream) => patch({ upstream }),
@@ -232,7 +233,7 @@ export function ObjectForm({
               'Target',
               operation.target,
               (target) => patch({ target }),
-              'Exact path or prefix ending /*; starts with /; no empty, . or .. segments, encoded characters or backslashes. The Gateway checks the complete syntax.',
+              'Exact path or prefix ending /*; starts with /; no empty, . or .. segments, encoded characters or backslashes. The gateway checks the complete syntax.',
             )}
             {select(
               'api',
@@ -242,7 +243,7 @@ export function ObjectForm({
               (api) => patch({ api }),
             )}
             <fieldset id={fieldId('Access')} className="designer-choice">
-              <legend>Operation access</legend>
+              <legend>Endpoint access</legend>
               {['allow', 'deny'].map((access) => (
                 <label key={access}>
                   <input
@@ -257,7 +258,7 @@ export function ObjectForm({
                 </label>
               ))}
             </fieldset>
-            <fieldset id={fieldId('Token')} className="designer-choice">
+            <fieldset id={fieldId('Sign-in')} className="designer-choice">
               <legend>Token</legend>
               {[
                 { value: 'required', label: 'Required' },
@@ -297,7 +298,7 @@ export function ObjectForm({
                 />{' '}
                 Rate limit
               </label>
-              <p className="hint">Sliding window, per operation. Counters survive policy changes.</p>
+              <p className="hint">Sliding window, per endpoint. Counters survive policy changes.</p>
             </div>
             {operation.rate ? (
               <>
@@ -401,6 +402,12 @@ export function ObjectForm({
                 onIssue={(issue) => onBufferIssue(`${selection}.headers`, issue)}
               />
             ) : null}
+            {operation.body || operation.headers ? (
+              <details className="api-rules">
+                <summary>These rules in words</summary>
+                <RequestRules operation={operation} />
+              </details>
+            ) : null}
           </>
         ) : null}
       </div>
@@ -414,10 +421,10 @@ export function ObjectForm({
         </>
       ) : null}
       {kind === 'role' || operation ? (
-        <fieldset className="designer-permit-list" id={fieldId('Permit')}>
-          <legend>Permits</legend>
+        <fieldset className="designer-permit-list" id={fieldId('Role')}>
+          <legend>Permissions</legend>
           {operation?.auth === 'none' ? (
-            <p className="hint">Public operations do not use role permits.</p>
+            <p className="hint">Public endpoints do not use role permissions.</p>
           ) : (
             (kind === 'role'
               ? policy.operations
@@ -441,7 +448,7 @@ export function ObjectForm({
       {editable ? (
         <div className="designer-delete">
           <button type="button" className="btn btn-danger-quiet" disabled={!!blockedDelete} onClick={() => onDelete(selection)}>
-            Delete {kind === 'api' ? 'API' : kind}
+            Delete {kindNames[kind].one}
           </button>
           {blockedDelete ? <p className="hint">{blockedDelete}</p> : null}
         </div>
@@ -450,7 +457,7 @@ export function ObjectForm({
       {operation ? (
         <Confirm
           open={makingPublic}
-          title="Make this operation public?"
+          title="Make this endpoint public?"
           confirmLabel="Make public"
           onCancel={() => setMakingPublic(false)}
           onConfirm={() => {
@@ -465,7 +472,7 @@ export function ObjectForm({
           }}
         >
           <p>
-            Making it public removes its {policy.permits.filter((permit) => permit.operation === id).length} permits
+            Making it public removes its {policy.permits.filter((permit) => permit.operation === id).length} permissions
             {operation?.rate ? ' and counts its rate limit per client address' : ''}. Continue?
           </p>
         </Confirm>
@@ -477,7 +484,7 @@ export function ObjectForm({
 export function Permits(props: FormProps) {
   const operations = props.policy.operations.filter((operation) => operation.auth !== 'none')
   return (
-    <TableScroll label="Permits matrix">
+    <TableScroll label="Permissions matrix">
       <table className="matrix-table">
         <thead>
           <tr>
@@ -525,10 +532,10 @@ export function Permits(props: FormProps) {
 
 const formSections = [
   ['role', 'Roles'],
-  ['operation', 'Operations'],
+  ['operation', 'Endpoints'],
   ['api', 'APIs'],
-  ['upstream', 'Upstreams'],
-  ['permits', 'Permits'],
+  ['upstream', 'Service addresses'],
+  ['permits', 'Permissions'],
 ] as const
 
 export function FormView(props: FormProps & { onAdd: (kind: BoxKind) => void }) {
@@ -549,7 +556,7 @@ export function FormView(props: FormProps & { onAdd: (kind: BoxKind) => void }) 
       {(['role', 'operation', 'api', 'upstream'] as BoxKind[]).map((kind) => (
         <section className="section" key={kind} id={`designer-form-${kind}`} tabIndex={-1}>
           <div className="section-head">
-            <h2>{kind === 'api' ? 'APIs' : kind[0].toUpperCase() + kind.slice(1) + 's'}</h2>
+            <h2>{capital(kindNames[kind].many)}</h2>
             {props.editable ? (
               <button
                 className="btn btn-small"
@@ -557,7 +564,7 @@ export function FormView(props: FormProps & { onAdd: (kind: BoxKind) => void }) 
                 disabled={(kind === 'operation' && !props.policy.apis.length) || (kind === 'api' && !props.policy.upstreams.length)}
                 onClick={() => props.onAdd(kind)}
               >
-                Add {kind === 'api' ? 'API' : kind}
+                Add {kindNames[kind].one}
               </button>
             ) : null}
           </div>
@@ -568,16 +575,16 @@ export function FormView(props: FormProps & { onAdd: (kind: BoxKind) => void }) 
           ))}
           {!props.policy[sections[kind]].length ? (
             <p className="hint">
-              No {sections[kind]}.{' '}
-              {props.editable ? `Use Add ${kind === 'api' ? 'API' : kind} to create one.` : 'Inspect another view or policy mode.'}
+              No {kindNames[kind].many}.{' '}
+              {props.editable ? `Use Add ${kindNames[kind].one} to create one.` : 'Inspect another view or policy mode.'}
             </p>
           ) : null}
-          {kind === 'operation' && !props.policy.apis.length ? <p className="hint">Add an API before adding an operation.</p> : null}
-          {kind === 'api' && !props.policy.upstreams.length ? <p className="hint">Add an upstream before adding an API.</p> : null}
+          {kind === 'operation' && !props.policy.apis.length ? <p className="hint">Add an API before adding an endpoint.</p> : null}
+          {kind === 'api' && !props.policy.upstreams.length ? <p className="hint">Add a service address before adding an API.</p> : null}
         </section>
       ))}
       <section className="section" id="designer-form-permits" tabIndex={-1}>
-        <h2>Permits</h2>
+        <h2>Permissions</h2>
         <Permits {...props} />
       </section>
     </div>

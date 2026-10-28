@@ -19,6 +19,17 @@ export interface Position {
 }
 export type Positions = Record<string, Position>
 export const sections = { role: 'roles', operation: 'operations', api: 'apis', upstream: 'upstreams' } as const
+// The words the Designer shows for each kind of box. The policy's own field
+// names (operation, upstream) stay in the JSON view.
+export const kindNames: Record<BoxKind, { one: string; many: string }> = {
+  role: { one: 'role', many: 'roles' },
+  operation: { one: 'endpoint', many: 'endpoints' },
+  api: { one: 'API', many: 'APIs' },
+  upstream: { one: 'service address', many: 'service addresses' },
+}
+export function capital(text: string): string {
+  return text[0].toUpperCase() + text.slice(1)
+}
 
 export function copy<T>(value: T): T {
   return structuredClone(value)
@@ -137,24 +148,24 @@ export function localIssues(policy: Policy): Issue[] {
       issues.push({
         id: 'public_rule',
         field: `operations[${index}].auth`,
-        message: 'Public operations cannot have a permit.',
+        message: 'Public endpoints cannot have a permission.',
         box: `operation:${operation.id}`,
       })
     if (operation.auth === 'none' && operation.rate && operation.rate.key !== 'client_address')
       issues.push({
         id: 'public_rule',
         field: `operations[${index}].rate`,
-        message: 'A public operation can only be limited per client address.',
+        message: 'A public endpoint can only be limited per client address.',
         box: `operation:${operation.id}`,
       })
   })
   policy.apis.forEach((api, index) => {
     if (!policy.upstreams.some((upstream) => upstream.id === api.upstream))
-      issues.push({ id: 'reference', field: `apis[${index}].upstream`, message: 'Choose an upstream in this document.', box: `api:${api.id}` })
+      issues.push({ id: 'reference', field: `apis[${index}].upstream`, message: 'Choose a service address in this document.', box: `api:${api.id}` })
   })
   policy.upstreams.forEach((upstream, index) => {
     if (!upstream.dial)
-      issues.push({ id: 'dial', field: `upstreams[${index}].dial`, message: 'Enter a dial address.', box: `upstream:${upstream.id}` })
+      issues.push({ id: 'dial', field: `upstreams[${index}].dial`, message: 'Enter the service address.', box: `upstream:${upstream.id}` })
   })
   return issues
 }
@@ -189,9 +200,9 @@ export function connectionReason(policy: Policy, source: string, target: string)
   const [to, toId] = splitKey(target as BoxKey)
   if (from === 'role' && to === 'operation') {
     const operation = policy.operations.find((item) => item.id === toId)
-    if (operation?.auth === 'none') return 'This operation is public (no token), so no role can be given a permit for it.'
+    if (operation?.auth === 'none') return 'This endpoint is public (no sign-in), so no role can be given permission for it.'
     if (policy.permits.some((permit) => permit.role === fromId && permit.operation === toId))
-      return 'This role already has a permit for this operation.'
+      return 'This role already has permission for this endpoint.'
     return null
   }
   if ((from === 'operation' && to === 'api') || (from === 'api' && to === 'upstream')) return null
@@ -232,8 +243,8 @@ export function rename(policy: Policy, key: BoxKey, id: string): Policy {
 }
 export function deleteReason(policy: Policy, key: BoxKey): string | null {
   const [kind, id] = splitKey(key)
-  if (kind === 'api' && policy.operations.some((operation) => operation.api === id)) return 'Re-route its operations first.'
-  if (kind === 'upstream' && policy.apis.some((api) => api.upstream === id)) return 'Point its APIs at another upstream first.'
+  if (kind === 'api' && policy.operations.some((operation) => operation.api === id)) return 'Move its endpoints to another API first.'
+  if (kind === 'upstream' && policy.apis.some((api) => api.upstream === id)) return 'Point its APIs at another service address first.'
   return null
 }
 export function remove(policy: Policy, key: BoxKey): Policy {
@@ -279,4 +290,99 @@ export function fieldBox(policy: Policy, field: string): BoxKey | null {
   const kind = (Object.keys(sections) as BoxKind[]).find((key) => sections[key] === section)!
   const item = policy[section][Number(match[2])]
   return item ? `${kind}:${item.id}` : null
+}
+
+// Templates prepare a draft from the document being edited. Each returns the
+// new document and a sentence saying what it changed, or why it changed
+// nothing. Nothing is saved: the draft still goes through the gateway's check,
+// a trial and keeping, like any other change.
+export type TemplateResult = { document: Policy; summary: string } | { problem: string }
+
+export function limitSignIn(policy: Policy): TemplateResult {
+  const next = copy(policy)
+  const login = next.operations.find((operation) => operation.id === 'accounts.login')
+  if (!login) return { problem: 'This policy has no accounts.login endpoint.' }
+  login.rate = { algorithm: 'sliding-window', count: 5, window_seconds: 60, key: 'client_address' }
+  return { document: next, summary: 'accounts.login limited to 5 requests per 60 s per client address.' }
+}
+
+export function readOnlyAccess(policy: Policy, role: string, api: string): TemplateResult {
+  const next = copy(policy)
+  const reads = next.operations.filter((operation) => operation.api === api && operation.method === 'GET' && operation.auth !== 'none')
+  if (reads.length === 0) return { problem: `API ${api} has no read endpoint that needs a sign-in.` }
+  const missing = reads.filter((operation) => !next.permits.some((permit) => permit.role === role && permit.operation === operation.id))
+  for (const operation of missing) next.permits.push({ role, operation: operation.id })
+  return { document: next, summary: `${role} may read API ${api}: ${missing.length} of its ${reads.length} read endpoints added.` }
+}
+
+export function removeApiAccess(policy: Policy, role: string, api: string): TemplateResult {
+  const next = copy(policy)
+  const endpoints = new Set(next.operations.filter((operation) => operation.api === api).map((operation) => operation.id))
+  const kept = next.permits.filter((permit) => !(permit.role === role && endpoints.has(permit.operation)))
+  const removed = next.permits.length - kept.length
+  if (removed === 0) return { problem: `${role} has no permission on API ${api}.` }
+  next.permits = kept
+  return { document: next, summary: `${role} loses ${removed} ${removed === 1 ? 'permission' : 'permissions'} on API ${api}.` }
+}
+
+export function tightenRate(policy: Policy, endpoint: string, count: number): TemplateResult {
+  const next = copy(policy)
+  const operation = next.operations.find((item) => item.id === endpoint)
+  if (!operation) return { problem: `This policy has no endpoint ${endpoint}.` }
+  if (!Number.isInteger(count) || count < 1) return { problem: 'Enter a whole number of requests, at least 1.' }
+  if (operation.rate && count >= operation.rate.count)
+    return { problem: `${endpoint} already allows ${operation.rate.count} per window; enter a lower number.` }
+  const key = operation.auth === 'none' ? 'client_address' : 'subject'
+  operation.rate = operation.rate ? { ...operation.rate, count } : { algorithm: 'sliding-window', count, window_seconds: 60, key }
+  return { document: next, summary: `${endpoint} limited to ${count} requests per ${operation.rate.window_seconds} s.` }
+}
+
+// The step-by-step wizards build their edit with these. Each returns a new
+// document and leaves the one being edited untouched; the gateway still checks
+// the result when the draft is saved.
+export function grantAccess(policy: Policy, role: string, endpoints: string[]): Policy {
+  const next = copy(policy)
+  for (const operation of endpoints)
+    if (!next.permits.some((permit) => permit.role === role && permit.operation === operation)) next.permits.push({ role, operation })
+  return next
+}
+
+export function setRate(policy: Policy, endpoint: string, count: number, windowSeconds: number): Policy {
+  const next = copy(policy)
+  const operation = next.operations.find((item) => item.id === endpoint)
+  if (!operation) return next
+  const key = operation.rate?.key ?? (operation.auth === 'none' ? 'client_address' : 'subject')
+  operation.rate = { algorithm: 'sliding-window', count, window_seconds: windowSeconds, key }
+  return next
+}
+
+export interface NewEndpoint {
+  id: string
+  api: string
+  method: string
+  target: string
+  open: boolean
+  roles: string[]
+  count: number
+  windowSeconds: number
+}
+
+export function addEndpoint(policy: Policy, endpoint: NewEndpoint): Policy {
+  const next = copy(policy)
+  next.operations.push({
+    id: endpoint.id,
+    api: endpoint.api,
+    method: endpoint.method,
+    target: endpoint.target,
+    access: 'allow',
+    auth: endpoint.open ? 'none' : 'required',
+    rate: {
+      algorithm: 'sliding-window',
+      count: endpoint.count,
+      window_seconds: endpoint.windowSeconds,
+      key: endpoint.open ? 'client_address' : 'subject',
+    },
+  })
+  if (!endpoint.open) for (const role of endpoint.roles) next.permits.push({ role, operation: endpoint.id })
+  return next
 }

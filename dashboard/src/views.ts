@@ -6,6 +6,7 @@ export type View =
   | 'lookup'
   | 'apis'
   | 'designer'
+  | 'roles'
   | 'policy'
   | 'candidates'
   | 'overrides'
