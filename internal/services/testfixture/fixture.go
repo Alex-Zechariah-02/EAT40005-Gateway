@@ -1,9 +1,3 @@
-// Package testfixture implements the three controlled REST APIs that sit behind
-// the gateway in tests: orders, inventory and reports. Each serves synthetic
-// data held in memory and records an independent receipt for every request
-// that reaches it. Receipts, state and reset are available only on a separate
-// control listener that requires a secret. The orders API also enforces
-// object ownership with the subject and roles that the gateway forwards.
 package testfixture
 
 import (
@@ -110,8 +104,8 @@ func New(name string) (*Service, error) {
 }
 
 // ServeHTTP runs the matching operation and records the receipt. Every
-// request is recorded, including ones that match no operation, so a missing
-// receipt means the request never arrived.
+// request is recorded unless the receipt log is full; then it is refused
+// without a receipt. A missing receipt alone does not establish non-arrival.
 func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	body, readErr := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBodyBytes))
 

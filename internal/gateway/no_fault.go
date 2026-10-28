@@ -27,6 +27,8 @@ func timerFault() bool { return false }
 
 func rollbackFault() error { return nil }
 
+func candidateReadFault() error { return nil }
+
 func signalCapture(string, string) {}
 
 func wallOffset() time.Duration { return 0 }

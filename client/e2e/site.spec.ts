@@ -271,8 +271,25 @@ test.describe.serial('Fetch app on the gateway data plane', () => {
         await page.close()
       }
     }
+    // A page address with a malformed escape, such as a sign-in link's next
+    // page, names no page: the tab says so and keeps working.
+    const page = await context.newPage()
+    const errors: string[] = []
+    page.on('pageerror', (error) => errors.push(error.message))
+    try {
+      await page.goto(siteURL + '/', { waitUntil: 'networkidle' })
+      await page.evaluate(() => {
+        history.pushState(null, '', '/store/%')
+        dispatchEvent(new PopStateEvent('popstate'))
+      })
+      await expect(page.getByText('This page isn’t on Fetch')).toBeVisible()
+      await expect(page.getByRole('main')).toBeVisible()
+      expect(errors).toEqual([])
+    } finally {
+      await page.close()
+    }
     for (const count of Object.values(await demo.counts())) expect(count).toBe(0)
-    record('malformed-saved-data', { keys: cases.map((saved) => saved.key) })
+    record('malformed-saved-data', { keys: [...cases.map((saved) => saved.key), 'malformed-address'] })
   })
 
   test('the reachable pages pass the accessibility rules at desktop, tablet and phone widths, and work by keyboard', async () => {

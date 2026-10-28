@@ -222,13 +222,19 @@ export function newKey(): string {
 // the session has ended, but a password change also answers 401 for a wrong
 // current password while the session goes on. So after a 401 the gateway is
 // asked whether the session is still live; unless it says so, signedOut is
-// called and the dashboard drops everything it shows.
+// called and the dashboard drops everything it shows. Several calls in flight
+// can all meet the end of one session; it ends once, so the notice made from
+// what the dashboard knew at that moment is not replaced by a later, emptier one.
 export function adminClient(csrf: string, signedOut: () => void): Admin {
+  let ended = false
   async function call<T>(method: string, path: string, init: RequestInit, signal?: AbortSignal): Promise<Reply<T>> {
     const reply = await request<T>(method, path, init, signal)
     if (reply.kind === 'refused' && reply.status === 401) {
       const session = await request<SessionInfo>('GET', '/admin/session')
-      if (session.kind !== 'ok') signedOut()
+      if (session.kind !== 'ok' && !ended) {
+        ended = true
+        signedOut()
+      }
     }
     return reply
   }

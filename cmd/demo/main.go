@@ -614,7 +614,9 @@ func events(args []string) error {
 	}
 	defer file.Close()
 
-	var lines []string
+	// Without -request only the last N matching events are kept, so the memory
+	// used does not grow with the audit file.
+	var matched []map[string]any
 	malformed := 0
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 64<<10), 1<<20)
@@ -631,28 +633,28 @@ func events(args []string) error {
 		if *requestID != "" && event["request_id"] != *requestID {
 			continue
 		}
+		matched = append(matched, event)
+		if *requestID == "" && len(matched) > *last {
+			matched = matched[1:]
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+	for _, event := range matched {
 		var fields []string
 		for _, name := range []string{"time", "kind", "stage", "decision", "status", "error", "reason", "subject", "operation", "generation", "request_id"} {
 			if value, ok := event[name]; ok && value != "" {
 				fields = append(fields, fmt.Sprintf("%s=%v", name, value))
 			}
 		}
-		lines = append(lines, strings.Join(fields, " "))
-	}
-	if err := scanner.Err(); err != nil {
-		return err
-	}
-	if *requestID == "" && len(lines) > *last {
-		lines = lines[len(lines)-*last:]
-	}
-	for _, line := range lines {
-		fmt.Println(line)
+		fmt.Println(strings.Join(fields, " "))
 	}
 	fmt.Fprintln(os.Stderr, "events: searched only the active audit file; retained rotated files were not searched")
 	if malformed > 0 {
 		fmt.Fprintf(os.Stderr, "events: skipped %d malformed or partial records\n", malformed)
 	}
-	if len(lines) == 0 {
+	if len(matched) == 0 {
 		fmt.Fprintln(os.Stderr, "events: no matching records in the active file; this does not establish non-arrival")
 	}
 	return nil

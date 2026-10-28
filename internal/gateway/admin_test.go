@@ -915,6 +915,14 @@ func TestProtectedReads(t *testing.T) {
 			t.Errorf("GET %s: %d", path, code)
 		}
 	}
+	for _, path := range []string{"/admin/revisions", "/admin/candidates", "/admin/activations", "/admin/overrides/history", "/admin/history"} {
+		for _, query := range []string{"limit=1%zz", "after=%zz", "kind=cpa.confirm%zz", "limit=1;order=desc", "unknown=%zz", "order=%zz&limit=1"} {
+			code, body, _ := e.harnessCall(http.MethodGet, path+"?"+query, "")
+			if code != http.StatusBadRequest || !strings.Contains(body, `"error":"bad_request"`) || !strings.Contains(body, `"field":"page"`) {
+				t.Errorf("GET %s?%s: %d %s", path, query, code, body)
+			}
+		}
+	}
 	for _, path := range []string{"/admin/revisions/99", "/admin/revisions/0", "/admin/candidates/abc", "/admin/subjects/nobody", "/admin/history/none"} {
 		if code, _, _ := e.harnessCall(http.MethodGet, path, ""); code != http.StatusNotFound {
 			t.Errorf("GET %s: %d", path, code)

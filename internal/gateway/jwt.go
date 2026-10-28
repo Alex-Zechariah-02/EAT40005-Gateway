@@ -205,17 +205,11 @@ func (v *verifier) verify(token string, now time.Time) (verifiedToken, string) {
 		return verifiedToken{}, "malformed_credential"
 	}
 	header, _, _ := strings.Cut(token, ".")
-	if reason := checkHeader(header); reason != "" {
+	kid, reason := checkHeader(header)
+	if reason != "" {
 		return verifiedToken{}, reason
 	}
-	data, _ := base64.RawURLEncoding.DecodeString(header)
-	var selected struct {
-		Kid string `json:"kid"`
-	}
-	if err := josejson.Unmarshal(data, &selected); err != nil {
-		return verifiedToken{}, "malformed_credential"
-	}
-	key := v.keys[selected.Kid]
+	key := v.keys[kid]
 	if key == nil {
 		return verifiedToken{}, "unknown_kid"
 	}
@@ -235,38 +229,36 @@ func (v *verifier) verify(token string, now time.Time) (verifiedToken, string) {
 // carry a key, such as "jku", "x5u", "x5c" or "jwk", or that add processing
 // rules, such as "crit", refuse the token. go-jose's JSON decoder rejects
 // repeated member names at any depth and matches names case-sensitively, so
-// it reads the header exactly as the signature library does.
-func checkHeader(segment string) string {
+// it reads the header exactly as the signature library does. It returns the
+// key ID, or the refusal reason.
+func checkHeader(segment string) (string, string) {
 	data, err := base64.RawURLEncoding.DecodeString(segment)
 	if err != nil {
-		return "malformed_credential"
+		return "", "malformed_credential"
 	}
 	var header map[string]any
 	if err := josejson.Unmarshal(data, &header); err != nil || header == nil {
-		return "malformed_credential"
+		return "", "malformed_credential"
 	}
 	if alg, _ := header["alg"].(string); alg != string(jose.RS256) {
-		return "unsupported_header"
+		return "", "unsupported_header"
 	}
-	if kid, ok := header["kid"].(string); !ok || !isTrustValue(kid) {
-		return "unsupported_header"
+	kid, ok := header["kid"].(string)
+	if !ok || !isTrustValue(kid) {
+		return "", "unsupported_header"
 	}
 	for name, value := range header {
 		switch name {
-		case "alg":
+		case "alg", "kid":
 		case "typ":
 			if typ, ok := value.(string); !ok || !strings.EqualFold(typ, "JWT") {
-				return "unsupported_header"
-			}
-		case "kid":
-			if _, ok := value.(string); !ok {
-				return "unsupported_header"
+				return "", "unsupported_header"
 			}
 		default:
-			return "unsupported_header"
+			return "", "unsupported_header"
 		}
 	}
-	return ""
+	return kid, ""
 }
 
 // checkClaims applies the claim profile to a verified payload. A repeated

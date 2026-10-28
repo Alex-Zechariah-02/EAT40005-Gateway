@@ -86,7 +86,8 @@ function viewFromHash(): View {
   const id = window.location.hash.replace(/^#\/?/, '').split('?')[0]
   // The former page for a change on trial is now part of Changes.
   if (id === 'provisional') return 'candidates'
-  return id in titles ? (id as View) : 'overview'
+  // Only the views' own names: "constructor" and the like are inherited, not views.
+  return Object.hasOwn(titles, id) ? (id as View) : 'overview'
 }
 
 export function App() {

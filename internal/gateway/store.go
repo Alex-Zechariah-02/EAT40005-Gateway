@@ -1049,6 +1049,9 @@ func (s *store) declareRecovery(ctx context.Context, t transitionRecord, episode
 }
 
 func (s *store) candidate(ctx context.Context, id int64) (candidateRecord, bool, error) {
+	if err := candidateReadFault(); err != nil {
+		return candidateRecord{}, false, err
+	}
 	var c candidateRecord
 	var parent sql.NullInt64
 	var created int64

@@ -5,7 +5,7 @@ import { when } from '../lib/format'
 import { describe, type Problem } from '../lib/messages'
 import { useQuery } from '../lib/query'
 import { Link } from '../lib/router'
-import { call } from '../lib/session'
+import { call, useSession } from '../lib/session'
 import type { Ticket } from '../lib/types'
 import { Badge } from '../ui/badge'
 import { Button, ButtonLink } from '../ui/button'
@@ -34,8 +34,10 @@ export function TicketPage({ id }: { id: string }) {
 }
 
 // Thread shows a ticket's messages and a reply box; customers and support
-// agents both use it.
+// agents both use it. A message is the viewer's own only when this tab's
+// account wrote it: several agents answer the same tickets.
 export function Thread({ ticket, onChanged, viewer, actions }: { ticket: Ticket; onChanged: () => void; viewer: 'customer' | 'agent'; actions?: React.ReactNode }) {
+  const { session } = useSession()
   const [reply, setReply] = useState('')
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState<Problem | null>(null)
@@ -74,10 +76,13 @@ export function Thread({ ticket, onChanged, viewer, actions }: { ticket: Ticket;
       </div>
       <ol className="mt-6 flex flex-col gap-3" aria-label="Conversation">
         {ticket.messages.map((message, index) => {
-          const mine = message.from === viewer
+          const mine = message.author === session?.user.id
+          let author = message.author
+          if (message.from === 'agent') author = mine ? 'You · Fetch support' : viewer === 'agent' ? `${message.author} · Fetch support` : 'Fetch support'
+          else if (mine) author = 'You'
           return (
             <li key={index} className={cx('max-w-[85%] rounded-2xl p-4', mine ? 'self-end bg-brand-soft' : 'self-start bg-surface shadow-card')}>
-              <p className="text-xs font-bold text-ink-3">{message.from === 'agent' ? (viewer === 'agent' ? 'You · Fetch support' : 'Fetch support') : viewer === 'customer' ? 'You' : message.author}</p>
+              <p className="text-xs font-bold text-ink-3">{author}</p>
               <p className="mt-1 text-[15px] whitespace-pre-wrap text-ink">{message.body}</p>
               <p className="mt-1.5 text-xs text-ink-3">{when(message.at)}</p>
             </li>

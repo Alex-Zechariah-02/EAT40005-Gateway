@@ -20,6 +20,13 @@ const faultExitCode = 86
 
 func faultEnabled(name string) bool { return os.Getenv("GATEWAY_FAULT") == name }
 
+func candidateReadFault() error {
+	if faultEnabled("candidate-read-unavailable") {
+		return errors.New("injected candidate read failure")
+	}
+	return nil
+}
+
 // crashPoint terminates the process abruptly, without cleanup, to simulate a
 // crash at a precise point in a transition.
 func crashPoint(name string) {

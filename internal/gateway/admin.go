@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"net/url"
 	"path"
 	"slices"
 	"strconv"
@@ -308,14 +309,13 @@ func adminTransition(who caller, key, kind, target string, expected sql.NullInt6
 
 // page reads the list parameters: limit (1 to 100) and an optional cursor.
 // Any other parameter is refused, except those named in extra, which the
-// caller reads and checks; every parameter may appear only once.
+// caller reads and checks; every parameter may appear only once. A query that
+// does not parse is refused too: URL.Query would drop its malformed pairs,
+// and the listing would then answer for parameters the client never meant.
 func page(w http.ResponseWriter, r *http.Request, extra ...string) (string, int, bool) {
-	query := r.URL.Query()
+	query, err := url.ParseQuery(r.URL.RawQuery)
 	limit := defaultPageSize
-	valid := true
-	for name, values := range query {
-		valid = valid && len(values) == 1 && (name == "limit" || name == "after" || slices.Contains(extra, name))
-	}
+	valid := err == nil && knownQuery(query, append([]string{"limit", "after"}, extra...)...)
 	if text := query.Get("limit"); valid && text != "" {
 		n, err := strconv.Atoi(text)
 		valid = err == nil && n >= 1 && n <= maxPageSize && strconv.Itoa(n) == text
@@ -772,7 +772,9 @@ func (c *Controller) handlePostCandidate(w http.ResponseWriter, r *http.Request,
 	}
 	record, _, err := c.store.candidate(r.Context(), outcome.Candidate)
 	if err != nil {
-		adminError(w, http.StatusServiceUnavailable, "unavailable", "")
+		c.logger.Error("reading committed candidate", "error", err)
+		outcome.Reason = "STORE_ERROR"
+		writeJSON(w, http.StatusServiceUnavailable, outcome)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"receipt": outcome, "candidate": candidateView{candidateRecord: record}})

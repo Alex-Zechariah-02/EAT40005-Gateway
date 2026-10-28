@@ -1,6 +1,3 @@
-// Command fixture runs one controlled test API (orders, inventory or reports)
-// on a loopback address. Its receipts, state and reset are served on a second
-// loopback address and require the secret read from -secret-file.
 package main
 
 import (

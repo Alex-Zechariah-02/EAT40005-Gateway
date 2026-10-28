@@ -32,7 +32,8 @@ export function useLocation(): { path: string; params: URLSearchParams } {
   return { path: url.pathname, params: url.searchParams }
 }
 
-// match returns the named segments when path fits pattern ("/store/:id").
+// match returns the named segments when path fits pattern ("/store/:id"). A
+// segment with a malformed percent escape names nothing, so it matches no route.
 export function match(pattern: string, path: string): Record<string, string> | null {
   const want = pattern.split('/')
   const got = path.split('/')
@@ -41,7 +42,11 @@ export function match(pattern: string, path: string): Record<string, string> | n
   for (let i = 0; i < want.length; i++) {
     if (want[i].startsWith(':')) {
       if (!got[i]) return null
-      found[want[i].slice(1)] = decodeURIComponent(got[i])
+      try {
+        found[want[i].slice(1)] = decodeURIComponent(got[i])
+      } catch {
+        return null
+      }
     } else if (want[i] !== got[i]) {
       return null
     }

@@ -1690,6 +1690,16 @@ test.describe.serial('dashboard', () => {
     await expect(admin.getByText(/no match does not prove a request never arrived/)).toBeVisible()
   })
 
+  test('an address that names no view, an inherited name such as constructor included, opens the Overview', async () => {
+    for (const name of ['constructor', '__proto__', 'toString', 'no-such-view']) {
+      await go(admin, 'Request lookup')
+      await expect(admin).toHaveTitle('Request lookup – Fetch Gateway')
+      await admin.evaluate((fragment) => (window.location.hash = fragment), `#/${name}`)
+      await expect(admin, name).toHaveTitle('Overview – Fetch Gateway')
+      await expect(admin.locator('#page-title'), name).toBeVisible()
+    }
+  })
+
   test('returning to a hidden tab rereads the gateway at once, even on a page that does not poll', async () => {
     await go(admin, 'Changes')
     await admin.waitForTimeout(1500)

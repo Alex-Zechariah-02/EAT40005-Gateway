@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -23,7 +24,11 @@ func newServiceClient(base string, secret []byte) (*serviceClient, error) {
 		return nil, err
 	}
 	address, err := netip.ParseAddrPort(parsed.Host)
-	if err != nil || parsed.Scheme != "http" || !address.Addr().IsLoopback() || address.Port() == 0 || parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+	// Each call appends its path to base, so base must end at the port: even an
+	// empty query or fragment delimiter would turn that path into its query or
+	// fragment and send the call to "/".
+	if err != nil || parsed.Scheme != "http" || !address.Addr().IsLoopback() || address.Port() == 0 ||
+		parsed.User != nil || parsed.Path != "" || strings.ContainsAny(base, "?#") {
 		return nil, errors.New("internal service destination must be an HTTP literal loopback origin")
 	}
 	return &serviceClient{base: base, secret: string(secret), http: &http.Client{Timeout: 2 * time.Second, Transport: &http.Transport{Proxy: nil, ResponseHeaderTimeout: 2 * time.Second}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil

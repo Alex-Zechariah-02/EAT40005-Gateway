@@ -8,6 +8,47 @@ import (
 	"testing"
 )
 
+// Failure to read metadata after a committed stage must retain its receipt.
+// An identical retry never creates another candidate, even while reads fail.
+func TestCandidateReceiptSurvivesMetadataReadFailure(t *testing.T) {
+	e := newEnv(t)
+	policy := e.protectedPolicy()
+	seed(t, e.database, policy, seedOptions{})
+	e.start(binaries.fault, "GATEWAY_FAULT=candidate-read-unavailable")
+	admin := e.mustLogin(harnessAdmin, harnessPassword)
+	before := e.status()
+	body := string(mustJSON(map[string]any{"policy": policy}))
+	var receipt Outcome
+	for range 2 {
+		code, answer, _ := e.as(admin, http.MethodPost, "/admin/candidates", body,
+			"If-Match", `"r1"`, "Idempotency-Key", "candidate-metadata-failure")
+		receipt = fromJSON[Outcome](t, answer)
+		if code != http.StatusServiceUnavailable || receipt.Outcome != "committed" || receipt.Reason != "STORE_ERROR" ||
+			receipt.Candidate != 1 || receipt.Transition != "admin:"+harnessAdmin+":candidate-metadata-failure" {
+			t.Fatalf("committed stage with unreadable metadata: %d %s", code, answer)
+		}
+	}
+	if after := e.status(); after.Generation != before.Generation || after.Confirmed != before.Confirmed {
+		t.Fatal("staging changed enforced authority")
+	}
+	e.assertReceipts(0, 0, 0)
+	e.stop()
+	if queryInt(t, e.database, `SELECT count(*) FROM candidate`) != 1 ||
+		queryInt(t, e.database, `SELECT count(*) FROM transition WHERE kind = 'candidate.create' AND outcome = 'committed' AND audited_at IS NOT NULL`) != 1 {
+		t.Fatal("candidate or audited transition was lost or duplicated")
+	}
+	e.start(binaries.plain)
+	admin = e.mustLogin(harnessAdmin, harnessPassword)
+	code, replayed, answer := e.stage(admin, policy, `"r1"`, "candidate-metadata-failure")
+	if code != http.StatusCreated || replayed.Receipt.Candidate != receipt.Candidate ||
+		replayed.Receipt.Transition != receipt.Transition || replayed.Candidate.ID != receipt.Candidate || replayed.Candidate.Status != "validated" {
+		t.Fatalf("retry after metadata reads recover: %d %s", code, answer)
+	}
+	if len(e.candidateList(admin)) != 1 {
+		t.Fatal("retry created another candidate")
+	}
+}
+
 // candidateList reads every stored candidate.
 func (e *env) candidateList(s adminSession) []candidateRecord {
 	e.t.Helper()

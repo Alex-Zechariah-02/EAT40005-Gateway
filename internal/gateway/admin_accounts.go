@@ -163,10 +163,11 @@ func (c *Controller) handleBlockAccount(w http.ResponseWriter, r *http.Request, 
 
 func (c *Controller) handleUnblockAccount(w http.ResponseWriter, r *http.Request, who caller) {
 	subject := r.PathValue("subject")
-	if !isSubjectID(subject) || !noRequestBody(w, r) {
-		if !isSubjectID(subject) {
-			adminError(w, http.StatusBadRequest, "bad_request", "subject")
-		}
+	if !isSubjectID(subject) {
+		adminError(w, http.StatusBadRequest, "bad_request", "subject")
+		return
+	}
+	if !noRequestBody(w, r) {
 		return
 	}
 	key, ok := idempotencyKey(w, r)
