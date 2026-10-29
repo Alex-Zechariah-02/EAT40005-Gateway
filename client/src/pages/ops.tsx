@@ -1,5 +1,5 @@
 import { Receipt } from '@phosphor-icons/react'
-import { day, rm, statusNames, when } from '../lib/format'
+import { day, rm, statusNames, when, reference } from '../lib/format'
 import { describe } from '../lib/messages'
 import { useQuery } from '../lib/query'
 import { navigate, useLocation } from '../lib/router'
@@ -19,7 +19,7 @@ export function OpsPage() {
   const view = params.get('view') === 'orders' ? 'orders' : 'reports'
   return (
     <>
-      <WorkspaceTitle title={view === 'reports' ? 'Platform reports' : 'All orders'} subtitle="Every shop on Fetch, as Fetch’s Reports and Orders services see it." />
+      <WorkspaceTitle title={view === 'reports' ? 'Platform reports' : 'All orders'} />
       <Tabs tabs={[{ id: 'reports', label: 'Reports' }, { id: 'orders', label: 'All orders' }]} current={view} href={(id) => (id === 'reports' ? '/ops' : '/ops?view=orders')} />
       <div className="mt-6">{view === 'reports' ? <Reports /> : <AllOrders />}</div>
     </>
@@ -144,7 +144,7 @@ function AllOrders() {
                 <tbody className="divide-y divide-line">
                   {list.items.map((o) => (
                     <tr key={o.id} className="hover:bg-sunken/60">
-                      <td className="px-5 py-3 font-bold">{o.id}</td>
+                      <td className="px-5 py-3 font-bold">{reference(o.id)}</td>
                       <td className="px-3 py-3 text-ink-2">{when(o.created_at)}</td>
                       <td className="px-3 py-3">{o.merchant_name}</td>
                       <td className="px-3 py-3 text-ink-2">{o.customer}</td>

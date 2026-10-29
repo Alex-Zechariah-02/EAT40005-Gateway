@@ -108,6 +108,12 @@ export function inactive(): boolean {
   return Date.now() - lastInput >= inactiveAfterMs
 }
 
+// liveMs is how often a visible page rereads what it shows: every second,
+// so administrators never act on figures several seconds old. Each read is
+// a small JSON answer from the admin listener; the 10-minute inactivity
+// pause above still stops them on an unattended page.
+export const liveMs = 1_000
+
 // usePoll rereads every ms while the page is visible (ms null: no timer),
 // and at once whenever the page becomes visible again, so a tab coming back
 // to the front never goes on showing what it read before it was hidden.
@@ -208,8 +214,7 @@ export const Outcomes = createContext<OutcomeRegister | null>(null)
 
 // Gateway is the gateway's status as read by the signed-in shell. It is
 // reread on sign-in, on every change of view, after each change a view
-// makes and when a deadline it shows passes, every 3 s while a trial or
-// temporary rule is active, and every 10 s on the Overview.
+// makes, when a deadline it shows passes, and every second (liveMs).
 export interface Gateway extends Resource<Status> {
   // facts is the last status read successfully, kept while later reads fail.
   facts?: Status

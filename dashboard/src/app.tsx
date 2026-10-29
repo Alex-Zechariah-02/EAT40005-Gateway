@@ -1,21 +1,20 @@
 import { lazy, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { SignOut } from '@phosphor-icons/react'
+import { CaretDown, CaretRight, SidebarSimple, SignOut } from '@phosphor-icons/react'
 import { adminClient, request, type Admin, type Permission, type Reply, type SessionInfo, type Status } from './api'
-import { GatewayState, inactive, Navigate, Outcomes, usePoll, useRereadWhen, useResource, ViewMemory, type Gateway } from './hooks'
+import { GatewayState, inactive, Navigate, Outcomes, liveMs, usePoll, useRereadWhen, useResource, ViewMemory, type Gateway } from './hooks'
 import { Icon, type IconName } from './icons'
 import { UnresolvedChanges, useOutcomeRegister } from './outcomes'
-import { Problem, time, TimeOfDay } from './ui'
+import { Problem, time, TimeOfDay, TooltipLayer, usePageScrollbar } from './ui'
 import { admissionText, Brand } from './state'
 import { SignIn } from './signin'
 import { guideHidden, Overview } from './overview'
 import { Notifications } from './notices'
 import { PolicyView } from './policy'
-import { Roles } from './roles'
 import { Candidates } from './candidates'
 import { Overrides } from './overrides'
 import { History } from './history'
 import { Account } from './account'
-import { AccountsView, ApisView, LiveTraffic, PolicyCode, RequestLookup, TeamView } from './monitor'
+import { AccountsView, ApisView, LiveTraffic, RequestLookup, TeamView } from './monitor'
 import type { DesignerDraft } from './designer-model'
 import { setTheme, useTheme, type ThemeChoice } from './theme'
 import type { Handoff, View } from './views'
@@ -29,15 +28,16 @@ interface NavItem {
 
 const Designer = lazy(() => import('./designer').then((module) => ({ default: module.Designer })))
 
-// The views in three groups by job: watch the gateway, change its
-// policy, administer it.
+// The views by job, each group opening and closing like a folder: watch
+// the gateway, shape its policy, put changes live, control access, and
+// administer it.
 const navigation: { label: string; items: NavItem[] }[] = [
   {
     label: 'Monitor',
     items: [
       { id: 'overview', label: 'Overview', icon: 'overview', needs: 'read' },
-      { id: 'traffic', label: 'Live traffic', icon: 'traffic', needs: 'read' },
-      { id: 'lookup', label: 'Request lookup', icon: 'lookup', needs: 'read' },
+      { id: 'traffic', label: 'Live Traffic', icon: 'traffic', needs: 'read' },
+      { id: 'lookup', label: 'Request Lookup', icon: 'lookup', needs: 'read' },
       { id: 'apis', label: 'APIs', icon: 'apis', needs: 'read' },
     ],
   },
@@ -45,51 +45,54 @@ const navigation: { label: string; items: NavItem[] }[] = [
     label: 'Policy',
     items: [
       { id: 'designer', label: 'Policy', icon: 'permit', needs: 'read' },
-      { id: 'roles', label: 'Roles', icon: 'roles', needs: 'read' },
-      { id: 'candidates', label: 'Changes', icon: 'candidates', needs: 'read' },
-      { id: 'overrides', label: 'Temporary rules', icon: 'overrides', needs: 'read' },
-      { id: 'accounts', label: 'Accounts', icon: 'accounts', needs: 'read' },
+      { id: 'policy', label: 'Versions', icon: 'versions', needs: 'read' },
     ],
   },
   {
-    label: 'Admin',
+    label: 'Deploy',
+    items: [
+      { id: 'candidates', label: 'Changes', icon: 'candidates', needs: 'read' },
+      { id: 'overrides', label: 'Temporary Rules', icon: 'overrides', needs: 'read' },
+    ],
+  },
+  {
+    label: 'Access',
+    items: [{ id: 'accounts', label: 'Accounts', icon: 'accounts', needs: 'read' }],
+  },
+  {
+    label: 'Administration',
     items: [
       { id: 'history', label: 'History', icon: 'history', needs: 'read_history' },
-      { id: 'code', label: 'Policy as code', icon: 'code', needs: 'read' },
       { id: 'team', label: 'Team', icon: 'team', needs: 'read' },
-      { id: 'account', label: 'My account', icon: 'account', needs: 'read' },
+      { id: 'account', label: 'My Account', icon: 'account', needs: 'read' },
     ],
   },
 ]
 
 const titles: Record<View, string> = {
   overview: 'Overview',
-  traffic: 'Live traffic',
-  lookup: 'Request lookup',
+  traffic: 'Live Traffic',
+  lookup: 'Request Lookup',
   apis: 'APIs',
   designer: 'Policy',
-  roles: 'Roles',
-  policy: 'Policy versions',
+  policy: 'Versions',
   candidates: 'Changes',
-  overrides: 'Temporary rules',
+  overrides: 'Temporary Rules',
   accounts: 'Accounts',
   history: 'History',
-  code: 'Policy as code',
   team: 'Team',
-  account: 'My account',
+  account: 'My Account',
 }
 
-// Views reached from another page rather than the navigation light up the
-// navigation item they belong to.
-const section: Partial<Record<View, View>> = { policy: 'designer' }
+// Former pages now part of another one, so an old bookmark still opens it.
+const moved: Record<string, View> = { provisional: 'candidates', roles: 'policy', code: 'designer' }
 
 // The open view is kept in the address fragment, so a reload or the
 // browser's back button returns to it. The fragment is never sent to the
 // server; a view may keep its search there (#/lookup?ref=...).
 function viewFromHash(): View {
   const id = window.location.hash.replace(/^#\/?/, '').split('?')[0]
-  // The former page for a change on trial is now part of Changes.
-  if (id === 'provisional') return 'candidates'
+  if (Object.hasOwn(moved, id)) return moved[id]
   // Only the views' own names: "constructor" and the like are inherited, not views.
   return Object.hasOwn(titles, id) ? (id as View) : 'overview'
 }
@@ -172,7 +175,7 @@ export function App() {
   return (
     <div className="entry">
       <a className="visually-hidden" href="#content">
-        Skip to content
+        Skip to Content
       </a>
       <main id="content" className="entry-main" tabIndex={-1}>
         <Brand />
@@ -192,7 +195,7 @@ export function App() {
           <section className="entry-card">
             <Problem reply={resumed} />
             <button type="button" className="btn" onClick={resume}>
-              Try again
+              Try Again
             </button>
           </section>
         ) : (
@@ -222,6 +225,27 @@ function ThemeSwitch() {
   )
 }
 
+// The sidebar starts as a narrow strip of icons; widening it is remembered
+// in one localStorage key, a display preference that grants nothing.
+const sidebarKey = 'gateway.sidebar'
+
+function readSidebar(): boolean {
+  try {
+    return localStorage.getItem(sidebarKey) === 'open'
+  } catch {
+    return false
+  }
+}
+
+function saveSidebar(open: boolean) {
+  try {
+    if (open) localStorage.setItem(sidebarKey, 'open')
+    else localStorage.removeItem(sidebarKey)
+  } catch {
+    // Storage refused: the choice lasts for this page only.
+  }
+}
+
 // accessWord sums up an administrator's permissions in two words.
 function accessWord(permissions: Permission[]): string {
   if (permissions.includes('manage_policy') && permissions.includes('manage_subjects') && permissions.includes('read_history')) return 'Full access'
@@ -241,10 +265,14 @@ function Shell(props: {
   const [candidate, setCandidate] = useState<number | undefined>(undefined)
   const [designerDraft, setDesignerDraft] = useState<DesignerDraft | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [wide, setWide] = useState(readSidebar)
+  // closedGroups are the sidebar groups the administrator has closed.
+  const [closedGroups, setClosedGroups] = useState<Set<string>>(() => new Set())
   // pendingDraft carries a draft from open() to the view change it causes;
   // any other change of view, such as the back button, opens no draft.
   const pendingDraft = useRef<Handoff | undefined>(undefined)
   const firstView = useRef(true)
+  usePageScrollbar()
 
   const status = useResource<Status>((signal) => admin.get('/admin/status', signal), [])
   const can = (permission: Permission) => session.permissions.includes(permission)
@@ -256,7 +284,7 @@ function Shell(props: {
   // within seconds; otherwise only the Overview rereads it, every 10 s.
   const facts = status.last?.body
   const critical = facts !== undefined && (facts.provisional !== undefined || (facts.overrides?.length ?? 0) > 0)
-  usePoll(status.refresh, critical ? 3_000 : view === 'overview' ? 10_000 : null, critical)
+  usePoll(status.refresh, liveMs, critical)
   const factsKey = facts ? JSON.stringify(facts) : ''
   const [version, setVersion] = useState(0)
   useEffect(() => {
@@ -319,7 +347,7 @@ function Shell(props: {
     }
   }
 
-  const current = section[view] ?? view
+  const current = view
   const viewProps = { admin, can, open }
   const sessionEnds = new Date(session.expires_at).getTime()
   const trialOutlivesSession = facts?.provisional !== undefined && facts.deadline !== undefined && sessionEnds < new Date(facts.deadline).getTime()
@@ -329,9 +357,10 @@ function Shell(props: {
     <ViewMemory.Provider value={memory}>
     <Navigate.Provider value={open}>
       <a className="visually-hidden" href="#content">
-        Skip to content
+        Skip to Content
       </a>
-      <div className="shell">
+      <div className={wide ? 'shell' : 'shell is-rail'}>
+        <TooltipLayer />
         {/* On a narrow screen the views and the account move behind the menu
             button. */}
         <aside className="sidebar" data-open={menuOpen}>
@@ -351,16 +380,34 @@ function Shell(props: {
             {navigation.map((group) => {
               const items = group.items.filter((item) => can(item.needs))
               if (items.length === 0) return null
+              const open = !closedGroups.has(group.label)
+              const listId = `nav-${group.label.toLowerCase()}`
               return (
                 <div className="nav-group" key={group.label}>
-                  <p className="nav-group-label">{group.label}</p>
-                  <ul>
+                  <button
+                    type="button"
+                    className="nav-group-label"
+                    aria-expanded={open}
+                    aria-controls={listId}
+                    onClick={() =>
+                      setClosedGroups((previous) => {
+                        const next = new Set(previous)
+                        if (next.has(group.label)) next.delete(group.label)
+                        else next.add(group.label)
+                        return next
+                      })
+                    }
+                  >
+                    {group.label}
+                    {open ? <CaretDown size={12} aria-hidden="true" /> : <CaretRight size={12} aria-hidden="true" />}
+                  </button>
+                  <ul id={listId} hidden={!open}>
                     {items.map((item) => (
                       <li key={item.id}>
-                        <a href={`#/${item.id}`} aria-current={current === item.id ? 'page' : undefined}>
+                        <a href={`#/${item.id}`} aria-current={current === item.id ? 'page' : undefined} data-tip={item.label}>
                           <Icon name={item.icon} />
                           <span className="nav-label">{item.label}</span>
-                          {item.id === 'candidates' && facts?.provisional !== undefined ? <span className="nav-flag tone-pending">On trial</span> : null}
+                          {item.id === 'candidates' && facts?.provisional !== undefined ? <span className="nav-flag tone-pending">On Trial</span> : null}
                           {item.id === 'overrides' && facts?.overrides && facts.overrides.length > 0 ? (
                             <span className="nav-count" aria-label={`${facts.overrides.length} active`}>
                               {facts.overrides.length}
@@ -375,6 +422,20 @@ function Shell(props: {
             })}
           </nav>
           <div className="who" id="sidebar-who">
+            <button
+              type="button"
+              className="sidebar-toggle"
+              data-tip={wide ? 'Collapse Sidebar' : 'Expand Sidebar'}
+              onClick={() => {
+                setWide((open) => {
+                  saveSidebar(!open)
+                  return !open
+                })
+              }}
+            >
+              <SidebarSimple size={20} aria-hidden="true" />
+              <span className="nav-label">{wide ? 'Collapse Sidebar' : 'Expand Sidebar'}</span>
+            </button>
             <ThemeSwitch />
             <div className="who-row">
               <span className="who-avatar" aria-hidden="true">
@@ -387,7 +448,7 @@ function Shell(props: {
                 </span>
                 <span className="who-role">{accessWord(session.permissions)}</span>
               </p>
-              <button type="button" className="icon-button" onClick={signOut} aria-label="Sign out" title="Sign out">
+              <button type="button" className="icon-button" onClick={signOut} aria-label="Sign Out" data-tip="Sign out">
                 <SignOut size={18} aria-hidden="true" />
               </button>
             </div>
@@ -405,7 +466,7 @@ function Shell(props: {
           ) : null}
           {facts?.stored_authority === 'unreadable' ? (
             <p className="banner tone-unknown" role="status">
-              <strong>The gateway could not read its stored policy.</strong> Which version is in force or on trial is not known from its latest
+              <strong>The gateway could not read its stored policy.</strong> Which version is active or on trial is not known from its latest
               answer; nothing here means there is none.
             </p>
           ) : null}
@@ -417,8 +478,8 @@ function Shell(props: {
           ) : null}
           {paused && (view === 'overview' || view === 'traffic' || view === 'apis') ? (
             <p className="banner tone-neutral">
-              Automatic updates are paused after 10 minutes without activity, so an unattended page does not keep your session open. They resume
-              when you use the page.
+              Auto-refresh paused after 10 minutes of inactivity, so an unattended page does not keep the session open. It resumes when you use
+              the page.
             </p>
           ) : null}
           {outcomes ? <UnresolvedChanges admin={admin} name={session.name} register={outcomes} canReadHistory={can('read_history')} /> : null}
@@ -431,13 +492,11 @@ function Shell(props: {
               <Designer {...viewProps} draft={designerDraft} setDraft={setDesignerDraft} />
             </Suspense>
           ) : null}
-          {view === 'roles' ? <Roles {...viewProps} /> : null}
           {view === 'policy' ? <PolicyView {...viewProps} /> : null}
           {view === 'candidates' ? <Candidates {...viewProps} draft={draft} candidate={candidate} /> : null}
           {view === 'overrides' ? <Overrides {...viewProps} /> : null}
           {view === 'accounts' ? <AccountsView {...viewProps} /> : null}
           {view === 'history' ? <History {...viewProps} /> : null}
-          {view === 'code' ? <PolicyCode {...viewProps} /> : null}
           {view === 'team' ? <TeamView {...viewProps} /> : null}
           {view === 'account' ? <Account
               admin={admin}

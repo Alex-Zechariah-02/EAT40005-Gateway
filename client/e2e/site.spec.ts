@@ -176,7 +176,7 @@ test.describe.serial('Fetch app on the gateway data plane', () => {
 
     // Signing in reaches the gateway too, and its refusal carries a Ref.
     await open(site, '/signin')
-    await site.getByLabel('Email').fill('aisyah@fetch.test')
+    await site.getByLabel('Email').fill('customer1@fetch.test')
     await site.getByLabel('Password', { exact: true }).fill('FetchDemo2026!')
     await site.getByRole('button', { name: 'Sign in', exact: true }).click()
     const refusal = site.getByRole('alert').filter({ hasText: 'Answered by the Fetch gateway · 503' })
@@ -307,16 +307,13 @@ test.describe.serial('Fetch app on the gateway data plane', () => {
     }
     await site.setViewportSize({ width: 1440, height: 900 })
 
-    // The demonstration disclosure lives behind one badge in the header; the
-    // footer reads like a working product, and the badge leads to the lab.
+    // The site reads like a working product: no demonstration badge or
+    // wording anywhere, and the security lab is a plain footer link.
     await open(site, '/')
-    await expect(site.getByRole('contentinfo')).not.toContainText('Security lab')
-    await expect(site.getByRole('contentinfo')).not.toContainText('demonstration')
-    await site.getByRole('banner').getByText('Demo', { exact: true }).click()
-    await expect(site.getByText('Fetch is a demonstration. Every shop, person and order is fictional.')).toBeVisible()
-    await site.getByRole('banner').getByRole('link', { name: 'Security lab' }).click()
+    await expect(site.getByRole('banner').getByText('Demo', { exact: true })).toHaveCount(0)
+    await expect(site.locator('body')).not.toContainText('demonstration')
+    await site.getByRole('contentinfo').getByRole('link', { name: 'Security lab' }).click()
     await expect(site).toHaveURL(/\/lab$/)
-    await expect(site.getByText('Fetch is a demonstration. Every shop, person and order is fictional.')).toBeHidden()
 
     // From the top of the page, the keyboard reaches the search box and Sign
     // in, each with a visible focus ring, drawn on the control or on the

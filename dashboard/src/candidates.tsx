@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
-import { newKey, type Candidate, type Outcome, type Revision, type Status } from './api'
+import { newKey, type Candidate, type Outcome, type Revision } from './api'
 import { differences, removedApis } from './diff'
 import { useGatewayState, useMutation, usePaged, useRereadWhen, useResource } from './hooks'
 import { ImpactPreview } from './monitor'
@@ -27,6 +27,7 @@ import {
   time,
   Time,
   TypedConfirmation,
+  useFocus,
 } from './ui'
 import type { ViewProps } from './views'
 
@@ -47,6 +48,11 @@ export function Candidates({ admin, can, draft, candidate }: ViewProps & { draft
   useEffect(() => {
     if (candidate !== undefined) setSelected(candidate)
   }, [candidate])
+  // A link from another page, such as the history, opens one draft change.
+  const linked = useFocus('candidate')
+  useEffect(() => {
+    if (linked && /^\d+$/.test(linked)) setSelected(Number(linked))
+  }, [linked])
   // The list, the confirmed policy and the past trials are read again
   // whenever the gateway's status changes (a trial confirmed, rolled back or
   // timed out, here or elsewhere) and whenever this page asks for a reread.
@@ -58,7 +64,7 @@ export function Candidates({ admin, can, draft, candidate }: ViewProps & { draft
   const refresh = () => state.refresh()
 
   // A candidate names the confirmed revision it was prepared against; "r0"
-  // when no confirmed policy is in force (a new or restored installation).
+  // when no confirmed policy is active (a new or restored installation).
   const ifMatch =
     policy.reply?.kind === 'ok'
       ? (policy.reply.etag ?? undefined)
@@ -84,21 +90,19 @@ export function Candidates({ admin, can, draft, candidate }: ViewProps & { draft
     <>
       <PageHeader
         title="Changes"
-        lede="A draft change is a complete proposed policy. The gateway checks it when it is saved; you can preview its effect on recent traffic; it then goes live on trial and is undone by itself unless someone keeps it."
+        lede="Review draft changes, preview their impact and activate one through a timed trial."
       >
         <ReadStamp okAt={list.last?.at ?? null} failed={list.failed} loading={list.loading || policy.loading} onRefresh={refresh} />
       </PageHeader>
 
       <TrialDecision admin={admin} manage={manage} variant="full" />
 
-      <Lifecycle status={status} />
-
       <section className="section card" aria-labelledby="staged-title">
         <div className="card-head card-head-pad">
-          <h2 id="staged-title">Draft changes</h2>
+          <h2 id="staged-title">Draft Changes</h2>
           {manage ? (
             <a className="card-link" href="#stage-title">
-              New draft change
+              New Draft Change
             </a>
           ) : null}
         </div>
@@ -127,7 +131,7 @@ export function Candidates({ admin, can, draft, candidate }: ViewProps & { draft
           ) : null}
           {list.items.length > 0 && shown.length === 0 ? <p className="hint card-empty">No loaded draft change matches the filter.</p> : null}
           {shown.length > 0 ? (
-            <TableScroll label="Draft changes">
+            <TableScroll label="Draft Changes">
               <table>
                 <thead>
                   <tr>
@@ -148,9 +152,9 @@ export function Candidates({ admin, can, draft, candidate }: ViewProps & { draft
                         {c.deny_all ? <span className="cell-sub">denies everything</span> : null}
                       </td>
                       <td>
-                        <CandidateStatus status={c.status} /> {c.active ? <Badge tone="ok">in force</Badge> : null}
+                        <CandidateStatus status={c.status} /> {c.active ? <Badge tone="ok">Active</Badge> : null}
                       </td>
-                      <td>{c.parent ? `version ${c.parent}` : 'no version in force'}</td>
+                      <td>{c.parent ? `version ${c.parent}` : 'no active version'}</td>
                       <td>
                         <Time value={c.created_at} /> <span className="muted">by {c.actor}</span>
                       </td>
@@ -183,39 +187,31 @@ export function Candidates({ admin, can, draft, candidate }: ViewProps & { draft
   )
 }
 
-const steps = [
-  { name: 'Draft', text: 'Edit the policy in the Policy designer, or load a JSON document.' },
-  { name: 'Checked', text: 'Saving a draft runs the gateway’s own compiler over the whole document. Nothing changes yet.' },
-  { name: 'Impact preview', text: 'Replays recent requests to show who would be refused or allowed differently.' },
-  { name: 'On trial', text: 'In force from the next request, with a deadline. Undo it at any time.' },
-  { name: 'Kept', text: 'Stays in force for good. Unless it is kept, the gateway undoes it by itself at the deadline.' },
-]
+const stepNames = ['Review changes', 'Preview impact', 'Start trial']
 
-// Lifecycle shows how a change goes live, with the step the gateway reports
-// now marked when a change is on trial.
-function Lifecycle({ status }: { status?: Status }) {
-  const waiting = status?.provisional !== undefined
+// Stepper shows where a change is in its path to a trial. A finished step
+// can be opened again; the next one opens with Next.
+function Stepper({ step, onStep }: { step: number; onStep: (step: number) => void }) {
   return (
-    <section className="section" aria-label="How a change goes live">
-      <ol className="lifecycle">
-        {steps.map((step, n) => (
-          <li key={step.name} className={waiting && n === 3 ? 'lifecycle-step is-current' : 'lifecycle-step'} aria-current={waiting && n === 3 ? 'step' : undefined}>
-            <span className="lifecycle-number" aria-hidden="true">
+    <ol className="stepper" aria-label="Steps">
+      {stepNames.map((name, n) => (
+        <li key={name} className={n === step ? 'is-current' : n < step ? 'is-done' : undefined}>
+          <button type="button" aria-current={n === step ? 'step' : undefined} disabled={n > step} onClick={() => onStep(n)}>
+            <span className="stepper-number" aria-hidden="true">
               {n + 1}
             </span>
-            <span className="lifecycle-name">{step.name}</span>
-            <span className="lifecycle-text">{step.text}</span>
-          </li>
-        ))}
-      </ol>
-    </section>
+            {name}
+          </button>
+        </li>
+      ))}
+    </ol>
   )
 }
 
 const statusWords: Record<string, string> = {
   validated: 'Checked',
-  established: 'Put in force',
-  quarantined: 'Set aside after a restore',
+  established: 'Activated',
+  quarantined: 'Set Aside After a Restore',
   withdrawn: 'Withdrawn',
 }
 
@@ -275,7 +271,7 @@ function StageForm(props: {
   return (
     <section className="section card card-pad" aria-labelledby="stage-title">
       <div className="card-head">
-        <h2 id="stage-title">Save a draft change</h2>
+        <h2 id="stage-title">Save a Draft Change</h2>
         {props.confirmed?.document ? (
           <button type="button" className="btn btn-small" onClick={() => (text.trim() === '' ? startFromConfirmed() : setReplacing(true))}>
             Start from version {props.confirmed.id}
@@ -283,12 +279,12 @@ function StageForm(props: {
         ) : null}
       </div>
       <form onSubmit={submit}>
-        <Field id={`${id}-file`} label="Load a policy document from a file (optional)">
+        <Field id={`${id}-file`} label="Load a Policy Document from a File (Optional)">
           <input id={`${id}-file`} className="file" type="file" accept="application/json,.json" onChange={(e) => load(e.target.files?.[0])} />
         </Field>
         <Field
           id={`${id}-text`}
-          label="Complete policy document (JSON)"
+          label="Complete Policy Document (JSON)"
           hint={`Checked by the gateway with the same compiler that builds the enforced policy. ${bytes.toLocaleString()} of ${maxCandidateBytes.toLocaleString()} bytes.`}
           error={localError}
         >
@@ -306,28 +302,28 @@ function StageForm(props: {
         </Field>
         <div className="actions">
           <button type="submit" className="btn btn-primary" disabled={mutation.pending || props.ifMatch === undefined || text.trim() === ''}>
-            {mutation.pending ? 'Saving…' : 'Save draft and check'}
+            {mutation.pending ? 'Saving…' : 'Save Draft and Check'}
           </button>
         </div>
       </form>
       <Confirm
         open={replacing}
         title="Replace the document being edited?"
-        confirmLabel="Replace it"
+        confirmLabel="Replace It"
         onCancel={() => setReplacing(false)}
         onConfirm={startFromConfirmed}
       >
-        <p>The text in the editor is replaced by version {props.confirmed?.id}, the version in force. Nothing is sent to the gateway.</p>
+        <p>The text in the editor is replaced by version {props.confirmed?.id}, the active version. Nothing is sent to the gateway.</p>
       </Confirm>
       <MutationResult<{ receipt: Outcome; candidate: Candidate }>
         mutation={mutation}
         onRefresh={props.changed}
         success={(body) => (
           <>
-            <p className="notice-title">The gateway checked it: saved as draft change {body.candidate.id}. Nothing is in force yet.</p>
+            <p className="notice-title">The gateway checked it: saved as draft change {body.candidate.id}. Nothing is active yet.</p>
             <div className="actions">
               <button type="button" className="btn" onClick={() => props.review(body.candidate.id)}>
-                Review change {body.candidate.id}
+                Review Change {body.candidate.id}
               </button>
             </div>
             <Receipt outcome={body.receipt} />
@@ -345,7 +341,7 @@ type Action = 'activate' | 'withdraw' | 'genesis' | 'recovery'
 // decision. It is advice only: the gateway accepts 1 to 86400 seconds.
 const adviseTrialSeconds = 120
 const shortTrialAdvice =
-  'Under 2 minutes leaves little time for real requests to arrive, to check how they were decided and to decide. Unless someone keeps it in time, the gateway undoes it by itself.'
+  'Under 2 minutes leaves little time to observe real traffic. If not kept by the deadline, the change is undone automatically.'
 
 function CandidateDetail(props: {
   id: number
@@ -364,6 +360,9 @@ function CandidateDetail(props: {
     props.changed()
   })
   const [seconds, setSeconds] = useState('300')
+  // step is where a usable change is in its guided path: review it, preview
+  // its impact, then start its trial.
+  const [step, setStep] = useState(0)
   const [asking, setAsking] = useState<Action | null>(null)
   const [sent, setSent] = useState<Action | null>(null)
   const lastReply = mutation.phase.state === 'replied' ? mutation.phase.reply : undefined
@@ -410,6 +409,7 @@ function CandidateDetail(props: {
 
   const period = Number(seconds)
   const shortTrial = Number.isInteger(period) && period > 0 && period < adviseTrialSeconds
+  const guided = usable && props.mode === 'normal'
   return (
     <section className="section card card-pad detail" aria-labelledby={`${formId}-title`}>
       <div className="detail-head">
@@ -417,19 +417,22 @@ function CandidateDetail(props: {
           Change {props.id}
         </h2>
         {candidate ? <CandidateStatus status={candidate.status} /> : null}
-        {candidate?.active ? <Badge tone="ok">in force</Badge> : null}
+        {candidate?.active ? <Badge tone="ok">Active</Badge> : null}
       </div>
+      {guided ? <Stepper step={step} onStep={setStep} /> : null}
       {detail.loading ? <p className="hint">Reading from the gateway…</p> : null}
       {detail.reply && detail.reply.kind !== 'ok' ? <Problem reply={detail.reply} /> : null}
       {candidate ? (
         <>
+          {!guided || step === 0 ? (
+            <>
           <dl className="facts facts-inline">
             <div className="fact">
               <dt>Based on</dt>
-              <dd>{candidate.parent ? `version ${candidate.parent}` : 'no version in force'}</dd>
+              <dd>{candidate.parent ? `version ${candidate.parent}` : 'no active version'}</dd>
             </div>
             <div className="fact">
-              <dt>Denies everything</dt>
+              <dt>Denies Everything</dt>
               <dd>{candidate.deny_all ? 'yes' : 'no'}</dd>
             </div>
             <div className="fact">
@@ -439,14 +442,14 @@ function CandidateDetail(props: {
               </dd>
             </div>
             <div className="fact">
-              <dt>Exact form</dt>
+              <dt>Exact Form</dt>
               <dd>
                 <MoreDetails facts={[['Checksum (SHA-256)', candidate.checksum]]} />
               </dd>
             </div>
           </dl>
 
-          <h3>Differences from the version in force</h3>
+          <h3>Differences from the Active Version</h3>
           {changes ? (
             changes.length === 0 ? (
               <p className="hint">No differences.</p>
@@ -454,17 +457,20 @@ function CandidateDetail(props: {
               <ChangeList changes={changes} />
             )
           ) : (
-            <p className="hint">No version is in force to compare with.</p>
+            <p className="hint">No version is active to compare with.</p>
           )}
 
           <details className="document">
-            <summary>Full document</summary>
+            <summary>Full Document</summary>
             <CodeBlock label={`Change ${candidate.id} document`}>{JSON.stringify(candidate.document, null, 2)}</CodeBlock>
           </details>
+            </>
+          ) : null}
 
-          {usable && props.mode === 'normal' ? <ImpactPreview admin={props.admin} candidate={candidate.id} /> : null}
+          {guided && step === 1 ? <ImpactPreview admin={props.admin} candidate={candidate.id} /> : null}
+          {guided && step === 2 && !props.manage ? <p className="hint">Starting a trial needs the “Change the policy” permission.</p> : null}
 
-          {props.manage && usable ? (
+          {props.manage && usable && (!guided || step === 2) ? (
             <div className="detail-actions">
               {props.mode === 'normal' ? (
                 <form
@@ -473,11 +479,11 @@ function CandidateDetail(props: {
                     setAsking('activate')
                   }}
                 >
-                  <h3>Put on trial</h3>
+                  <h3>Put on Trial</h3>
                   <Field
                     id={`${formId}-seconds`}
-                    label="Trial length (seconds)"
-                    hint="1 to 86400. Unless someone keeps the change within this time, the gateway undoes it and returns to the version in force now by itself."
+                    label="Trial Length (Seconds)"
+                    hint="1 to 86400. Unless someone keeps the change within this time, the gateway undoes it and returns to the active version now by itself."
                     error={secondsError}
                   >
                     <input
@@ -498,7 +504,7 @@ function CandidateDetail(props: {
                   {shortTrial ? <p className="notice tone-pending trial-advice">{shortTrialAdvice}</p> : null}
                   <div className="actions">
                     <button type="submit" className="btn btn-primary" disabled={mutation.pending}>
-                      Put on trial
+                      Put on Trial
                     </button>
                     <button type="button" className="btn btn-danger-quiet" onClick={() => setAsking('withdraw')} disabled={mutation.pending}>
                       Withdraw
@@ -509,18 +515,38 @@ function CandidateDetail(props: {
               {props.mode === 'bootstrap_locked' && candidate.deny_all ? (
                 <div className="actions">
                   <button type="button" className="btn btn-primary" onClick={() => setAsking('genesis')} disabled={mutation.pending}>
-                    Establish as the first policy
+                    Establish as the First Policy
                   </button>
                 </div>
               ) : null}
               {props.mode === 'recovery_required' && candidate.deny_all ? (
                 <div className="actions">
                   <button type="button" className="btn btn-primary" onClick={() => setAsking('recovery')} disabled={mutation.pending}>
-                    Establish as the starting policy after a restore
+                    Establish as the Starting Policy After a Restore
                   </button>
                 </div>
               ) : null}
               {props.mode !== 'normal' && !candidate.deny_all ? <p className="hint">Only a policy that denies everything can be established first.</p> : null}
+            </div>
+          ) : null}
+          {guided ? (
+            <div className="stepper-nav">
+              {step > 0 ? (
+                <button type="button" className="btn" onClick={() => setStep(step - 1)}>
+                  Back
+                </button>
+              ) : null}
+              {step < 2 ? (
+                <button type="button" className="btn btn-primary" onClick={() => setStep(step + 1)}>
+                  {step === 0 ? 'Next: Preview Impact' : 'Next: Start Trial'}
+                </button>
+              ) : null}
+              {/* The trial step's own form offers Withdraw beside Put on trial. */}
+              {props.manage && step < 2 ? (
+                <button type="button" className="btn btn-danger-quiet" onClick={() => setAsking('withdraw')} disabled={mutation.pending}>
+                  Withdraw
+                </button>
+              ) : null}
             </div>
           ) : null}
         </>
@@ -536,10 +562,10 @@ function CandidateDetail(props: {
           <>
             {o.provisional ? (
               <p className="notice-title">
-                Version {o.provisional} is on trial and in force. Keep it before {time(o.deadline)}, at the top of this page, or it is undone.
+                Version {o.provisional} is on trial and active. Keep it before {time(o.deadline)}, at the top of this page, or it is undone.
               </p>
             ) : o.revision ? (
-              <p className="notice-title">Established: version {o.revision} is the policy in force.</p>
+              <p className="notice-title">Established: version {o.revision} is the active policy.</p>
             ) : sent === 'withdraw' ? (
               <p className="notice-title">Withdrawn: change {props.id} can no longer be put on trial.</p>
             ) : (
@@ -553,7 +579,7 @@ function CandidateDetail(props: {
       <Confirm
         open={asking === 'activate'}
         title={`Put change ${props.id} on trial?`}
-        confirmLabel="Put on trial"
+        confirmLabel="Put on Trial"
         disabled={confirmWord !== '' && typed.trim() !== confirmWord}
         onCancel={() => setAsking(null)}
         onConfirm={() => act('activate')}
@@ -562,16 +588,16 @@ function CandidateDetail(props: {
         {changes && changes.length > 0 ? <ChangeSet changes={changes} /> : null}
         <p>
           Unless someone keeps it within {Number.isInteger(period) && period > 0 ? duration(period) : `${seconds} seconds`}, the gateway undoes it and
-          returns to the version in force now
+          returns to the active version now
           {props.confirmed ? `, version ${props.confirmed.id}` : ''}.
         </p>
         {changes ? (
           <p className="hint">
             {changes.length === 0
-              ? 'No differences from the version in force.'
+              ? 'No differences from the active version.'
               : changes.length === 1
-                ? 'One difference from the version in force.'
-                : `${changes.length} differences from the version in force.`}
+                ? 'One difference from the active version.'
+                : `${changes.length} differences from the active version.`}
           </p>
         ) : null}
         {shortTrial ? <p className="notice tone-pending">{shortTrialAdvice}</p> : null}
@@ -586,8 +612,8 @@ function CandidateDetail(props: {
           </>
         ) : null}
       </Confirm>
-      <Confirm open={asking === 'withdraw'} title={`Withdraw change ${props.id}?`} confirmLabel="Withdraw change" danger onCancel={() => setAsking(null)} onConfirm={() => act('withdraw')}>
-        <p>It can no longer be put on trial. The policy in force does not change.</p>
+      <Confirm open={asking === 'withdraw'} title={`Withdraw change ${props.id}?`} confirmLabel="Withdraw Change" danger onCancel={() => setAsking(null)} onConfirm={() => act('withdraw')}>
+        <p>It can no longer be put on trial. The active policy does not change.</p>
       </Confirm>
       <Confirm
         open={asking === 'genesis' || asking === 'recovery'}
@@ -598,8 +624,8 @@ function CandidateDetail(props: {
         onConfirm={() => asking && act(asking)}
       >
         <p>
-          This policy, which lets no request through, becomes the {asking === 'recovery' ? 'starting policy after a restore' : 'first policy'}, in
-          force at once. Later changes go through trials.
+          This policy, which lets no request through, becomes the {asking === 'recovery' ? 'starting policy after a restore' : 'first policy'}, active
+          at once. Later changes go through trials.
         </p>
         <TypedConfirmation word="deny all" value={typed} onChange={setTyped} />
       </Confirm>

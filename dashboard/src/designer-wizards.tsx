@@ -1,60 +1,25 @@
-import { useId, useRef, useState, type ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 import type { Operation, Policy } from './api'
 import { addEndpoint, grantAccess, setRate } from './designer-model'
-import { closeOtherMenus } from './designer-templates'
 import { differences } from './diff'
 import { ChangeSet, Wizard } from './ui'
 
-type Task = 'access' | 'rate' | 'endpoint'
-type WizardProps = { policy: Policy; apply: (document: Policy, summary: string) => void; close: () => void }
+export type GuidedTask = 'access' | 'rate' | 'endpoint'
+// api, when given, is the API whose group the wizard was opened from: a new
+// endpoint starts there, and a rate limit is chosen among its endpoints.
+type WizardProps = { policy: Policy; api?: string; apply: (document: Policy, summary: string) => void; close: () => void }
 
-const tasks: [Task, string][] = [
-  ['access', 'Give a role access'],
-  ['rate', 'Change a rate limit'],
-  ['endpoint', 'Add an endpoint'],
-]
 const methods = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
 const withBody = new Set(['POST', 'PUT', 'PATCH'])
 
-// StepByStep offers the common edits as short wizards. Each ends on a review
-// of what the draft gains or loses and only edits the unsaved draft: saving,
-// the gateway's check, the trial and keeping follow as for any other change.
-export function StepByStep(props: { policy: Policy; apply: (document: Policy, summary: string) => void }) {
-  const menu = useRef<HTMLDetailsElement>(null)
-  const [task, setTask] = useState<Task | null>(null)
-  const shared = {
-    policy: props.policy,
-    apply: (document: Policy, summary: string) => {
-      setTask(null)
-      props.apply(document, summary)
-    },
-    close: () => setTask(null),
-  }
-  return (
-    <>
-      <details ref={menu} className="designer-add" onToggle={closeOtherMenus}>
-        <summary className="btn">Step by step</summary>
-        <div>
-          {tasks.map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              className="btn btn-small"
-              onClick={() => {
-                menu.current?.removeAttribute('open')
-                setTask(id)
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </details>
-      {task === 'access' ? <AccessWizard {...shared} /> : null}
-      {task === 'rate' ? <RateWizard {...shared} /> : null}
-      {task === 'endpoint' ? <EndpointWizard {...shared} /> : null}
-    </>
-  )
+// GuidedChange runs one common edit as a short wizard, opened from a group's
+// + menu. Each ends on a review of what the draft gains or loses and only
+// edits the unsaved draft: saving, the gateway's check, the trial and keeping
+// follow as for any other change.
+export function GuidedChange(props: WizardProps & { task: GuidedTask }) {
+  if (props.task === 'access') return <AccessWizard {...props} />
+  if (props.task === 'rate') return <RateWizard {...props} />
+  return <EndpointWizard {...props} />
 }
 
 function Review(props: { before: Policy; after: Policy; children?: ReactNode }) {
@@ -136,27 +101,27 @@ function AccessWizard({ policy, apply, close }: WizardProps) {
   const closed = signedIn.filter((operation) => fresh.includes(operation.id) && operation.access !== 'allow')
   return (
     <Wizard
-      title="Give a role access"
-      finishLabel="Apply to the draft"
+      title="Give a Role Access"
+      finishLabel="Apply to the Draft"
       onClose={close}
       onFinish={() => apply(next, `${role} can now call ${fresh.length} more ${fresh.length === 1 ? 'endpoint' : 'endpoints'}.`)}
       steps={[
         {
-          title: 'Choose a role',
+          title: 'Choose a Role',
           problem: policy.roles.length ? undefined : 'This draft has no roles. Add a role first.',
           body: (
             <>
-              <p>A role comes from the verified sign-in token; every account whose token carries it gains the access.</p>
+              <p>Every account whose sign-in token carries the role gains the access.</p>
               <Choice id={`${id}-role`} label="Role" value={role} options={policy.roles.map((item) => [item.id, item.id])} onChange={setRole} />
             </>
           ),
         },
         {
-          title: 'Choose endpoints',
+          title: 'Choose Endpoints',
           problem: fresh.length ? undefined : `Choose at least one endpoint ${role} cannot call yet.`,
           body: (
             <fieldset className="wizard-choices">
-              <legend>Endpoints that need a sign-in</legend>
+              <legend>Endpoints That Need a Sign-In</legend>
               {signedIn.map((operation) => (
                 <label key={operation.id} className="check">
                   <input
@@ -192,10 +157,12 @@ function AccessWizard({ policy, apply, close }: WizardProps) {
   )
 }
 
-function RateWizard({ policy, apply, close }: WizardProps) {
+function RateWizard({ policy, api, apply, close }: WizardProps) {
   const id = useId()
-  const [endpoint, setEndpoint] = useState(policy.operations[0]?.id ?? '')
-  const operation = policy.operations.find((item) => item.id === endpoint)
+  // Opened from an API's group, it offers only that API's endpoints.
+  const offered = api && policy.operations.some((item) => item.api === api) ? policy.operations.filter((item) => item.api === api) : policy.operations
+  const [endpoint, setEndpoint] = useState(offered[0]?.id ?? '')
+  const operation = offered.find((item) => item.id === endpoint)
   const [count, setCount] = useState(String(operation?.rate?.count ?? 100))
   const [seconds, setSeconds] = useState(String(operation?.rate?.window_seconds ?? 60))
   const requests = wholeNumber(count)
@@ -205,13 +172,13 @@ function RateWizard({ policy, apply, close }: WizardProps) {
   const per = operation?.rate?.key === 'client_address' || operation?.auth === 'none' ? 'client address' : 'account'
   return (
     <Wizard
-      title="Change a rate limit"
-      finishLabel="Apply to the draft"
+      title="Change a Rate Limit"
+      finishLabel="Apply to the Draft"
       onClose={close}
       onFinish={() => apply(next, `${endpoint} limited to ${requests} requests per ${span} s.`)}
       steps={[
         {
-          title: 'Choose an endpoint',
+          title: 'Choose an Endpoint',
           problem: operation ? undefined : 'This draft has no endpoints. Add an endpoint first.',
           body: (
             <>
@@ -219,9 +186,9 @@ function RateWizard({ policy, apply, close }: WizardProps) {
                 id={`${id}-endpoint`}
                 label="Endpoint"
                 value={endpoint}
-                options={policy.operations.map((item) => [item.id, endpointLabel(item)])}
+                options={offered.map((item) => [item.id, endpointLabel(item)])}
                 onChange={(value) => {
-                  const chosen = policy.operations.find((item) => item.id === value)
+                  const chosen = offered.find((item) => item.id === value)
                   setEndpoint(value)
                   setCount(String(chosen?.rate?.count ?? 100))
                   setSeconds(String(chosen?.rate?.window_seconds ?? 60))
@@ -232,12 +199,12 @@ function RateWizard({ policy, apply, close }: WizardProps) {
           ),
         },
         {
-          title: 'Set the limit',
+          title: 'Set the Limit',
           problem: requests && span ? undefined : 'Enter whole numbers of at least 1.',
           body: (
             <div className="form-grid">
               <Whole id={`${id}-count`} label="Requests" value={count} onChange={setCount} hint={`Counted per ${per}.`} />
-              <Whole id={`${id}-seconds`} label="Per how many seconds" value={seconds} onChange={setSeconds} />
+              <Whole id={`${id}-seconds`} label="Per How Many Seconds" value={seconds} onChange={setSeconds} />
             </div>
           ),
         },
@@ -255,9 +222,9 @@ function RateWizard({ policy, apply, close }: WizardProps) {
   )
 }
 
-function EndpointWizard({ policy, apply, close }: WizardProps) {
+function EndpointWizard({ policy, api: start, apply, close }: WizardProps) {
   const id = useId()
-  const [api, setApi] = useState(policy.apis[0]?.id ?? '')
+  const [api, setApi] = useState(start && policy.apis.some((item) => item.id === start) ? start : (policy.apis[0]?.id ?? ''))
   const [method, setMethod] = useState('GET')
   const [target, setTarget] = useState('')
   const [name, setName] = useState<string | null>(null)
@@ -289,13 +256,13 @@ function EndpointWizard({ policy, apply, close }: WizardProps) {
       : policy
   return (
     <Wizard
-      title="Add an endpoint"
-      finishLabel="Apply to the draft"
+      title="Add an Endpoint"
+      finishLabel="Apply to the Draft"
       onClose={close}
       onFinish={() => apply(next, `Endpoint ${endpointId} added (${method} ${target}).`)}
       steps={[
         {
-          title: 'Where it is',
+          title: 'Where It Is',
           problem: where,
           body: (
             <div className="form-grid">
@@ -328,23 +295,23 @@ function EndpointWizard({ policy, apply, close }: WizardProps) {
           ),
         },
         {
-          title: 'Who may call it',
+          title: 'Who May Call It',
           body: (
             <>
               <fieldset className="wizard-choices">
-                <legend>Sign-in</legend>
+                <legend>Sign-In</legend>
                 <label className="check">
                   <input type="radio" name={`${id}-open`} checked={!open} onChange={() => setOpen(false)} />
-                  <span>Signed-in accounts with a permission</span>
+                  <span>Signed-In Accounts with a Permission</span>
                 </label>
                 <label className="check">
                   <input type="radio" name={`${id}-open`} checked={open} onChange={() => setOpen(true)} />
-                  <span>Anyone, without signing in</span>
+                  <span>Anyone, Without Signing In</span>
                 </label>
               </fieldset>
               {open ? null : (
                 <fieldset className="wizard-choices">
-                  <legend>Roles that may call it</legend>
+                  <legend>Roles That May Call It</legend>
                   {policy.roles.map((role) => (
                     <label key={role.id} className="check">
                       <input
@@ -362,7 +329,7 @@ function EndpointWizard({ policy, apply, close }: WizardProps) {
           ),
         },
         {
-          title: 'Rate limit',
+          title: 'Rate Limit',
           problem: requests && span ? undefined : 'Enter whole numbers of at least 1.',
           body: (
             <div className="form-grid">
@@ -373,7 +340,7 @@ function EndpointWizard({ policy, apply, close }: WizardProps) {
                 onChange={setCount}
                 hint={`Counted per ${open ? 'client address' : 'account'}.`}
               />
-              <Whole id={`${id}-seconds`} label="Per how many seconds" value={seconds} onChange={setSeconds} />
+              <Whole id={`${id}-seconds`} label="Per How Many Seconds" value={seconds} onChange={setSeconds} />
             </div>
           ),
         },

@@ -75,8 +75,8 @@ func attack(args []string) error {
 	token := ""
 	if *scenario == "flood-orders" {
 		// This limit is per account: a different source address alone would
-		// still consume Aisyah's checkout budget.
-		token, _, err = loginWithClient(client, "http://"+dataListen, "daniel@fetch.test")
+		// still consume Customer 1's checkout budget.
+		token, _, err = loginWithClient(client, "http://"+dataListen, "customer2@fetch.test")
 		if err != nil {
 			return err
 		}

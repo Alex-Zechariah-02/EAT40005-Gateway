@@ -324,7 +324,7 @@ export function LabPage() {
     <>
       <WorkspaceTitle
         title="Security lab"
-        subtitle="Each button sends one real request through the gateway. Expected is what Fetch’s baseline policy should do; Observed is what the gateway answered. This page decides nothing."
+        subtitle="Each test sends one real request through the gateway and compares the expected result with the observed one."
       >
         <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-surface px-4 py-3 shadow-card">
           <span className="flex size-9 items-center justify-center rounded-full bg-brand-soft text-brand" aria-hidden="true">

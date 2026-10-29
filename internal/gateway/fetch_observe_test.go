@@ -161,6 +161,49 @@ func TestFetchEventsAndTraffic(t *testing.T) {
 			}
 		}
 	}
+	// The insights come from the same requests: the busiest endpoints (an
+	// unrouted request is not one), who was refused, the window before and the
+	// response time per chart interval.
+	code, body, _ = e.as(admin, "GET", "/admin/traffic?window=60", "")
+	var insights struct {
+		ByOperation []struct {
+			Operation, API          string
+			Total, Allowed, Refused int
+		} `json:"by_operation"`
+		TopRefused []struct {
+			Kind, ID   string
+			Refused    int
+			LatestCode string `json:"latest_code"`
+		} `json:"top_refused"`
+		Previous *struct{ Total, Allowed, Refused int } `json:"previous"`
+		Latency  []struct {
+			Count int     `json:"count"`
+			P50   float64 `json:"p50_ms"`
+			P95   float64 `json:"p95_ms"`
+		} `json:"latency"`
+	}
+	if code != 200 || json.Unmarshal([]byte(body), &insights) != nil {
+		t.Fatalf("traffic insights: %d %s", code, body)
+	}
+	if len(insights.ByOperation) != 1 || insights.ByOperation[0].Operation != "read-a" || insights.ByOperation[0].Total != 2 || insights.ByOperation[0].Allowed != 1 || insights.ByOperation[0].Refused != 1 {
+		t.Errorf("busiest endpoints: %s", body)
+	}
+	if len(insights.TopRefused) != 1 || insights.TopRefused[0].Kind != "address" || insights.TopRefused[0].ID != "127.0.0.1" || insights.TopRefused[0].Refused != 2 || insights.TopRefused[0].LatestCode != "not_found" {
+		t.Errorf("most refused: %s", body)
+	}
+	if insights.Previous == nil || insights.Previous.Total != 0 {
+		t.Errorf("previous window, fully retained and empty: %s", body)
+	}
+	counted := 0
+	for _, entry := range insights.Latency {
+		counted += entry.Count
+		if entry.P50 > entry.P95 {
+			t.Errorf("median above the 95th percentile: %s", body)
+		}
+	}
+	if counted != 3 {
+		t.Errorf("latency intervals count %d requests, want 3: %s", counted, body)
+	}
 	for _, query := range []string{"window=1", "window=60&window=300", "unknown=x", "bad%zz=x&window=60"} {
 		if code, _, _ := e.as(admin, "GET", "/admin/traffic?"+query, ""); code != 400 {
 			t.Errorf("traffic %s: %d", query, code)

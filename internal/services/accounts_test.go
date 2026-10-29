@@ -102,7 +102,7 @@ func TestAccountsTokensAndProfiles(t *testing.T) {
 func TestAccountsCredentialFailures(t *testing.T) {
 	s, _, _ := accountService(t)
 	unknown := serviceRequest(s, "POST", "/accounts/login", `{"email":"nobody@fetch.test","password":"wrong-password"}`, "", "", "")
-	wrong := serviceRequest(s, "POST", "/accounts/login", `{"email":"aisyah@fetch.test","password":"wrong-password"}`, "", "", "")
+	wrong := serviceRequest(s, "POST", "/accounts/login", `{"email":"customer1@fetch.test","password":"wrong-password"}`, "", "", "")
 	if unknown.Code != 401 || wrong.Code != 401 || unknown.Body.String() != wrong.Body.String() || !strings.Contains(unknown.Body.String(), "invalid_credentials") {
 		t.Fatalf("credential enumeration: %d %s / %d %s", unknown.Code, unknown.Body, wrong.Code, wrong.Body)
 	}

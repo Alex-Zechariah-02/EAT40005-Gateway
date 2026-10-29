@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { CheckCircle, ChefHat, Lifebuoy, MapPin, Moped, Package, Printer, Receipt, XCircle } from '@phosphor-icons/react'
 import { outcomeOfWrite } from '../lib/api'
-import { rm, statusNames, time, when } from '../lib/format'
+import { rm, statusNames, time, when, reference } from '../lib/format'
 import { describe, type Problem } from '../lib/messages'
 import { useQuery } from '../lib/query'
 import { Link, useLocation } from '../lib/router'
@@ -12,6 +12,7 @@ import { cx } from '../ui/cx'
 import { ConfirmDialog } from '../ui/dialog'
 import { AnswerLine, Empty, Loading, ProblemNotice, RefreshProblem, Skeleton } from '../ui/notice'
 import { Photo } from '../ui/photo'
+import { storeLink } from '../lib/links'
 
 const steps: { status: OrderStatus; label: string; icon: React.ReactNode }[] = [
   { status: 'placed', label: 'Order placed', icon: <Receipt size={18} weight="bold" /> },
@@ -85,16 +86,16 @@ function OrderView({ order, justPlaced, onChanged, refresh }: { order: Order; ju
       )}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-semibold text-ink-3"><Link to="/my-orders" className="hover:text-ink">My orders</Link> · {order.id}</p>
+          <p className="text-sm font-semibold text-ink-3"><Link to="/my-orders" className="hover:text-ink">My orders</Link> · Order {reference(order.id)}</p>
           <h1 className="mt-1 text-[34px] leading-none font-extrabold tracking-[-0.035em]">{cancelled ? 'Order cancelled' : statusNames[order.status]}</h1>
-          <p className="mt-2 text-ink-2">From <Link to={`/store/${order.merchant}`} className="font-semibold text-brand hover:underline">{order.merchant_name}</Link> · placed {when(order.created_at)}</p>
+          <p className="mt-2 text-ink-2">From <Link to={storeLink(order.merchant_name)} className="font-semibold text-brand hover:underline">{order.merchant_name}</Link> · placed {when(order.created_at)}</p>
         </div>
       </div>
       {refresh}
       <p role="status" className={cx('mt-4 rounded-2xl bg-brand-soft p-4 font-bold text-brand-strong print:hidden', !update && 'sr-only')}>
         {update}
       </p>
-      <p className="hidden print:mt-2 print:block print:text-sm">Receipt · {order.id} · placed {when(order.created_at)}</p>
+      <p className="hidden print:mt-2 print:block print:text-sm">Receipt · Order {reference(order.id)} · placed {when(order.created_at)}</p>
 
       {!cancelled ? (
         <ol className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-5 print:hidden" aria-label="Order progress">

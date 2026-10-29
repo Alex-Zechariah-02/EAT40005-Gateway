@@ -7,20 +7,20 @@ import type { Category, Item, Merchant, Order, Ticket, User } from '../lib/types
 export const password = 'FetchDemo2026!'
 
 export const users: User[] = [
-  { id: 'cust-001', name: 'Aisyah Rahman', email: 'aisyah@fetch.test', roles: ['CUSTOMER'], merchant: null, home: '/' },
-  { id: 'cust-002', name: 'Daniel Tan', email: 'daniel@fetch.test', roles: ['CUSTOMER'], merchant: null, home: '/' },
-  { id: 'cust-003', name: 'Priya Nair', email: 'priya@fetch.test', roles: ['CUSTOMER'], merchant: null, home: '/' },
-  { id: 'merchant-001', name: 'Rosnah Ismail', email: 'ros@fetch.test', roles: ['MERCHANT'], merchant: 'MER-001', home: '/merchant' },
-  { id: 'merchant-002', name: 'Bala Krishnan', email: 'bintang@fetch.test', roles: ['MERCHANT'], merchant: 'MER-002', home: '/merchant' },
-  { id: 'merchant-003', name: 'Lim Wei Ming', email: 'kopitiam@fetch.test', roles: ['MERCHANT'], merchant: 'MER-003', home: '/merchant' },
-  { id: 'merchant-004', name: 'Ong Siew Lan', email: 'dapur@fetch.test', roles: ['MERCHANT'], merchant: 'MER-004', home: '/merchant' },
-  { id: 'merchant-005', name: 'Hafiz Zainal', email: 'mart@fetch.test', roles: ['MERCHANT'], merchant: 'MER-005', home: '/merchant' },
-  { id: 'merchant-006', name: 'Grace Wong', email: 'sihat@fetch.test', roles: ['MERCHANT'], merchant: 'MER-006', home: '/merchant' },
-  { id: 'rider-01', name: 'Amir Hakim', email: 'amir@fetch.test', roles: ['RIDER'], merchant: null, home: '/rider' },
-  { id: 'rider-02', name: 'Siva Kumar', email: 'siva@fetch.test', roles: ['RIDER'], merchant: null, home: '/rider' },
-  { id: 'support-01', name: 'Nurul Huda', email: 'nurul@fetch.test', roles: ['SUPPORT'], merchant: null, home: '/support' },
-  { id: 'ops-01', name: 'Jason Lim', email: 'jason@fetch.test', roles: ['OPERATIONS'], merchant: null, home: '/ops' },
-  { id: 'lead-01', name: 'Farah Ismail', email: 'farah@fetch.test', roles: ['SUPPORT', 'OPERATIONS'], merchant: null, home: '/ops' },
+  { id: 'cust-001', name: 'Customer 1', email: 'customer1@fetch.test', roles: ['CUSTOMER'], merchant: null, home: '/' },
+  { id: 'cust-002', name: 'Customer 2', email: 'customer2@fetch.test', roles: ['CUSTOMER'], merchant: null, home: '/' },
+  { id: 'cust-003', name: 'Customer 3', email: 'customer3@fetch.test', roles: ['CUSTOMER'], merchant: null, home: '/' },
+  { id: 'merchant-001', name: 'Merchant 1', email: 'merchant1@fetch.test', roles: ['MERCHANT'], merchant: 'MER-001', home: '/merchant' },
+  { id: 'merchant-002', name: 'Merchant 2', email: 'merchant2@fetch.test', roles: ['MERCHANT'], merchant: 'MER-002', home: '/merchant' },
+  { id: 'merchant-003', name: 'Merchant 3', email: 'merchant3@fetch.test', roles: ['MERCHANT'], merchant: 'MER-003', home: '/merchant' },
+  { id: 'merchant-004', name: 'Merchant 4', email: 'merchant4@fetch.test', roles: ['MERCHANT'], merchant: 'MER-004', home: '/merchant' },
+  { id: 'merchant-005', name: 'Merchant 5', email: 'merchant5@fetch.test', roles: ['MERCHANT'], merchant: 'MER-005', home: '/merchant' },
+  { id: 'merchant-006', name: 'Merchant 6', email: 'merchant6@fetch.test', roles: ['MERCHANT'], merchant: 'MER-006', home: '/merchant' },
+  { id: 'rider-01', name: 'Rider 1', email: 'rider1@fetch.test', roles: ['RIDER'], merchant: null, home: '/rider' },
+  { id: 'rider-02', name: 'Rider 2', email: 'rider2@fetch.test', roles: ['RIDER'], merchant: null, home: '/rider' },
+  { id: 'support-01', name: 'Support 1', email: 'support1@fetch.test', roles: ['SUPPORT'], merchant: null, home: '/support' },
+  { id: 'ops-01', name: 'Admin 1', email: 'admin1@fetch.test', roles: ['OPERATIONS'], merchant: null, home: '/ops' },
+  { id: 'lead-01', name: 'Admin 2', email: 'admin2@fetch.test', roles: ['SUPPORT', 'OPERATIONS'], merchant: null, home: '/ops' },
 ]
 
 export const categories: Category[] = [
@@ -37,7 +37,7 @@ const m = (id: string, name: string, section: 'food' | 'mart', category: string,
 })
 
 export const merchants: Merchant[] = [
-  m('MER-001', 'Warung Kak Ros', 'food', 'nasi-lemak', 'Bangsar, Kuala Lumpur', 20, 35, 399),
+  m('MER-001', 'Warung Nasi Lemak', 'food', 'nasi-lemak', 'Bangsar, Kuala Lumpur', 20, 35, 399),
   m('MER-002', 'Restoran Bintang Mamak', 'food', 'mamak', 'Petaling Jaya, Selangor', 15, 30, 299),
   m('MER-003', 'Kopitiam Lama', 'food', 'kopitiam', 'Cheras, Kuala Lumpur', 20, 35, 399),
   m('MER-004', 'Dapur Penang', 'food', 'hawker', 'Subang Jaya, Selangor', 25, 40, 499),

@@ -182,3 +182,24 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Motion: pages rise in on arrival and grid cards follow in a short
+   stagger. Fill only before the start, so nothing keeps a stacking layer
+   once the animation ends (menus must still open above the cards). */
+/* Movement only, no fade: text keeps its full contrast from the first frame. */
+@keyframes page-rise {
+  from {
+    transform: translateY(10px);
+  }
+}
+main > * {
+  animation: page-rise 360ms var(--ease-out-quint) backwards;
+}
+main ul.grid > li {
+  animation: page-rise 420ms var(--ease-out-quint) backwards;
+}
+main ul.grid > li:nth-child(2) { animation-delay: 40ms; }
+main ul.grid > li:nth-child(3) { animation-delay: 80ms; }
+main ul.grid > li:nth-child(4) { animation-delay: 120ms; }
+main ul.grid > li:nth-child(5) { animation-delay: 160ms; }
+main ul.grid > li:nth-child(n + 6) { animation-delay: 200ms; }

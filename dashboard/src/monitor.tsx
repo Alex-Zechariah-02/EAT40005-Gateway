@@ -1,8 +1,9 @@
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { newKey, type Admin, type HistoryEntry, type Page, type Policy, type Reply, type Revision } from './api'
-import { useGatewayState, useMutation, usePoll, useRemembered, useRereadWhen, useResource, type Resource } from './hooks'
+import { useGatewayState, useMutation, liveMs, usePoll, useRemembered, useRereadWhen, useResource, type Resource } from './hooks'
 import { RequestRules } from './policy'
 import {
+  AccountLink,
   actorName,
   Badge,
   Confirm,
@@ -20,6 +21,9 @@ import {
   Time,
   TimeOfDay,
   type Tone,
+  useFocus,
+  useTarget,
+  XRef,
 } from './ui'
 import type { ViewProps } from './views'
 
@@ -56,6 +60,13 @@ export interface Traffic {
   by_api: { api: string; total: number; allowed: number; refused: number; p50_ms: number; p95_ms: number }[]
   refusal_reasons: { code: string; count: number }[]
   per_second: { at: string; allowed: number; refused: number }[]
+  // The busiest endpoints, who was refused most, the window before this one
+  // (null when the gateway no longer holds all of it) and response time per
+  // chart interval.
+  by_operation?: { operation: string; api: string; total: number; allowed: number; refused: number; p50_ms: number; p95_ms: number }[]
+  top_refused?: { kind: 'account' | 'address'; id: string; refused: number; latest_code: string }[]
+  previous?: { total: number; allowed: number; refused: number } | null
+  latency?: { at: string; count: number; p50_ms: number; p95_ms: number }[]
 }
 
 // requests = previewed + identity_unknown. A request whose sign-in was never
@@ -88,8 +99,8 @@ interface SigningKey {
 export const stages: { id: Stage; name: string }[] = [
   { id: 'route', name: 'Route' },
   { id: 'access', name: 'Access' },
-  { id: 'token', name: 'Sign-in' },
-  { id: 'blocked', name: 'Blocked list' },
+  { id: 'token', name: 'Sign-In' },
+  { id: 'blocked', name: 'Blocked List' },
   { id: 'permit', name: 'Role' },
   { id: 'rate', name: 'Rate' },
   { id: 'validation', name: 'Body' },
@@ -100,18 +111,18 @@ export const stages: { id: Stage; name: string }[] = [
 // Plain words for the gateway's refusal codes; the code stays one
 // hover away.
 export const reasons: Record<string, string> = {
-  bad_request: 'Request refused by validation',
-  unauthenticated: 'Not signed in or token not accepted',
-  forbidden: 'No permission',
-  account_blocked: 'Account blocked',
-  not_found: 'No such route',
-  method_not_allowed: 'Method not allowed',
-  payload_too_large: 'Body too large',
-  unsupported_media_type: 'Body not JSON',
-  rate_limited: 'Too many requests',
-  upstream_unavailable: 'Service unreachable',
-  gateway_unavailable: 'Gateway could not record or decide',
-  upstream_timeout: 'Service too slow; outcome unknown',
+  bad_request: 'Request Refused by Validation',
+  unauthenticated: 'Not Signed In or Token Not Accepted',
+  forbidden: 'No Permission',
+  account_blocked: 'Account Blocked',
+  not_found: 'No Such Route',
+  method_not_allowed: 'Method Not Allowed',
+  payload_too_large: 'Body Too Large',
+  unsupported_media_type: 'Body Not JSON',
+  rate_limited: 'Too Many Requests',
+  upstream_unavailable: 'Service Unreachable',
+  gateway_unavailable: 'Gateway Could Not Record or Decide',
+  upstream_timeout: 'Service Too Slow; Outcome Unknown',
 }
 
 export function reasonOf(code: string | null): string {
@@ -171,76 +182,157 @@ export function DecisionPath({ event }: { event: Pick<RequestEvent, 'stage' | 'd
 }
 
 // intervals spreads the gateway's per-second counts, which list only the
-// seconds that saw requests, over the whole window ending at end: 60 equal
-// intervals, the quiet ones empty.
+// seconds that saw requests, over 60 equal intervals ending with the one that
+// holds end. Each interval starts on a whole multiple of its length on the
+// clock (every second, 5 seconds or minute), so a request stays in the same
+// interval from one reading to the next and the bars move left in step
+// instead of jumping between neighbours.
 function intervals(traffic: Traffic, end: number) {
   const count = 60
-  const step = (traffic.window_seconds * 1000) / count
-  const start = end - traffic.window_seconds * 1000
+  const step = Math.max(1000, (traffic.window_seconds * 1000) / count)
+  const last = Math.floor(end / step) * step
+  const first = last - (count - 1) * step
   const bars = Array.from({ length: count }, (_, n) => ({
-    at: new Date(start + n * step).toISOString(),
-    to: new Date(start + (n + 1) * step).toISOString(),
+    at: new Date(first + n * step).toISOString(),
+    to: new Date(first + (n + 1) * step).toISOString(),
     allowed: 0,
     refused: 0,
+    p50: null as number | null,
+    p95: null as number | null,
   }))
   for (const p of traffic.per_second) {
-    const n = Math.min(count - 1, Math.max(0, Math.floor((Date.parse(p.at) - start) / step)))
+    const n = Math.floor((Date.parse(p.at) - first) / step)
+    if (n < 0 || n >= count) continue
     bars[n].allowed += p.allowed
     bars[n].refused += p.refused
   }
-  return bars
+  // The gateway gives response times on the same intervals.
+  for (const l of traffic.latency ?? []) {
+    const n = Math.floor((Date.parse(l.at) - first) / step)
+    if (n < 0 || n >= count) continue
+    bars[n].p50 = l.p50_ms
+    bars[n].p95 = l.p95_ms
+  }
+  return { bars, step }
 }
 
-// TrafficChart draws requests per interval: allowed in grey, refused in red.
-// The grey marks sit below 3:1 against the card, so every value is also in the
-// readout and the table view.
+function intervalWords(step: number): string {
+  return step >= 60_000 ? `${step / 60_000} min` : `${step / 1000} s`
+}
+
+// TrafficChart draws requests per interval: allowed in blue, refused in red
+// on top. Hovering, or moving along the bars with the arrow keys, shows the
+// interval's figures beside it; the table view lists them all.
 export function TrafficChart({ traffic, end }: { traffic: Traffic; end: number }) {
   const [active, setActive] = useState<number | null>(null)
   const id = useId()
-  const bars = useMemo(() => intervals(traffic, end), [traffic, end])
-  const points = traffic.per_second
-  if (points.length === 0) return <Empty title="No requests in this window yet." />
-  const max = Math.max(1, ...bars.map((p) => p.allowed + p.refused))
+  const { bars, step } = useMemo(() => intervals(traffic, end), [traffic, end])
+  if (traffic.per_second.length === 0) return <Empty title="No requests in this window yet." />
+  const peak = Math.max(1, ...bars.map((p) => p.allowed + p.refused))
   const width = 600
-  const height = 140
+  const height = 150
   const band = width / bars.length
-  const bar = Math.max(1.5, Math.min(10, band * 0.78))
+  const bar = Math.max(2, Math.min(9, band * 0.7))
   const shown = active !== null ? bars[active] : null
+  const seconds = traffic.window_seconds <= 300
+  const label = (iso: string) => <TimeOfDay value={iso} seconds={seconds} />
+  const tip =
+    shown && active !== null ? (
+      <div
+        className="chart-tip"
+        role="status"
+        style={{ left: `${((active + 0.5) / bars.length) * 100}%` }}
+        data-side={active > bars.length * 0.7 ? 'left' : 'right'}
+      >
+        <p className="chart-tip-time">
+          {label(shown.at)} – {label(shown.to)}
+        </p>
+        <dl>
+          <div>
+            <dt>
+              <span className="key key-allowed" aria-hidden="true" />
+              Allowed
+            </dt>
+            <dd>{shown.allowed}</dd>
+          </div>
+          <div>
+            <dt>
+              <span className="key key-refused" aria-hidden="true" />
+              Refused
+            </dt>
+            <dd>
+              {shown.refused}
+              {shown.allowed + shown.refused > 0 ? (
+                <span className="muted"> {Math.round((shown.refused / (shown.allowed + shown.refused)) * 100)}%</span>
+              ) : null}
+            </dd>
+          </div>
+        </dl>
+        {shown.p50 !== null && shown.p95 !== null ? (
+          <p className="chart-tip-note">
+            Typical {shown.p50.toFixed(1)} ms · Slowest 5% {shown.p95.toFixed(1)} ms
+          </p>
+        ) : null}
+        {shown.allowed + shown.refused === 0 ? <p className="chart-tip-note">No requests</p> : null}
+      </div>
+    ) : null
   return (
     <figure className="traffic-chart">
-      <p className="chart-readout" aria-live="polite">
-        {shown ? (
-          <>
-            <TimeOfDay value={shown.at} seconds /> to <TimeOfDay value={shown.to} seconds /> · {shown.allowed} allowed · {shown.refused} refused
-          </>
-        ) : (
-          <span className="muted">Point at a bar for its values</span>
-        )}
-      </p>
-      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-labelledby={`${id}-t`} onMouseLeave={() => setActive(null)}>
-        <title id={`${id}-t`}>Requests allowed and refused over the window</title>
-        {bars.map((p, n) => {
-          const total = ((p.allowed + p.refused) / max) * (height - 4)
-          const refused = (p.refused / max) * (height - 4)
-          // A 2px surface gap separates the stacked segments.
-          const gap = p.refused > 0 && p.allowed > 0 ? 2 : 0
-          const x = n * band + (band - bar) / 2
-          return (
-            <g key={p.at} onMouseEnter={() => setActive(n)}>
-              <rect x={n * band} y={0} width={band} height={height} className={active === n ? 'chart-hover' : 'chart-hit'} />
-              <rect x={x} y={height - total} width={bar} height={Math.max(0, total - refused - gap)} rx={1.5} className="chart-allowed" />
-              <rect x={x} y={height - refused} width={bar} height={refused} rx={1.5} className="chart-refused" />
-            </g>
-          )
-        })}
-      </svg>
-      <figcaption className="chart-axis">
-        <TimeOfDay value={bars[0].at} />
-        <TimeOfDay value={bars[bars.length / 2].at} />
-        <span>now</span>
+      <figcaption className="chart-scale">
+        <span>Requests every {intervalWords(step)}</span>
+        <span className="muted">Peak {peak}</span>
       </figcaption>
+      <div
+        className="chart-plot"
+        tabIndex={0}
+        role="group"
+        aria-label="Requests allowed and refused over the window"
+        aria-describedby={`${id}-h`}
+        onMouseLeave={() => setActive(null)}
+        onBlur={() => setActive(null)}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+            event.preventDefault()
+            const from = active ?? bars.length
+            setActive(Math.min(bars.length - 1, Math.max(0, from + (event.key === 'ArrowLeft' ? -1 : 1))))
+          }
+          if (event.key === 'Escape') setActive(null)
+        }}
+      >
+        <span id={`${id}-h`} className="visually-hidden">
+          Use the left and right arrow keys to read each interval.
+        </span>
+        <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
+          <line x1={0} x2={width} y1={0.5} y2={0.5} className="chart-grid" />
+          <line x1={0} x2={width} y1={height / 2} y2={height / 2} className="chart-grid" />
+          <line x1={0} x2={width} y1={height - 0.5} y2={height - 0.5} className="chart-base" />
+          {bars.map((p, n) => {
+            const total = ((p.allowed + p.refused) / peak) * (height - 6)
+            const refused = (p.refused / peak) * (height - 6)
+            // A 2px surface gap separates the stacked segments.
+            const gap = p.refused > 0 && p.allowed > 0 ? 2 : 0
+            const x = n * band + (band - bar) / 2
+            return (
+              <g key={p.at} onMouseEnter={() => setActive(n)}>
+                <rect x={n * band} y={0} width={band} height={height} className={active === n ? 'chart-hover' : 'chart-hit'} />
+                {p.allowed > 0 ? (
+                  <rect x={x} y={height - total} width={bar} height={Math.max(1, total - refused - gap)} rx={1.5} className="chart-allowed" />
+                ) : null}
+                {p.refused > 0 ? <rect x={x} y={height - refused} width={bar} height={Math.max(1, refused)} rx={1.5} className="chart-refused" /> : null}
+              </g>
+            )
+          })}
+        </svg>
+        <LatencyStrip bars={bars} active={active} onActive={setActive} />
+        {tip}
+      </div>
+      <div className="chart-axis" aria-hidden="true">
+        {label(bars[0].at)}
+        {label(bars[bars.length / 2].at)}
+        <span>now</span>
+      </div>
       <details className="chart-table">
-        <summary>Show as a table</summary>
+        <summary>Show as a Table</summary>
         <TableScroll label="Seconds with requests">
           <table>
             <thead>
@@ -255,7 +347,7 @@ export function TrafficChart({ traffic, end }: { traffic: Traffic; end: number }
               </tr>
             </thead>
             <tbody>
-              {points.map((p) => (
+              {traffic.per_second.map((p) => (
                 <tr key={p.at}>
                   <td>
                     <TimeOfDay value={p.at} seconds />
@@ -272,20 +364,179 @@ export function TrafficChart({ traffic, end }: { traffic: Traffic; end: number }
   )
 }
 
+// LatencyStrip draws the typical (median) and slowest-5% response time of
+// each interval under the request bars, on the same time scale, so a
+// slowdown lines up with the traffic that caused it.
+function LatencyStrip(props: { bars: ReturnType<typeof intervals>['bars']; active: number | null; onActive: (n: number) => void }) {
+  const { bars } = props
+  const slowest = Math.max(0, ...bars.map((b) => b.p95 ?? 0))
+  if (slowest === 0) return null
+  const width = 600
+  const height = 56
+  const band = width / bars.length
+  const y = (ms: number) => height - 4 - (ms / slowest) * (height - 10)
+  // A line runs only through intervals with requests; a gap stays a gap.
+  const path = (pick: (b: (typeof bars)[number]) => number | null) =>
+    bars
+      .map((b, n) => {
+        const value = pick(b)
+        if (value === null) return ''
+        const previous = n > 0 ? pick(bars[n - 1]) : null
+        return `${previous === null ? 'M' : 'L'} ${(n + 0.5) * band} ${y(value)}`
+      })
+      .join(' ')
+  return (
+    <div className="latency">
+      <p className="chart-scale latency-scale">
+        <span>
+          Response Time · <span className="key key-p50" aria-hidden="true" /> Typical <span className="key key-p95" aria-hidden="true" /> Slowest 5%
+        </span>
+        <span className="muted">Peak {slowest.toFixed(1)} ms</span>
+      </p>
+      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
+        <line x1={0} x2={width} y1={height - 0.5} y2={height - 0.5} className="chart-base" />
+        {bars.map((b, n) => (
+          <rect
+            key={b.at}
+            x={n * band}
+            y={0}
+            width={band}
+            height={height}
+            className={props.active === n ? 'chart-hover' : 'chart-hit'}
+            onMouseEnter={() => props.onActive(n)}
+          />
+        ))}
+        <path d={path((b) => b.p95)} className="latency-p95" />
+        <path d={path((b) => b.p50)} className="latency-p50" />
+      </svg>
+    </div>
+  )
+}
+
+// Change states a figure against the window before, in words and an arrow,
+// so it never depends on colour alone.
+function Change({ now, before, span }: { now: number; before: number | undefined; span: string }) {
+  if (before === undefined) return null
+  const difference = now - before
+  if (difference === 0) return <span className="figure-change">Same as the previous {span}</span>
+  return (
+    <span className={`figure-change ${difference > 0 ? 'is-up' : 'is-down'}`}>
+      {difference > 0 ? '▲' : '▼'} {Math.abs(difference).toLocaleString()} vs previous {span}
+    </span>
+  )
+}
+
+function windowWords(seconds: number): string {
+  return windows.find((w) => w.seconds === seconds)?.label ?? `${seconds} s`
+}
+
+// Insights lists the busiest endpoints and who was refused most in the
+// window, each linked to where it can be inspected.
+// BusiestCard lists the endpoints with the most requests in the window: a
+// compact list for the narrow column, each endpoint's count at the end of
+// its row and its refusals and response times beneath.
+function BusiestCard({ traffic }: { traffic: Traffic }) {
+  const busiest = traffic.by_operation ?? []
+  if (traffic.total === 0) return null
+  return (
+    <section className="card card-pad" aria-labelledby="busiest-title">
+      <div className="card-head">
+        <h2 id="busiest-title">Busiest Endpoints</h2>
+        <span className="muted">Last {windowWords(traffic.window_seconds)}</span>
+      </div>
+      {busiest.length === 0 ? (
+        <p className="hint card-quiet">No request matched an endpoint in this window.</p>
+      ) : (
+        <ul className="rank-list" aria-label="Busiest Endpoints">
+          {busiest.map((o) => (
+            <li key={o.operation}>
+              <span className="rank-name">
+                <XRef view="designer" focus={{ select: `operation:${o.operation}` }}>
+                  <code>{o.operation}</code>
+                </XRef>
+                <span className="cell-sub">
+                  {o.refused.toLocaleString()} refused · typical {o.p50_ms.toFixed(1)} ms · slowest 5% {o.p95_ms.toFixed(1)} ms
+                </span>
+              </span>
+              <span className="num" title="Requests">
+                {o.total.toLocaleString()}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+// RefusalsCard says why requests were refused in the window and who was
+// refused most. With nothing refused it is one short line.
+function RefusalsCard({ traffic }: { traffic: Traffic }) {
+  const refused = traffic.top_refused ?? []
+  return (
+    <section className="card card-pad" aria-labelledby="reasons-title">
+      <div className="card-head">
+        <h2 id="reasons-title">Refusals</h2>
+        <span className="muted">Last {windowWords(traffic.window_seconds)}</span>
+      </div>
+      {traffic.refusal_reasons.length === 0 ? (
+        <p className="hint card-quiet">Nothing was refused in this window.</p>
+      ) : (
+        <>
+          <h3 className="card-sub">Reasons</h3>
+          <Reasons traffic={traffic} />
+          {refused.length ? (
+            <>
+              <h3 className="card-sub">Most Refused</h3>
+              <ul className="rank-list" aria-label="Most Refused Accounts and Addresses">
+                {refused.map((r) => (
+                  <li key={`${r.kind} ${r.id}`}>
+                    <span className="rank-name">
+                      {r.kind === 'account' ? (
+                        <AccountLink account={r.id}>
+                          <code>{r.id}</code>
+                        </AccountLink>
+                      ) : (
+                        <code>{r.id}</code>
+                      )}
+                      <span className="cell-sub">
+                        {r.kind === 'account' ? 'Account' : 'Client address'} · <span title={r.latest_code}>{reasonOf(r.latest_code || null)}</span>
+                      </span>
+                    </span>
+                    <span className="num">{r.refused.toLocaleString()}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+        </>
+      )}
+    </section>
+  )
+}
+
 function Figures({ traffic }: { traffic: Traffic }) {
   const share = traffic.total ? ((traffic.refused / traffic.total) * 100).toFixed(1) : '0.0'
+  const before = traffic.previous ?? undefined
+  const span = windowWords(traffic.window_seconds)
   return (
     <dl className="figures">
       <div>
         <dt>Requests</dt>
-        <dd>{traffic.total.toLocaleString()}</dd>
+        <dd>
+          {traffic.total.toLocaleString()}
+          <Change now={traffic.total} before={before?.total} span={span} />
+        </dd>
       </div>
       <div>
         <dt>
           <span className="key key-allowed" aria-hidden="true" />
           Allowed
         </dt>
-        <dd>{traffic.allowed.toLocaleString()}</dd>
+        <dd>
+          {traffic.allowed.toLocaleString()}
+          <Change now={traffic.allowed} before={before?.allowed} span={span} />
+        </dd>
       </div>
       <div>
         <dt>
@@ -294,6 +545,7 @@ function Figures({ traffic }: { traffic: Traffic }) {
         </dt>
         <dd>
           {traffic.refused.toLocaleString()} <span className="figure-share">{share}%</span>
+          <Change now={traffic.refused} before={before?.refused} span={span} />
         </dd>
       </div>
     </dl>
@@ -302,7 +554,6 @@ function Figures({ traffic }: { traffic: Traffic }) {
 
 function Reasons({ traffic }: { traffic: Traffic }) {
   const top = Math.max(1, ...traffic.refusal_reasons.map((r) => r.count))
-  if (traffic.refusal_reasons.length === 0) return <p className="hint">Nothing was refused in this window.</p>
   return (
     <ul className="reasons">
       {traffic.refusal_reasons.map((r) => (
@@ -329,7 +580,7 @@ const windows = [
 
 function WindowSwitch({ value, onChange }: { value: number; onChange: (seconds: number) => void }) {
   return (
-    <div className="segmented" role="group" aria-label="Time window">
+    <div className="segmented" role="group" aria-label="Time Window">
       {windows.map((w) => (
         <button key={w.seconds} type="button" aria-pressed={value === w.seconds} onClick={() => onChange(w.seconds)}>
           {w.label}
@@ -348,32 +599,53 @@ function windowEnd(resource: Resource<Traffic>): number {
 
 // TrafficCards shows the last traffic reading that arrived. When a later
 // reading failed it says how old the figures are, so they are never taken
-// for current ones.
-function TrafficCards({ resource, span, onSpan }: { resource: Resource<Traffic>; span: number; onSpan: (seconds: number) => void }) {
-  if (!resource.last) return null
-  const traffic = resource.last.body
-  const end = windowEnd(resource)
+// for current ones. The page is two columns that stack their cards
+// independently: the traffic chart in the wide one, the refusals and the
+// busiest endpoints in the narrow one, and any further cards a view adds to
+// each, so the two columns end close together. On Live Traffic the stream
+// fills the wide column and the narrow one stays in view beside it.
+function TrafficCards(props: {
+  resource: Resource<Traffic>
+  span: number
+  onSpan: (seconds: number) => void
+  main?: ReactNode
+  side?: ReactNode
+  stickySide?: boolean
+}) {
+  const { resource, span, onSpan } = props
+  const reading = resource.last
+  const traffic = reading?.body
   return (
-    <div className="section grid-main-side">
-      <section className="card card-pad" aria-labelledby="traffic-title">
-        <div className="card-head">
-          <h2 id="traffic-title">Traffic</h2>
-          <WindowSwitch value={span} onChange={onSpan} />
-        </div>
-        {resource.failed ? (
-          <p className="notice tone-pending card-notice">
-            Not current: these figures were read at <TimeOfDay value={resource.last.at.toISOString()} seconds /> and the latest read failed.
-          </p>
+    <div className="section grid-main-side grid-top">
+      <div className="card-stack">
+        {reading && traffic ? (
+          <>
+            <section className="card card-pad" aria-labelledby="traffic-title">
+              <div className="card-head">
+                <h2 id="traffic-title">Traffic</h2>
+                <WindowSwitch value={span} onChange={onSpan} />
+              </div>
+              {resource.failed ? (
+                <p className="notice tone-pending card-notice">
+                  Not current: these figures were read at <TimeOfDay value={reading.at.toISOString()} seconds /> and the latest read failed.
+                </p>
+              ) : null}
+              <Figures traffic={traffic} />
+              <TrafficChart traffic={traffic} end={windowEnd(resource)} />
+            </section>
+          </>
         ) : null}
-        <Figures traffic={traffic} />
-        <TrafficChart traffic={traffic} end={end} />
-      </section>
-      <section className="card card-pad" aria-labelledby="reasons-title">
-        <div className="card-head">
-          <h2 id="reasons-title">Why requests were refused</h2>
-        </div>
-        <Reasons traffic={traffic} />
-      </section>
+        {props.main}
+      </div>
+      <div className={props.stickySide ? 'card-stack card-stack-sticky' : 'card-stack'}>
+        {traffic ? (
+          <>
+            <RefusalsCard traffic={traffic} />
+            <BusiestCard traffic={traffic} />
+          </>
+        ) : null}
+        {props.side}
+      </div>
     </div>
   )
 }
@@ -387,8 +659,8 @@ function EventRows({ events, open, label }: { events: RequestEvent[]; open: (ref
             <th scope="col">Time</th>
             <th scope="col">Request</th>
             <th scope="col">Account</th>
-            <th scope="col">What happened</th>
-            <th scope="col">Decided at</th>
+            <th scope="col">Result</th>
+            <th scope="col">Checks</th>
             <th scope="col" className="end">
               Ref
             </th>
@@ -401,12 +673,26 @@ function EventRows({ events, open, label }: { events: RequestEvent[]; open: (ref
                 <TimeOfDay value={e.time} seconds />
               </td>
               <td className="nowrap">
-                <code>
-                  <span className="method">{e.method}</span> {e.path}
-                </code>
+                {e.operation ? (
+                  <XRef view="designer" focus={{ select: `operation:${e.operation}` }}>
+                    <code>
+                      <span className="method">{e.method}</span> {e.path}
+                    </code>
+                  </XRef>
+                ) : (
+                  <code>
+                    <span className="method">{e.method}</span> {e.path}
+                  </code>
+                )}
               </td>
               <td className="nowrap">
-                <code className="soft">{e.subject ?? e.client_address}</code>
+                {e.subject ? (
+                  <AccountLink account={e.subject}>
+                    <code className="soft">{e.subject}</code>
+                  </AccountLink>
+                ) : (
+                  <code className="soft">{e.client_address}</code>
+                )}
               </td>
               <td>
                 {e.decision === 'allowed' ? (
@@ -422,7 +708,7 @@ function EventRows({ events, open, label }: { events: RequestEvent[]; open: (ref
                 <DecisionPath event={e} />
               </td>
               <td className="nowrap end">
-                <button type="button" className="link-button" onClick={() => open(e.request_id)} title="Open in Request lookup">
+                <button type="button" className="link-button" onClick={() => open(e.request_id)} title="Open in Request Lookup">
                   <code>{e.request_id.slice(0, 8)}</code>
                   <span className="visually-hidden"> (open request {e.request_id})</span>
                 </button>
@@ -452,39 +738,49 @@ export function OverviewLive({ admin, history }: { admin: Admin; history: boolea
       traffic.refresh()
       refusals.refresh()
     },
-    10_000,
+    liveMs,
     state.critical,
   )
   const t = traffic.last?.body
+  // Recent refusals show only when there are some: the Refusals card already
+  // says when nothing was refused.
+  const recent = refusals.reply?.kind === 'ok' ? refusals.reply.body.items : undefined
   return (
     <>
       {traffic.reply && traffic.reply.kind !== 'ok' ? <Problem reply={traffic.reply} /> : null}
-      <TrafficCards resource={traffic} span={span} onSpan={setSpan} />
-      <section className="section card" aria-labelledby="refusals-title">
-        <div className="card-head card-head-pad">
-          <h2 id="refusals-title">Recent refusals</h2>
-          <a className="card-link" href="#/traffic">
-            Open live traffic
-          </a>
-        </div>
-        <div className="card-body">
-          <ReplyView reply={refusals.reply}>
-            {(r) => (r.items.length ? <EventRows events={r.items} open={lookupRef} label="Recent refusals" /> : <p className="hint card-empty">Nothing refused recently.</p>)}
-          </ReplyView>
-        </div>
-      </section>
-      <div className={history ? 'section grid-main-side grid-top' : 'section'}>
-        <section className="card" aria-labelledby="apis-title">
-          <div className="card-head card-head-pad">
-            <h2 id="apis-title">APIs</h2>
-            <a className="card-link" href="#/apis">
-              Open APIs
-            </a>
-          </div>
-          <div className="card-body">{t ? <ApiFigures traffic={t} /> : <p className="hint card-empty">No traffic figures.</p>}</div>
-        </section>
-        {history ? <PolicyTimeline admin={admin} /> : null}
-      </div>
+      {refusals.reply && refusals.reply.kind !== 'ok' ? <Problem reply={refusals.reply} /> : null}
+      <TrafficCards
+        resource={traffic}
+        span={span}
+        onSpan={setSpan}
+        main={
+          <>
+            {recent?.length ? (
+              <section className="card" aria-labelledby="refusals-title">
+                <div className="card-head card-head-pad">
+                  <h2 id="refusals-title">Recent Refusals</h2>
+                  <a className="card-link" href="#/traffic">
+                    Open Live Traffic
+                  </a>
+                </div>
+                <div className="card-body">
+                  <EventRows events={recent} open={lookupRef} label="Recent Refusals" />
+                </div>
+              </section>
+            ) : null}
+            <section className="card" aria-labelledby="apis-title">
+              <div className="card-head card-head-pad">
+                <h2 id="apis-title">APIs</h2>
+                <a className="card-link" href="#/apis">
+                  Open APIs
+                </a>
+              </div>
+              <div className="card-body">{t ? <ApiFigures traffic={t} /> : <p className="hint card-empty">No traffic figures.</p>}</div>
+            </section>
+          </>
+        }
+        side={history ? <PolicyTimeline admin={admin} /> : null}
+      />
     </>
   )
 }
@@ -504,7 +800,7 @@ function ApiFigures({ traffic }: { traffic: Traffic }) {
               Refused
             </th>
             <th scope="col" className="num end">
-              Typical time
+              Typical Time
             </th>
             <th scope="col" className="num end">
               Slowest 5%
@@ -548,12 +844,12 @@ function apiName(id: string): string {
 // A revision is named by its number and an account by its ID. An undo
 // records the revision it restores, so its words say that one is back.
 const timelineKinds: Record<string, { name: string; word: string; tone: Tone }> = {
-  genesis: { name: 'revision', word: 'First policy', tone: 'ok' },
-  recovery_base: { name: 'revision', word: 'Starting policy after a restore', tone: 'pending' },
-  'cpa.activate': { name: 'revision', word: 'Put on trial', tone: 'pending' },
+  genesis: { name: 'revision', word: 'First Policy', tone: 'ok' },
+  recovery_base: { name: 'revision', word: 'Starting Policy After a Restore', tone: 'pending' },
+  'cpa.activate': { name: 'revision', word: 'Put on Trial', tone: 'pending' },
   'cpa.confirm': { name: 'revision', word: 'Kept', tone: 'ok' },
-  'cpa.rollback': { name: 'revision', word: 'Back in force after an undo', tone: 'neutral' },
-  'cpa.timeout': { name: 'revision', word: 'Back in force at the deadline', tone: 'neutral' },
+  'cpa.rollback': { name: 'revision', word: 'Active Again After an Undo', tone: 'neutral' },
+  'cpa.timeout': { name: 'revision', word: 'Active Again at the Deadline', tone: 'neutral' },
   'tpo.create': { name: 'Temporary rule', word: 'Added', tone: 'pending' },
   'tpo.revoke': { name: 'Temporary rule', word: 'Revoked', tone: 'neutral' },
   'tpo.expire': { name: 'Temporary rule', word: 'Ended', tone: 'neutral' },
@@ -587,9 +883,9 @@ function PolicyTimeline({ admin }: { admin: Admin }) {
   return (
     <section className="card card-pad" aria-labelledby="timeline-title">
       <div className="card-head">
-        <h2 id="timeline-title">Policy timeline</h2>
+        <h2 id="timeline-title">Policy Timeline</h2>
         <a className="card-link" href="#/history">
-          Full history
+          Full History
         </a>
       </div>
       <ReplyView reply={history.reply}>
@@ -635,7 +931,7 @@ export function LiveTraffic({ admin }: ViewProps) {
   const state = useGatewayState()
   const [span, setSpan] = useState(60)
   const traffic = useResource<Traffic>((signal) => admin.get(`/admin/traffic?window=${span}`, signal), [span])
-  usePoll(traffic.refresh, 5_000, state.critical)
+  usePoll(traffic.refresh, liveMs, state.critical)
   const [events, setEvents] = useState<RequestEvent[]>([])
   const [paused, setPaused] = useState(false)
   const [held, setHeld] = useState(0)
@@ -687,75 +983,82 @@ export function LiveTraffic({ admin }: ViewProps) {
   const shown = matching.slice(0, shownEvents)
   return (
     <>
-      <PageHeader title="Live traffic" lede="Every request the gateway decides, as it happens, with the check that decided it. Pausing only stops this list; the gateway records every request." />
+      <PageHeader title="Live Traffic" lede="Every request the gateway decides, in real time, with the check that decided it." />
       {traffic.reply && traffic.reply.kind !== 'ok' ? <Problem reply={traffic.reply} /> : null}
       {recent.reply && recent.reply.kind !== 'ok' ? <Problem reply={recent.reply} /> : null}
-      <TrafficCards resource={traffic} span={span} onSpan={setSpan} />
-      <section className="section card" aria-labelledby="stream-title">
-        <div className="card-head card-head-pad">
-          <h2 id="stream-title">
-            Requests as they happen{' '}
-            <span className={`live-state live-${stream}`} role="status">
-              {stream === 'live' ? (paused ? 'Paused' : 'Live') : stream === 'closed' ? 'Stream closed' : 'Connecting…'}
-            </span>
-          </h2>
-          <div className="card-tools">
-            <div className="segmented" role="group" aria-label="Show">
-              <button type="button" aria-pressed={only === 'all'} onClick={() => setOnly('all')}>
-                All
-              </button>
-              <button type="button" aria-pressed={only === 'changes'} onClick={() => setOnly('changes')} title="Requests that may change something; reads are hidden">
-                Changes only
-              </button>
-              <button type="button" aria-pressed={only === 'refused'} onClick={() => setOnly('refused')}>
-                Refused only
-              </button>
+      <TrafficCards
+        resource={traffic}
+        span={span}
+        onSpan={setSpan}
+        stickySide
+        main={
+          <section className="card" aria-labelledby="stream-title">
+            <div className="card-head card-head-pad">
+              <h2 id="stream-title">
+                Request Stream{' '}
+                <span className={`live-state live-${stream}`} role="status">
+                  {stream === 'live' ? (paused ? 'Paused' : 'Live') : stream === 'closed' ? 'Stream Closed' : 'Connecting…'}
+                </span>
+              </h2>
+              <div className="card-tools">
+                <div className="segmented" role="group" aria-label="Show">
+                  <button type="button" aria-pressed={only === 'all'} onClick={() => setOnly('all')}>
+                    All
+                  </button>
+                  <button type="button" aria-pressed={only === 'changes'} onClick={() => setOnly('changes')} title="Write requests only; reads are hidden">
+                    Changes Only
+                  </button>
+                  <button type="button" aria-pressed={only === 'refused'} onClick={() => setOnly('refused')}>
+                    Refused Only
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-small"
+                  aria-pressed={paused}
+                  onClick={() => {
+                    if (paused) {
+                      const arrived = waiting.current
+                      waiting.current = []
+                      setEvents((list) => [...arrived, ...list].slice(0, keptEvents))
+                    }
+                    setPaused(!paused)
+                    setHeld(0)
+                  }}
+                >
+                  {paused ? `Resume${held ? ` (${held} new)` : ''}` : 'Pause'}
+                </button>
+              </div>
             </div>
-            <button
-              type="button"
-              className="btn btn-small"
-              aria-pressed={paused}
-              onClick={() => {
-                if (paused) {
-                  const arrived = waiting.current
-                  waiting.current = []
-                  setEvents((list) => [...arrived, ...list].slice(0, keptEvents))
-                }
-                setPaused(!paused)
-                setHeld(0)
-              }}
-            >
-              {paused ? `Resume${held ? ` (${held} new)` : ''}` : 'Pause'}
-            </button>
-          </div>
-        </div>
-        {reconnected ? (
-          <p className="notice tone-pending card-notice">The stream reconnected; events may have been missed. Request lookup can search the gateway's recent events.</p>
-        ) : null}
-        {dropped > 0 ? (
-          <p className="notice tone-pending card-notice">This view fell behind and missed {dropped} events. The gateway's security log still has every request.</p>
-        ) : null}
-        <div className="card-body">
-          {shown.length ? (
-            <>
-              <EventRows events={shown} open={lookupRef} label="Requests as they happen" />
-              {matching.length > shown.length ? (
+            {reconnected ? (
+              <p className="notice tone-pending card-notice">Stream reconnected. Events may have been missed; use Request lookup to search recent requests.</p>
+            ) : null}
+            {dropped > 0 ? (
+              <p className="notice tone-pending card-notice">This view fell behind and skipped {dropped} events. The security log has every request.</p>
+            ) : null}
+            <div className="card-body">
+              {shown.length ? (
+                <>
+                  <EventRows events={shown} open={lookupRef} label="Request Stream" />
+                  {matching.length > shown.length ? (
+                    <p className="hint card-empty">
+                      Showing the newest {shown.length} of {matching.length.toLocaleString()}. Request lookup finds any request by its Ref.
+                    </p>
+                  ) : null}
+                </>
+              ) : (
                 <p className="hint card-empty">
-                  Showing the newest {shown.length} of {matching.length.toLocaleString()}. Request lookup finds any request by its Ref.
+                  {stream === 'closed'
+                    ? 'Stream closed. Reload the page to reconnect.'
+                    : all.length
+                      ? 'No matching requests yet.'
+                      : 'Waiting for requests.'}
                 </p>
-              ) : null}
-            </>
-          ) : (
-            <p className="hint card-empty">
-              {stream === 'closed'
-                ? 'The stream closed. Reload the page to reconnect.'
-                : all.length
-                  ? 'No request of this kind yet.'
-                  : 'Waiting for requests. Use the Fetch app and they appear here within a second.'}
-            </p>
-          )}
-        </div>
-      </section>
+              )}
+            </div>
+          </section>
+        }
+      />
     </>
   )
 }
@@ -798,11 +1101,11 @@ export function RequestLookup({ admin }: ViewProps) {
   return (
     <>
       <PageHeader
-        title="Request lookup"
+        title="Request Lookup"
         search={false}
-        lede="Find a request by the reference (Ref) a person quotes from an error, then see exactly which check decided it. The lookup covers the gateway's most recent 10,000 requests."
+        lede="Find a request by Ref, account or endpoint and see each check it passed or failed."
       />
-      <form className="section card card-pad lookup-form" onSubmit={search} role="search" aria-label="Find requests">
+      <form className="section card card-pad lookup-form" onSubmit={search} role="search" aria-label="Find Requests">
         <Field id={`${id}-ref`} label="Reference (Ref)">
           <input id={`${id}-ref`} className="input mono" value={form.ref} onChange={(e) => setForm({ ...form, ref: e.target.value })} spellCheck={false} autoComplete="off" />
         </Field>
@@ -828,7 +1131,7 @@ export function RequestLookup({ admin }: ViewProps) {
         </Field>
         <div className="lookup-submit">
           <button type="submit" className="btn btn-primary">
-            Find requests
+            Find Requests
           </button>
         </div>
       </form>
@@ -836,9 +1139,8 @@ export function RequestLookup({ admin }: ViewProps) {
       {query && results.reply?.kind === 'ok' && items.length === 0 ? (
         <Empty title="No request matches.">
           <p className="hint">
-            The lookup searches only the most recent 10,000 requests the gateway has kept in memory since it last started, so no match does
-            not prove a request never arrived. Older requests, and those before a restart, are only in the security log on the gateway host.
-            Check the Ref for typing mistakes: it is 32 letters and digits.
+            Only the latest 10,000 requests since the gateway started are searched. Older requests are in the security log on the gateway host.
+            A full Ref is 32 letters and digits.
           </p>
         </Empty>
       ) : null}
@@ -861,7 +1163,7 @@ export function RequestLookup({ admin }: ViewProps) {
             <span className="muted">Newest first. Choose a Ref to see its decision.</span>
           </div>
           <div className="card-body">
-            <EventRows events={items} open={setSelected} label="Matching requests" />
+            <EventRows events={items} open={setSelected} label="Matching Requests" />
           </div>
         </section>
       ) : null}
@@ -876,12 +1178,12 @@ function RecentRefusals({ admin, pick }: { admin: Admin; pick: (ref: string) => 
   return (
     <section className="section card" aria-labelledby="recent-title">
       <div className="card-head card-head-pad">
-        <h2 id="recent-title">Latest refusals</h2>
+        <h2 id="recent-title">Latest Refusals</h2>
         <span className="muted">A Ref from an error message finds exactly one request.</span>
       </div>
       <div className="card-body">
         <ReplyView reply={recent.reply}>
-          {(r) => (r.items.length ? <EventRows events={r.items} open={pick} label="Latest refusals" /> : <p className="hint card-empty">Nothing refused recently.</p>)}
+          {(r) => (r.items.length ? <EventRows events={r.items} open={pick} label="Latest Refusals" /> : <p className="hint card-empty">Nothing refused recently.</p>)}
         </ReplyView>
       </div>
     </section>
@@ -907,7 +1209,7 @@ function EventDetail({ event }: { event: RequestEvent }) {
         ))}
       </ol>
       {beforeRouting(event) ? (
-        <p className="hint">The gateway decided this before matching it to an endpoint, so no check ahead of this one ran.</p>
+        <p className="hint">Decided before endpoint matching; earlier checks did not run.</p>
       ) : null}
       <dl className="facts">
         <div className="fact">
@@ -932,7 +1234,15 @@ function EventDetail({ event }: { event: RequestEvent }) {
         </div>
         <div className="fact">
           <dt>Endpoint</dt>
-          <dd>{event.operation ? <code>{event.operation}</code> : 'none matched'}</dd>
+          <dd>
+            {event.operation ? (
+              <XRef view="designer" focus={{ select: `operation:${event.operation}` }}>
+                <code>{event.operation}</code>
+              </XRef>
+            ) : (
+              'none matched'
+            )}
+          </dd>
         </div>
         <div className="fact">
           <dt>Account</dt>
@@ -942,7 +1252,7 @@ function EventDetail({ event }: { event: RequestEvent }) {
           </dd>
         </div>
         <div className="fact">
-          <dt>Client address</dt>
+          <dt>Client Address</dt>
           <dd>
             <code>{event.client_address}</code>
           </dd>
@@ -958,33 +1268,53 @@ function EventDetail({ event }: { event: RequestEvent }) {
           </dd>
         </div>
         <div className="fact">
-          <dt>Policy in force (generation)</dt>
+          <dt>Active Policy (Generation)</dt>
           <dd>
             <code>{event.generation}</code>
           </dd>
         </div>
       </dl>
-      <p className="hint">Security events never contain tokens, passwords or request bodies.</p>
+      <p className="hint">Tokens, passwords and request bodies are never logged.</p>
     </section>
   )
 }
 
 // ApisView shows one block per API: its operations, who may call them, their
 // limits and how the API is answering now.
+// limitShort states a rate limit briefly, such as "120/min". The counting key
+// is said once above the table; a limit that counts the other way says so.
+function limitShort(o: Policy['operations'][number]): string {
+  if (!o.rate) return 'None'
+  const seconds = o.rate.window_seconds
+  const span = seconds === 1 ? 's' : seconds === 60 ? 'min' : seconds === 3600 ? 'h' : `${seconds} s`
+  const usual = o.auth === 'none' ? 'client_address' : 'subject'
+  const unusual = o.rate.key !== usual ? (o.rate.key === 'client_address' ? ' per address' : ' per account') : ''
+  return `${o.rate.count}/${span}${unusual}`
+}
+
+function bytesShort(bytes: number): string {
+  return bytes >= 1024 ? `${(bytes / 1024).toLocaleString(undefined, { maximumFractionDigits: 1 })} KB` : `${bytes} B`
+}
+
 export function ApisView({ admin, can }: ViewProps) {
   const state = useGatewayState()
   const [query, setQuery] = useState('')
   const policy = useResource<Revision>((signal) => admin.get('/admin/policy', signal), [])
   const traffic = useResource<Traffic>((signal) => admin.get('/admin/traffic?window=300', signal), [])
-  usePoll(traffic.refresh, 10_000, state.critical)
+  usePoll(traffic.refresh, liveMs, state.critical)
   // The last figures read stay shown when a refresh fails; the problem
   // notice above says the latest read failed.
   const health = traffic.last?.body.by_api ?? []
+  // A link from another page names one API or one endpoint: it is brought
+  // into view and highlighted.
+  const linkedApi = useFocus('api')
+  const linkedOperation = useFocus('operation')
+  useTarget(policy.reply?.kind === 'ok', linkedOperation ?? linkedApi)
   return (
     <>
       <PageHeader
         title="APIs"
-        lede="Each API behind the gateway: its endpoints, who may call them, their limits, and its traffic in the last 5 minutes."
+        lede="Each protected API with its endpoints, who may call them, limits and traffic."
       >
         <ReadStamp
           okAt={policy.last?.at ?? null} failed={policy.failed}
@@ -999,7 +1329,7 @@ export function ApisView({ admin, can }: ViewProps) {
       <ReplyView reply={policy.reply}>
         {(revision) => {
           const doc = revision.document as Policy | undefined
-          if (!doc) return <Empty title="No policy is in force yet." />
+          if (!doc) return <Empty title="No policy is active yet." />
           const found = (o: (typeof doc.operations)[number]) =>
             matches(
               query,
@@ -1022,7 +1352,7 @@ export function ApisView({ admin, can }: ViewProps) {
               >
                 {can('manage_policy') ? (
                   <a className="btn btn-primary" href="#/designer">
-                    Change endpoints in the designer
+                    Change Endpoints in the Designer
                   </a>
                 ) : null}
               </ListToolbar>
@@ -1034,12 +1364,18 @@ export function ApisView({ admin, can }: ViewProps) {
                 const h = health.find((x) => x.api === api.id)
                 const upstream = doc.upstreams.find((u) => u.id === api.upstream)
                 return (
-                  <section key={api.id} className="section card" aria-labelledby={`api-${api.id}`}>
+                  <section
+                    key={api.id}
+                    className="section card"
+                    aria-labelledby={`api-${api.id}`}
+                    data-target={!linkedOperation && linkedApi === api.id ? 'true' : undefined}
+                  >
                     <div className="card-head card-head-pad api-head">
                       <div>
                         <h2 id={`api-${api.id}`}>{apiName(api.id)}</h2>
                         <p className="hint">
-                          {all.length} endpoints · service address <code>{upstream?.dial ?? api.upstream}</code>
+                          {all.length} endpoints · service address <code>{upstream?.dial ?? api.upstream}</code> · limits count per client
+                          address for public endpoints, per account otherwise
                         </p>
                       </div>
                       {h ? (
@@ -1071,8 +1407,7 @@ export function ApisView({ admin, can }: ViewProps) {
                           <thead>
                             <tr>
                               <th scope="col">Endpoint</th>
-                              <th scope="col">Request</th>
-                              <th scope="col">Who may call it</th>
+                              <th scope="col">Who May Call</th>
                               <th scope="col">Limit</th>
                               <th scope="col">Body</th>
                             </tr>
@@ -1081,34 +1416,38 @@ export function ApisView({ admin, can }: ViewProps) {
                             {ops.map((o) => {
                               const roles = doc.permits.filter((p) => p.operation === o.id).map((p) => p.role)
                               return (
-                                <tr key={o.id}>
+                                <tr key={o.id} data-target={linkedOperation === o.id ? 'true' : undefined}>
                                   <td>
-                                    <code>{o.id}</code>
-                                  </td>
-                                  <td className="nowrap">
-                                    <code>
+                                    <code className="ops-route">
                                       <span className="method">{o.method}</span> {o.target}
                                     </code>
+                                    <span className="cell-sub">
+                                      <XRef view="designer" focus={{ select: `operation:${o.id}` }}>
+                                        <code>{o.id}</code>
+                                      </XRef>
+                                    </span>
                                   </td>
                                   <td>
                                     {o.access !== 'allow' ? (
                                       <Badge tone="refused">Closed</Badge>
                                     ) : o.auth !== 'required' ? (
-                                      'Anyone'
+                                      <span className="chip">Public</span>
                                     ) : roles.length ? (
-                                      roles.join(', ')
+                                      <span className="chips">
+                                        {roles.map((role) => (
+                                          <XRef key={role} view="policy" focus={{ role }}>
+                                            <span className="chip">{role}</span>
+                                          </XRef>
+                                        ))}
+                                      </span>
                                     ) : (
-                                      <span className="muted">No role yet</span>
+                                      <span className="muted">No Role Yet</span>
                                     )}
                                   </td>
+                                  <td className="nowrap">{limitShort(o)}</td>
                                   <td className="nowrap">
-                                    {o.rate ? (
-                                      `${o.rate.count} per ${o.rate.window_seconds} s, ${o.rate.key === 'client_address' ? 'per address' : 'per account'}`
-                                    ) : (
-                                      <span className="muted">None</span>
-                                    )}
+                                    {o.body ? `JSON ≤ ${bytesShort(o.body.max_bytes)}` : <span className="muted">None</span>}
                                   </td>
-                                  <td className="nowrap">{o.body ? `JSON, up to ${o.body.max_bytes.toLocaleString()} bytes` : <span className="muted">None</span>}</td>
                                 </tr>
                               )
                             })}
@@ -1117,7 +1456,7 @@ export function ApisView({ admin, can }: ViewProps) {
                       </TableScroll>
                       {ops.some((o) => o.body || o.headers) ? (
                         <details className="api-rules">
-                          <summary>Request rules</summary>
+                          <summary>Request Rules</summary>
                           {ops
                             .filter((o) => o.body || o.headers)
                             .map((o) => (
@@ -1125,8 +1464,8 @@ export function ApisView({ admin, can }: ViewProps) {
                                 <RequestRules operation={o} />
                                 <MoreDetails
                                   facts={[
-                                    ['Body schema (JSON)', o.body ? JSON.stringify(o.body.schema) : undefined],
-                                    ['Header schema (JSON)', o.headers ? JSON.stringify(o.headers) : undefined],
+                                    ['Body Schema (JSON)', o.body ? JSON.stringify(o.body.schema) : undefined],
+                                    ['Header Schema (JSON)', o.headers ? JSON.stringify(o.headers) : undefined],
                                   ]}
                                 />
                               </div>
@@ -1153,6 +1492,7 @@ export function AccountsView({ admin, can }: ViewProps) {
   const id = useId()
   const list = useResource<{ items: BlockedAccount[] }>((signal) => admin.get('/admin/blocked-accounts', signal), [])
   const [query, setQuery] = useState('')
+  const [show, setShow] = useState<'all' | 'blocked' | 'seen'>('all')
   const recent = useResource<Page<RequestEvent>>((signal) => admin.get('/admin/events?limit=100', signal), [])
   const refresh = () => {
     list.refresh()
@@ -1160,164 +1500,109 @@ export function AccountsView({ admin, can }: ViewProps) {
   }
   const block = useMutation<BlockedAccount>(admin, list.refresh)
   const unblock = useMutation<{ subject: string; unblocked: boolean }>(admin, list.refresh)
+  const [blocking, setBlocking] = useState(false)
   const [subject, setSubject] = useState('')
   const [reason, setReason] = useState('')
   const [confirming, setConfirming] = useState<string | null>(null)
-  const subjectInput = useRef<HTMLInputElement>(null)
   const manage = can('manage_subjects')
-  const blocked = new Set(list.reply?.kind === 'ok' ? list.reply.body.items.map((b) => b.subject) : [])
-  const submit = (event: FormEvent) => {
-    event.preventDefault()
+  const blockedList = list.reply?.kind === 'ok' ? list.reply.body.items : []
+  const blocked = new Map(blockedList.map((b) => [b.subject, b]))
+  const openBlock = (account = '') => {
+    setSubject(account)
+    setReason('')
+    setBlocking(true)
+  }
+  const submit = () => {
     if (!subject.trim() || !reason.trim()) return
+    setBlocking(false)
     void block.run({ method: 'PUT', path: `/admin/blocked-accounts/${encodeURIComponent(subject.trim())}`, body: { reason: reason.trim() }, key: newKey() })
   }
 
-  // The accounts seen in the latest events, newest first, with the roles
-  // their last request carried and how it was decided.
+  // Every account the gateway knows about in one list: the blocked ones
+  // first, newest block first, then the accounts seen in the latest
+  // requests, newest first, with the roles and outcome of their last request.
   const seen = new Map<string, RequestEvent>()
   if (recent.reply?.kind === 'ok') for (const e of recent.reply.body.items) if (e.subject && !seen.has(e.subject)) seen.set(e.subject, e)
+  const accounts = [
+    ...[...blockedList].sort((a, b) => b.blocked_at.localeCompare(a.blocked_at)).map((b) => b.subject),
+    ...[...seen.keys()].filter((account) => !blocked.has(account)),
+  ]
+  const counts = { all: accounts.length, blocked: blocked.size, seen: seen.size }
+  const shown = accounts.filter((account) => {
+    if (show === 'blocked' && !blocked.has(account)) return false
+    if (show === 'seen' && !seen.has(account)) return false
+    const b = blocked.get(account)
+    const e = seen.get(account)
+    return matches(query, account, b?.reason, b?.blocked_by, ...(e?.roles ?? []), e ? `${e.method} ${e.path}` : undefined)
+  })
+  const filters: ['all' | 'blocked' | 'seen', string][] = [
+    ['all', 'All'],
+    ['blocked', 'Blocked'],
+    ['seen', 'Recently Seen'],
+  ]
 
   return (
     <>
-      <PageHeader
-        title="Accounts"
-        lede="Block an account instantly: its requests are refused from the next one, whatever roles its token carries. A block is not a policy change, so it never goes on trial and no rollback undoes it."
-      >
+      <PageHeader title="Accounts" lede="Block or unblock accounts; a block applies at every endpoint at once.">
         <ReadStamp okAt={list.last?.at ?? null} failed={list.failed} loading={list.loading} onRefresh={refresh} />
-      </PageHeader>
-      <div className="section grid-main-side grid-top">
-        <section className="card" aria-labelledby={`${id}-list`}>
-          <div className="card-head card-head-pad">
-            <h2 id={`${id}-list`}>Blocked accounts</h2>
-          </div>
-          <div className="card-body">
-            <ReplyView reply={list.reply}>
-              {(l) => {
-                const shown = l.items.filter((b) => matches(query, b.subject, b.reason, b.blocked_by))
-                return (
-                  <>
-                    <ListToolbar
-                      label="Filter blocked accounts"
-                      query={query}
-                      onQuery={setQuery}
-                      shown={shown.length}
-                      total={l.items.length}
-                      noun={['blocked account', 'blocked accounts']}
-                    >
-                      {manage ? (
-                        <button type="button" className="btn btn-primary" onClick={() => subjectInput.current?.focus()}>
-                          Block an account
-                        </button>
-                      ) : null}
-                    </ListToolbar>
-                    {l.items.length === 0 ? (
-                      <p className="hint card-empty">No account is blocked.</p>
-                    ) : shown.length === 0 ? (
-                      <p className="hint card-empty">No blocked account matches the filter.</p>
-                    ) : (
-                      <TableScroll label="Table of blocked accounts">
-                        <table>
-                          <thead>
-                            <tr>
-                              <th scope="col">Account</th>
-                              <th scope="col">Reason</th>
-                              <th scope="col">Blocked</th>
-                              {manage ? (
-                                <th scope="col">
-                                  <span className="visually-hidden">Actions</span>
-                                </th>
-                              ) : null}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {shown.map((b) => (
-                              <tr key={b.subject}>
-                                <td>
-                                  <code>{b.subject}</code>
-                                </td>
-                                <td>{b.reason}</td>
-                                <td className="nowrap">
-                                  <TimeOfDay value={b.blocked_at} /> <span className="muted">by {b.blocked_by}</span>
-                                </td>
-                                {manage ? (
-                                  <td className="row-actions">
-                                    <button
-                                      type="button"
-                                      className="btn btn-small"
-                                      onClick={() => setConfirming(b.subject)}
-                                      disabled={unblock.pending}
-                                    >
-                                      Unblock
-                                      <span className="visually-hidden"> {b.subject}</span>
-                                    </button>
-                                  </td>
-                                ) : null}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </TableScroll>
-                    )}
-                  </>
-                )
-              }}
-            </ReplyView>
-            <MutationResult
-              mutation={unblock}
-              onRefresh={list.refresh}
-              success={(u) => (
-                <>
-                  <p className="notice-title">
-                    <code>{u.subject}</code> is unblocked and can use Fetch again
-                  </p>
-                  <p>Unblocking grants nothing by itself: the account can do only what its token's roles and the policy allow.</p>
-                </>
-              )}
-            />
-          </div>
-        </section>
         {manage ? (
-          <form className="card card-pad block-form" onSubmit={submit} aria-labelledby={`${id}-title`}>
-            <h2 id={`${id}-title`}>Block an account</h2>
-            <Field id={`${id}-subject`} label="Account ID" hint="As shown in requests, for example cust-002.">
-              <input
-                ref={subjectInput}
-                id={`${id}-subject`}
-                className="input mono"
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                maxLength={128}
-                spellCheck={false}
-                autoComplete="off"
-                aria-describedby={`${id}-subject-hint`}
-              />
-            </Field>
-            <Field id={`${id}-reason`} label="Reason" hint="Recorded in the history with your name.">
-              <input id={`${id}-reason`} className="input" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={200} aria-describedby={`${id}-reason-hint`} />
-            </Field>
-            <button type="submit" className="btn btn-danger btn-wide" disabled={block.pending || !subject.trim() || !reason.trim()}>
-              Block now
-            </button>
-            <MutationResult mutation={block} onRefresh={list.refresh} success={(b) => <p className="notice-title"><code>{b.subject}</code> is blocked: its requests are refused from now on</p>} />
-          </form>
+          <button type="button" className="btn btn-primary btn-small" onClick={() => openBlock()}>
+            Block an Account
+          </button>
         ) : null}
-      </div>
-      <section className="section card" aria-labelledby={`${id}-seen`}>
-        <div className="card-head card-head-pad">
-          <h2 id={`${id}-seen`}>Recently seen</h2>
-          <span className="muted">Accounts in the latest 100 requests, with the roles their token carried</span>
+      </PageHeader>
+      {list.reply && list.reply.kind !== 'ok' ? <Problem reply={list.reply} /> : null}
+      {recent.reply && recent.reply.kind !== 'ok' ? <Problem reply={recent.reply} /> : null}
+      <MutationResult
+        mutation={block}
+        onRefresh={list.refresh}
+        success={(b) => (
+          <p className="notice-title">
+            <code>{b.subject}</code> is blocked: its requests are refused from now on
+          </p>
+        )}
+      />
+      <MutationResult
+        mutation={unblock}
+        onRefresh={list.refresh}
+        success={(u) => (
+          <>
+            <p className="notice-title">
+              <code>{u.subject}</code> is unblocked and can use Fetch again
+            </p>
+            <p>Access is again limited to what its token roles and the policy allow.</p>
+          </>
+        )}
+      />
+      <section className="section card" aria-labelledby={`${id}-list`}>
+        <h2 id={`${id}-list`} className="visually-hidden">
+          Accounts
+        </h2>
+        <div className="card-head card-head-pad accounts-head">
+          <div className="segmented" role="group" aria-label="Show">
+            {filters.map(([value, label]) => (
+              <button key={value} type="button" className="btn" aria-pressed={show === value} onClick={() => setShow(value)}>
+                {label} <span className="segmented-count">{counts[value]}</span>
+              </button>
+            ))}
+          </div>
+          <ListToolbar label="Filter accounts" query={query} onQuery={setQuery} shown={shown.length} total={accounts.length} noun={['account', 'accounts']} />
         </div>
         <div className="card-body">
-          {recent.reply && recent.reply.kind !== 'ok' ? <Problem reply={recent.reply} /> : null}
-          {recent.reply?.kind === 'ok' && seen.size === 0 ? <p className="hint card-empty">No signed-in requests recently.</p> : null}
-          {seen.size > 0 ? (
-            <TableScroll label="Recently seen accounts">
-              <table>
+          {list.reply?.kind === 'ok' && recent.reply?.kind === 'ok' && accounts.length === 0 ? (
+            <p className="hint card-empty">No account is blocked, and no signed-in request was seen recently.</p>
+          ) : accounts.length > 0 && shown.length === 0 ? (
+            <p className="hint card-empty">No account matches.</p>
+          ) : null}
+          {shown.length > 0 ? (
+            <TableScroll label="Account List">
+              <table className="accounts-table">
                 <thead>
                   <tr>
                     <th scope="col">Account</th>
+                    <th scope="col">Status</th>
                     <th scope="col">Roles</th>
-                    <th scope="col">Last request</th>
+                    <th scope="col">Last Request</th>
                     <th scope="col">Seen</th>
                     {manage ? (
                       <th scope="col">
@@ -1327,46 +1612,113 @@ export function AccountsView({ admin, can }: ViewProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {[...seen.values()].map((e) => (
-                    <tr key={e.subject}>
-                      <td>
-                        <code>{e.subject}</code> {blocked.has(e.subject!) ? <Badge tone="refused">Blocked</Badge> : null}
-                      </td>
-                      <td>{e.roles.length ? e.roles.join(', ') : <span className="muted">none the policy defines</span>}</td>
-                      <td>
-                        <code className="soft">
-                          <span className="method">{e.method}</span> {e.path}
-                        </code>{' '}
-                        <span className={e.decision === 'allowed' ? 'muted' : 'refused-word'}>{e.decision === 'allowed' ? 'allowed' : reasonOf(e.code)}</span>
-                      </td>
-                      <td className="nowrap muted">
-                        <TimeOfDay value={e.time} seconds />
-                      </td>
-                      {manage ? (
-                        <td className="row-actions">
-                          {blocked.has(e.subject!) ? null : (
-                            <button
-                              type="button"
-                              className="btn btn-small"
-                              onClick={() => {
-                                setSubject(e.subject!)
-                                subjectInput.current?.focus()
-                              }}
-                            >
-                              Block…
-                              <span className="visually-hidden"> {e.subject}</span>
-                            </button>
+                  {shown.map((account) => {
+                    const b = blocked.get(account)
+                    const e = seen.get(account)
+                    return (
+                      <tr key={account}>
+                        <td>
+                          <AccountLink account={account}>
+                            <code>{account}</code>
+                          </AccountLink>
+                          {b ? (
+                            <span className="cell-sub">
+                              {b.reason} · by {b.blocked_by} · <TimeOfDay value={b.blocked_at} />
+                            </span>
+                          ) : null}
+                        </td>
+                        <td>{b ? <Badge tone="refused">Blocked</Badge> : <Badge tone="ok">Active</Badge>}</td>
+                        <td>
+                          {e ? (
+                            e.roles.length ? (
+                              <span className="chips">
+                                {e.roles.map((role) => (
+                                  <XRef key={role} view="policy" focus={{ role }}>
+                                    <span className="chip">{role}</span>
+                                  </XRef>
+                                ))}
+                              </span>
+                            ) : (
+                              <span className="muted">None the policy defines</span>
+                            )
+                          ) : (
+                            <span className="muted">—</span>
                           )}
                         </td>
-                      ) : null}
-                    </tr>
-                  ))}
+                        <td>
+                          {e ? (
+                            <>
+                              <code className="soft">
+                                <span className="method">{e.method}</span> {e.path}
+                              </code>
+                              <span className={`cell-sub ${e.decision === 'allowed' ? '' : 'refused-word'}`}>
+                                {e.decision === 'allowed' ? 'Allowed' : reasonOf(e.code)}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="muted">Not in the latest 100 requests</span>
+                          )}
+                        </td>
+                        <td className="nowrap muted">{e ? <TimeOfDay value={e.time} seconds /> : '—'}</td>
+                        {manage ? (
+                          <td className="row-actions">
+                            {b ? (
+                              <button type="button" className="btn btn-small" onClick={() => setConfirming(account)} disabled={unblock.pending}>
+                                Unblock
+                                <span className="visually-hidden"> {account}</span>
+                              </button>
+                            ) : (
+                              <button type="button" className="btn btn-small" onClick={() => openBlock(account)}>
+                                Block…
+                                <span className="visually-hidden"> {account}</span>
+                              </button>
+                            )}
+                          </td>
+                        ) : null}
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </TableScroll>
           ) : null}
         </div>
       </section>
+      {manage ? (
+        <Confirm
+          open={blocking}
+          title="Block an Account"
+          confirmLabel="Block Now"
+          danger
+          disabled={block.pending || !subject.trim() || !reason.trim()}
+          onCancel={() => setBlocking(false)}
+          onConfirm={submit}
+        >
+          <p>Every request from this account is refused at once, at every endpoint, until it is unblocked.</p>
+          <Field id={`${id}-subject`} label="Account ID" hint="As shown in requests, for example cust-002.">
+            <input
+              id={`${id}-subject`}
+              className="input mono"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              maxLength={128}
+              spellCheck={false}
+              autoComplete="off"
+              aria-describedby={`${id}-subject-hint`}
+            />
+          </Field>
+          <Field id={`${id}-reason`} label="Reason" hint="Recorded in the history with your name.">
+            <input
+              id={`${id}-reason`}
+              className="input"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              maxLength={200}
+              aria-describedby={`${id}-reason-hint`}
+            />
+          </Field>
+        </Confirm>
+      ) : null}
       <Confirm
         open={confirming !== null}
         title="Unblock this account?"
@@ -1403,7 +1755,7 @@ export function TeamView({ admin, can }: ViewProps) {
   const [trustedBefore, setTrustedBefore] = useState<SigningKey[] | null>(null)
   return (
     <>
-      <PageHeader title="Team" lede="Who administers the gateway, and the keys it trusts to verify sign-in tokens. This page cannot grant access: the operator adds administrators on the gateway host.">
+      <PageHeader title="Team" lede="Administrators, their permissions and the keys trusted to sign tokens.">
         <ReadStamp
           okAt={admins.last?.at ?? null} failed={admins.failed}
           loading={admins.loading}
@@ -1461,7 +1813,7 @@ export function TeamView({ admin, can }: ViewProps) {
       </section>
       <section className="section card" aria-labelledby="keys-title">
         <div className="card-head card-head-pad">
-          <h2 id="keys-title">Token signing keys</h2>
+          <h2 id="keys-title">Token Signing Keys</h2>
           {can('manage_policy') ? (
             <button
               type="button"
@@ -1472,14 +1824,14 @@ export function TeamView({ admin, can }: ViewProps) {
                 void reload.run({ method: 'POST', path: '/admin/keys/reload', key: newKey() })
               }}
             >
-              {reload.pending ? 'Reloading…' : 'Reload keys from settings'}
+              {reload.pending ? 'Reloading…' : 'Reload Keys from Settings'}
             </button>
           ) : null}
         </div>
         <div className="card-body">
           <ReplyView reply={keys.reply}>
             {(k) => (
-              <TableScroll label="Signing keys">
+              <TableScroll label="Signing Keys">
                 <table>
                   <thead>
                     <tr>
@@ -1513,7 +1865,7 @@ export function TeamView({ admin, can }: ViewProps) {
         </div>
       </section>
       <p className="hint section">
-        Keys live in the gateway's operator settings, never in the policy, so a policy rollback can never trust a retired key again. The gateway reads them only from disk.
+        Signing keys are read from the gateway host, not the policy, so a policy rollback never restores a retired key.
       </p>
     </>
   )
@@ -1535,92 +1887,6 @@ function KeyChange({ before, after }: { before: SigningKey[] | null; after: Sign
         {added.length > 0 ? `Now also trusted: ${added.map((k) => k.kid).join(', ')}. ` : null}
         {removed.length > 0 ? `No longer trusted: ${removed.map((k) => k.kid).join(', ')}; tokens signed with them are refused from the next request.` : null}
       </p>
-    </>
-  )
-}
-
-// PolicyCode exports the policy in force as one JSON document and shows how
-// to stage a change from a file, a script or CI.
-export function PolicyCode({ admin, open }: ViewProps) {
-  const policy = useResource<Revision>((signal) => admin.get('/admin/policy', signal), [])
-  const [copied, setCopied] = useState(false)
-  const text = policy.reply?.kind === 'ok' ? JSON.stringify(policy.reply.body.document ?? {}, null, 2) : ''
-  const [href, setHref] = useState('')
-  // The download link is a blob URL of the exported text, released when the
-  // text changes or the page closes.
-  useEffect(() => {
-    if (!text) return
-    const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }))
-    setHref(url)
-    return () => URL.revokeObjectURL(url)
-  }, [text])
-  return (
-    <>
-      <PageHeader
-        title="Policy as code"
-        lede="The whole policy is one JSON document: export it, keep it in Git, and save draft changes from a file. A draft changes nothing; it goes live only through a trial you keep."
-      >
-        <ReadStamp okAt={policy.last?.at ?? null} failed={policy.failed} loading={policy.loading} onRefresh={policy.refresh} />
-      </PageHeader>
-      <ReplyView reply={policy.reply}>
-        {(revision) => (
-          <section className="section card" aria-labelledby="export-title">
-            <div className="card-head card-head-pad">
-              <div>
-                <h2 id="export-title">Policy in force · version {revision.id}</h2>
-                <p className="hint">
-                  Checksum <code>{revision.checksum}</code>
-                </p>
-              </div>
-              <div className="card-tools">
-                <button
-                  type="button"
-                  className="btn btn-small"
-                  onClick={() =>
-                    navigator.clipboard.writeText(text).then(
-                      () => setCopied(true),
-                      () => setCopied(false),
-                    )
-                  }
-                >
-                  {copied ? 'Copied' : 'Copy'}
-                </button>
-                <a className="btn btn-small btn-primary" href={href || undefined} download={`gateway-policy-r${revision.id}.json`}>
-                  Download JSON
-                </a>
-              </div>
-            </div>
-            <pre className="code-block" tabIndex={0} aria-label={`Policy version ${revision.id} as JSON`}>
-              {text}
-            </pre>
-          </section>
-        )}
-      </ReplyView>
-      <section className="section card card-pad" aria-labelledby="stage-title">
-        <h2 id="stage-title">Save a draft change from a file</h2>
-        <p>
-          In this Dashboard, load the file on the Changes page. A script sends the same Admin API requests the Dashboard sends. Each needs a signed-in
-          administrator session (its cookie) and that session's CSRF token; saving a draft change (the API calls it a candidate) also needs the
-          version it is based on and a new idempotency key.
-        </p>
-        <pre className="code-block code-block-short" tabIndex={0} aria-label="Admin API requests">{`GET /admin/policy
-
-POST /admin/candidates
-Content-Type: application/json
-If-Match: "r<version in force>"
-Idempotency-Key: <a new key: 16 to 64 letters, digits, _ or ->
-X-CSRF-Token: <the session's CSRF token>
-
-{"policy": <the complete policy document>}`}</pre>
-        <p className="hint">
-          The gateway's compiler checks the whole document when it is saved as a draft. Nothing changes until the draft is put on trial and kept.
-        </p>
-        <div className="actions">
-          <button type="button" className="btn" onClick={() => open('candidates')}>
-            Open Changes
-          </button>
-        </div>
-      </section>
     </>
   )
 }
@@ -1662,9 +1928,9 @@ export function ImpactPreview({ admin, candidate }: { admin: Admin; candidate: n
   return (
     <section className="impact" aria-labelledby={`impact-${candidate}`}>
       <div className="impact-head">
-        <h3 id={`impact-${candidate}`}>Impact on recent traffic</h3>
+        <h3 id={`impact-${candidate}`}>Impact on Recent Traffic</h3>
         <button type="button" className="btn btn-small" disabled={preview.pending} onClick={() => void preview.run({ method: 'POST', path: `/admin/candidates/${candidate}/impact` })}>
-          {preview.pending ? 'Replaying…' : result ? 'Preview again' : 'Preview impact'}
+          {preview.pending ? 'Replaying…' : result ? 'Preview Again' : 'Preview Impact'}
         </button>
       </div>
       {result ? (
@@ -1694,7 +1960,7 @@ export function ImpactPreview({ admin, candidate }: { admin: Admin; candidate: n
                       <th scope="col">Endpoint</th>
                       <th scope="col">Account</th>
                       <th scope="col">Now</th>
-                      <th scope="col">With this change</th>
+                      <th scope="col">With This Change</th>
                       <th scope="col" className="num end">
                         Requests
                       </th>
@@ -1733,7 +1999,7 @@ export function ImpactPreview({ admin, candidate }: { admin: Admin; candidate: n
       ) : preview.phase.state === 'replied' ? (
         <Problem reply={preview.phase.reply} />
       ) : (
-        <p className="hint">Replays the gateway's recent requests against this change before you put it on trial. Read-only: nothing changes.</p>
+        <p className="hint">Replays recent requests against this change. Read-only.</p>
       )}
     </section>
   )

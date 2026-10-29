@@ -107,7 +107,7 @@ go run ./cmd/demo policy stage -dir <home>/state -file <policy-file>
 go run ./cmd/demo events -dir <home>/state -last 20
 ```
 
-The order flood signs in as Daniel (`cust-002`), keeping Aisyah's (`cust-001`) checkout quota separate. It consumes Daniel's per-account quota, including any checkout requests from his lab tab. It creates real demonstration cash orders until limited; reset the isolated demo afterwards. Different source addresses isolate the public search and login quotas.
+The order flood signs in as Customer 2 (`cust-002`), keeping Customer 1's (`cust-001`) checkout quota separate. It consumes Customer 2's per-account quota, including any checkout requests from its lab tab. It creates real demonstration cash orders until limited; reset the isolated demo afterwards. Different source addresses isolate the public search and login quotas.
 
 Key and policy commands prompt for the `root` Dashboard password and use its session, Origin and CSRF protections. Rotation writes a new pair locally, adds public trust and reloads it before switching Accounts; the old key remains trusted until retirement. The current Accounts key cannot be retired. A failed or unconfirmed reload leaves Accounts signing unchanged and reports the uncertainty. Retirement removes public trust but retains key files for the operator. Policy export writes only to a new file. Policy staging validates a complete candidate against the current confirmed revision and does not activate it. No command automatically repeats a write without an answer.
 

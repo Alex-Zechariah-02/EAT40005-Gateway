@@ -8,6 +8,7 @@ import { Empty } from '../ui/notice'
 import { Photo } from '../ui/photo'
 import { QuantityStepper } from '../ui/stepper'
 import { useQuote } from './parts'
+import { itemLink, storeLink } from '../lib/links'
 
 export function BasketPage() {
   const basket = useBasket()
@@ -34,7 +35,7 @@ export function BasketPage() {
             <h1 id="basket-heading" className="text-[36px] leading-none font-extrabold tracking-[-0.035em]">Your basket</h1>
             <p className="mt-2 flex items-center gap-1.5 text-ink-2">
               <Storefront size={16} aria-hidden="true" />
-              From <Link to={`/store/${basket.merchant.id}`} className="font-semibold text-brand hover:underline">{basket.merchant.name}</Link>
+              From <Link to={storeLink(basket.merchant.name)} className="font-semibold text-brand hover:underline">{basket.merchant.name}</Link>
             </p>
           </div>
           <Button variant="ghost" size="sm" onClick={emptyBasket}>Empty basket</Button>
@@ -44,7 +45,7 @@ export function BasketPage() {
             <li key={line.item} className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-2xl bg-surface p-4 shadow-card">
               <Photo id={line.item} className="size-16 shrink-0 rounded-xl" />
               <div className="min-w-0 flex-1 basis-40">
-                <Link to={`/item/${line.item}`} className="font-bold hover:underline">{line.name}</Link>
+                <Link to={itemLink(basket.merchant.name, line.name)} className="font-bold hover:underline">{line.name}</Link>
                 <p className="text-sm text-ink-3 tabular-nums">{rm(line.price_sen)} each</p>
               </div>
               <QuantityStepper name={line.name} value={line.quantity} max={maxQuantity} onChange={(q) => setQuantity(line.item, q)} />

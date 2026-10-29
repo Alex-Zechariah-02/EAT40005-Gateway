@@ -1,3 +1,4 @@
+import type { MenuAction } from './ui'
 import type { ControlChange, Operation, Policy } from './api'
 
 export type BoxKind = 'role' | 'operation' | 'api' | 'upstream'
@@ -13,11 +14,6 @@ export interface Issue {
   message: string
   box?: BoxKey
 }
-export interface Position {
-  x: number
-  y: number
-}
-export type Positions = Record<string, Position>
 export const sections = { role: 'roles', operation: 'operations', api: 'apis', upstream: 'upstreams' } as const
 // The words the Designer shows for each kind of box. The policy's own field
 // names (operation, upstream) stay in the JSON view.
@@ -195,29 +191,6 @@ export function changes(before: Policy, after: Policy): ControlChange[] {
     })
 }
 
-export function connectionReason(policy: Policy, source: string, target: string): string | null {
-  const [from, fromId] = splitKey(source as BoxKey)
-  const [to, toId] = splitKey(target as BoxKey)
-  if (from === 'role' && to === 'operation') {
-    const operation = policy.operations.find((item) => item.id === toId)
-    if (operation?.auth === 'none') return 'This endpoint is public (no sign-in), so no role can be given permission for it.'
-    if (policy.permits.some((permit) => permit.role === fromId && permit.operation === toId))
-      return 'This role already has permission for this endpoint.'
-    return null
-  }
-  if ((from === 'operation' && to === 'api') || (from === 'api' && to === 'upstream')) return null
-  return 'Arrows go roles → operations → APIs → upstreams.'
-}
-export function connect(policy: Policy, source: BoxKey, target: BoxKey): Policy {
-  if (connectionReason(policy, source, target)) return policy
-  const next = copy(policy)
-  const [kind, id] = splitKey(source)
-  const [, destination] = splitKey(target)
-  if (kind === 'role') next.permits.push({ role: id, operation: destination })
-  if (kind === 'operation') next.operations.find((item) => item.id === id)!.api = destination
-  if (kind === 'api') next.apis.find((item) => item.id === id)!.upstream = destination
-  return next
-}
 export function rename(policy: Policy, key: BoxKey, id: string): Policy {
   const next = copy(policy)
   const [kind, old] = splitKey(key)
@@ -386,3 +359,7 @@ export function addEndpoint(policy: Policy, endpoint: NewEndpoint): Policy {
   if (!endpoint.open) for (const role of endpoint.roles) next.permits.push({ role, operation: endpoint.id })
   return next
 }
+
+// GroupAction is one choice of a group's + menu; adds names the kind of box
+// it adds directly, so the list can open the new box.
+export type GroupAction = MenuAction & { adds?: BoxKind }

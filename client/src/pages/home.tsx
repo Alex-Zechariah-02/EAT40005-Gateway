@@ -11,6 +11,7 @@ import { Empty, Loading, ProblemNotice, Skeleton } from '../ui/notice'
 import { Photo } from '../ui/photo'
 import { ShopGrid } from './parts'
 import { withParam } from './section'
+import { itemLink, storeLink } from '../lib/links'
 
 export function Home() {
   const { params } = useLocation()
@@ -155,7 +156,7 @@ function SearchResults({ q }: { q: string }) {
           </div>
           <nav aria-label="Shops in these results" className="mt-5 flex flex-wrap gap-2">
             {shops.map((shop) => (
-              <Link key={shop.id} to={`/store/${shop.id}`} className="inline-flex max-w-full items-center gap-2 rounded-full bg-surface px-4 py-2 text-sm font-bold text-ink shadow-card ring-1 ring-line hover:shadow-raised">
+              <Link key={shop.id} to={storeLink(shop.name)} className="inline-flex max-w-full items-center gap-2 rounded-full bg-surface px-4 py-2 text-sm font-bold text-ink shadow-card ring-1 ring-line hover:shadow-raised">
                 <ShopIcon size={16} className="shrink-0 text-brand" aria-hidden="true" />
                 <span className="truncate">{shop.name}</span>
                 <CaretRight size={14} className="shrink-0 text-ink-3" aria-hidden="true" />
@@ -165,7 +166,7 @@ function SearchResults({ q }: { q: string }) {
           <ul className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
             {hits.map(({ item, merchant }) => (
               <li key={item.id}>
-                <Link to={`/item/${item.id}`} className="flex items-center gap-4 rounded-2xl bg-surface p-4 shadow-card hover:shadow-raised">
+                <Link to={itemLink(merchant.name, item.name)} className="flex items-center gap-4 rounded-2xl bg-surface p-4 shadow-card hover:shadow-raised">
                   <Photo id={item.id} section={merchant.section} className="size-20 shrink-0 rounded-xl" />
                   <span className="min-w-0 flex-1">
                     <span className="block font-bold text-ink">{item.name}</span>

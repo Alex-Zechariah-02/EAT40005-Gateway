@@ -12,6 +12,7 @@ import { cx } from '../ui/cx'
 import { ConfirmDialog } from '../ui/dialog'
 import { Photo } from '../ui/photo'
 import { QuantityStepper } from '../ui/stepper'
+import { itemLink, storeLink } from '../lib/links'
 
 export function categoryName(categories: Category[] | undefined, id: string): string {
   return categories?.find((c) => c.id === id)?.name ?? id.replace(/-/g, ' ')
@@ -19,7 +20,7 @@ export function categoryName(categories: Category[] | undefined, id: string): st
 
 export function ShopCard({ merchant, categories }: { merchant: Merchant; categories?: Category[] }) {
   return (
-    <Link to={`/store/${merchant.id}`} className="group block rounded-2xl">
+    <Link to={storeLink(merchant.name)} className="group block rounded-2xl">
       <div className="relative overflow-hidden rounded-2xl">
         <Photo id={merchant.id} section={merchant.section} className="aspect-[4/3] w-full transition-transform duration-500 ease-out-quint group-hover:scale-[1.03]" />
         {!merchant.open && <span className="absolute top-3 left-3 rounded-full bg-surface px-2.5 py-1 text-xs font-bold text-ink shadow-card">Closed now</span>}
@@ -91,7 +92,7 @@ export function ItemRow({ item, merchant, onAdd, justAdded }: { item: Item; merc
     <article className="flex items-center gap-5 rounded-2xl bg-surface p-4 shadow-card">
       <div className="min-w-0 flex-1">
         <h3 className={cx('text-base font-bold', muted ? 'text-ink-3' : 'text-ink')}>
-          <Link to={`/item/${item.id}`} className="rounded hover:underline hover:underline-offset-2">{item.name}</Link>
+          <Link to={itemLink(merchant.name, item.name)} className="rounded hover:underline hover:underline-offset-2">{item.name}</Link>
         </h3>
         <p className="mt-1 text-sm leading-snug text-ink-2">{item.description}</p>
         <p className="mt-3 flex flex-wrap items-center gap-2">

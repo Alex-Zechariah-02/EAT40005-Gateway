@@ -8,10 +8,9 @@ import {
   Plugs,
   GitDiff,
   UserMinus,
-  Code,
   UsersThree,
   UserCircle,
-  UserList,
+  Stack,
 } from '@phosphor-icons/react'
 
 // The navigation's icons, one per view.
@@ -24,11 +23,10 @@ const icons = {
   candidates: GitDiff,
   overrides: Timer,
   history: ClockCounterClockwise,
-  code: Code,
   team: UsersThree,
   account: UserCircle,
   permit: ShieldCheck,
-  roles: UserList,
+  versions: Stack,
 }
 export type IconName = keyof typeof icons
 

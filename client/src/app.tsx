@@ -8,7 +8,7 @@ import { ButtonLink } from './ui/button'
 import { Empty, Skeleton } from './ui/notice'
 import { Home } from './pages/home'
 import { SectionPage } from './pages/section'
-import { StorePage } from './pages/store'
+import { StoreRoute } from './pages/store'
 import { ItemPage } from './pages/item'
 import { BasketPage } from './pages/basket'
 import { SignInPage } from './pages/signin'
@@ -27,21 +27,21 @@ const OpsPage = lazy(() => import('./pages/ops').then((m) => ({ default: m.OpsPa
 const LabPage = lazy(() => import('./pages/lab').then((m) => ({ default: m.LabPage })))
 
 export function App() {
-  const { path } = useLocation()
+  const { path, params } = useLocation()
   return (
     <Shell>
       <Suspense fallback={<PageLoading />}>
-        <Route path={path} />
+        <Route path={path} item={params.get('item')} />
       </Suspense>
     </Shell>
   )
 }
 
-function Route({ path }: { path: string }) {
+function Route({ path, item }: { path: string; item: string | null }) {
   let found: Record<string, string> | null
   if (path === '/') return <Home />
   if (path === '/food' || path === '/mart') return <SectionPage section={path === '/food' ? 'food' : 'mart'} />
-  if ((found = match('/store/:id', path))) return <StorePage key={found.id} id={found.id} />
+  if ((found = match('/store/:address', path))) return <StoreRoute key={`${found.address}?${item ?? ''}`} address={found.address} item={item} />
   if ((found = match('/item/:id', path))) return <ItemPage key={found.id} id={found.id} />
   if (path === '/cart') return <BasketPage />
   if (path === '/signin') return <SignInPage />

@@ -165,13 +165,13 @@ export function UnresolvedChanges(props: { admin: Admin; name: string; register:
               ) : (
                 <>
                   <button type="button" className="btn btn-small" onClick={() => void check(item)} disabled={busy !== null || !canReadHistory}>
-                    Check its outcome<span className="visually-hidden"> ({item.label})</span>
+                    Check Its Outcome<span className="visually-hidden"> ({item.label})</span>
                   </button>
                   <button type="button" className="btn btn-small" onClick={() => void resend(item)} disabled={busy !== null}>
-                    Send the identical request again<span className="visually-hidden"> ({item.label})</span>
+                    Send the Identical Request Again<span className="visually-hidden"> ({item.label})</span>
                   </button>
                   <button type="button" className="btn btn-small btn-danger-quiet" onClick={() => register.forget(item.id)} disabled={busy !== null}>
-                    Stop tracking<span className="visually-hidden"> {item.label}</span>
+                    Stop Tracking<span className="visually-hidden"> {item.label}</span>
                   </button>
                 </>
               )}

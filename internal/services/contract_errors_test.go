@@ -64,7 +64,7 @@ func TestAccountsSigningReloadAndCredentialWork(t *testing.T) {
 	known, unknown := []time.Duration{}, []time.Duration{}
 	for range 7 {
 		start := time.Now()
-		login("aisyah@fetch.test")
+		login("customer1@fetch.test")
 		known = append(known, time.Since(start))
 		start = time.Now()
 		login("nobody@fetch.test")
@@ -84,7 +84,7 @@ func TestAccountsSigningReloadAndCredentialWork(t *testing.T) {
 	if err = os.WriteFile(file, data, 0600); err != nil {
 		t.Fatal(err)
 	}
-	w := serviceRequest(s, "POST", "/accounts/login", `{"email":"aisyah@fetch.test","password":"FetchDemo2026!"}`, "", "", "")
+	w := serviceRequest(s, "POST", "/accounts/login", `{"email":"customer1@fetch.test","password":"FetchDemo2026!"}`, "", "", "")
 	var response struct {
 		Token string `json:"token"`
 	}
@@ -108,7 +108,7 @@ func TestAccountsSigningReloadAndCredentialWork(t *testing.T) {
 	if err = os.WriteFile(file, []byte(`{"kid":"bad"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	w = serviceRequest(s, "POST", "/accounts/login", `{"email":"aisyah@fetch.test","password":"FetchDemo2026!"}`, "", "", "")
+	w = serviceRequest(s, "POST", "/accounts/login", `{"email":"customer1@fetch.test","password":"FetchDemo2026!"}`, "", "", "")
 	if w.Code != 503 || strings.Contains(w.Body.String(), file) {
 		t.Fatal("invalid signing settings did not fail safely")
 	}

@@ -89,7 +89,7 @@ func TestFetchStackScenarios(t *testing.T) {
 		}
 		return reply.Token
 	}
-	customer, merchant, rider, support, ops := login("aisyah@fetch.test"), login("ros@fetch.test"), login("amir@fetch.test"), login("nurul@fetch.test"), login("jason@fetch.test")
+	customer, merchant, rider, support, ops := login("customer1@fetch.test"), login("merchant1@fetch.test"), login("rider1@fetch.test"), login("support1@fetch.test"), login("admin1@fetch.test")
 	secret, err := os.ReadFile(filepath.Join(dir, "service.secret"))
 	if err != nil {
 		t.Fatal(err)
@@ -186,7 +186,7 @@ func TestFetchStackScenarios(t *testing.T) {
 		t.Fatal("support edit reached Inventory")
 	}
 	before = receiptCount(1)
-	validationCustomer := login("priya@fetch.test")
+	validationCustomer := login("customer3@fetch.test")
 	for _, invalid := range []string{
 		`{"merchant":"MER-001","items":[]}`,
 		strings.Replace(checkout, `"quantity":2`, `"quantity":0`, 1),
@@ -245,7 +245,7 @@ func TestFetchStackScenarios(t *testing.T) {
 	}
 
 	t.Log("real source-bound flood commands")
-	floodCustomer := login("daniel@fetch.test")
+	floodCustomer := login("customer2@fetch.test")
 	ordersBeforeFlood := receiptCount(1)
 	for _, scenario := range []struct{ name, source, count string }{{"flood-orders", "127.0.0.51", "12"}, {"flood-search", "127.0.0.50", "65"}, {"flood-login", "127.0.0.52", "12"}} {
 		result := cli(false, "attack", "-dir", dir, "-scenario", scenario.name, "-from", scenario.source, "-count", scenario.count)

@@ -27,6 +27,12 @@ export function when(iso: string): string {
   return day === today ? `Today, ${timeFormat.format(date)}` : `${day}, ${timeFormat.format(date)}`
 }
 
+// reference shows an order or ticket ID the way people quote it, as a short
+// number: ORD-1001 reads #1001. The full ID stays in links and requests.
+export function reference(id: string): string {
+  return `#${id.replace(/^[A-Z]+-/, '')}`
+}
+
 export function day(isoDate: string): string {
   return dayFormat.format(new Date(isoDate))
 }

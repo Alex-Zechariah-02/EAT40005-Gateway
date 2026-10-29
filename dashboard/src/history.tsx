@@ -1,16 +1,30 @@
 import { Fragment, useEffect, useId, useRef, useState } from 'react'
 import { explain, type HistoryEntry } from './api'
 import { usePaged, useRemembered, useResource } from './hooks'
-import { actorName, Badge, CodeBlock, Empty, PageHeader, Problem, ReadStamp, ReplyView, ShowMore, TableScroll, Time } from './ui'
+import { actorName, Badge, CodeBlock, Empty, PageHeader, Problem, ReadStamp, ReplyView, ShowMore, TableScroll, Time, XRef } from './ui'
 import type { ViewProps } from './views'
 
-// targetWords names a history target in the Dashboard's words; the exact
-// target stays beside it.
-const targetNames: Record<string, string> = { candidate: 'draft change', revision: 'version', override: 'temporary rule' }
+// targetWords names a history target in the Dashboard's words, in title
+// case; the exact target stays beside it. An ID, such as an account, is
+// shown as it is.
+const targetNames: Record<string, string> = { candidate: 'Draft Change', revision: 'Version', override: 'Temporary Rule' }
 function targetWords(target: string): string {
   const match = /^(candidate|revision|override)(?: (\d+))?$/.exec(target)
-  if (!match) return target
-  return match[2] ? `${targetNames[match[1]]} ${match[2]}` : targetNames[match[1]]
+  if (match) return match[2] ? `${targetNames[match[1]]} ${match[2]}` : targetNames[match[1]]
+  if (/^[a-z]+( [a-z]+)*( \d+)?$/.test(target)) return target.replace(/\b[a-z]/g, (letter) => letter.toUpperCase())
+  return target
+}
+
+// TargetLink names a target and, when it is a numbered version, draft change
+// or temporary rule, links to it on its own page.
+function TargetLink({ target }: { target: string }) {
+  const match = /^(candidate|revision|override) (\d+)$/.exec(target)
+  const words = targetWords(target)
+  if (!match) return <>{words}</>
+  const id = Number(match[2])
+  if (match[1] === 'revision') return <XRef view="policy" focus={{ version: id }}>{words}</XRef>
+  if (match[1] === 'candidate') return <XRef view="candidates" focus={{ candidate: id }}>{words}</XRef>
+  return <XRef view="overrides" focus={{ rule: id }}>{words}</XRef>
 }
 
 type Area = 'policy' | 'overrides' | 'accounts' | 'keys' | 'administrators' | 'operator'
@@ -18,35 +32,35 @@ type Area = 'policy' | 'overrides' | 'accounts' | 'keys' | 'administrators' | 'o
 // What each recorded kind of transition is, in words, and the area it
 // belongs to. A kind not listed is shown by its code.
 const kinds: Record<string, { label: string; area: Area }> = {
-  genesis: { label: 'First policy established', area: 'policy' },
-  recovery_base: { label: 'Starting policy after a restore established', area: 'policy' },
-  'candidate.create': { label: 'Draft change saved', area: 'policy' },
-  'candidate.withdraw': { label: 'Draft change withdrawn', area: 'policy' },
-  'cpa.activate': { label: 'Trial started', area: 'policy' },
-  'cpa.confirm': { label: 'Change kept (confirmed)', area: 'policy' },
-  'cpa.rollback': { label: 'Change undone (rolled back)', area: 'policy' },
-  'cpa.timeout': { label: 'Change undone automatically at the deadline', area: 'policy' },
-  publish: { label: 'Policy put in force', area: 'policy' },
-  'tpo.create': { label: 'Temporary rule added', area: 'overrides' },
-  'tpo.revoke': { label: 'Temporary rule revoked', area: 'overrides' },
-  'tpo.expire': { label: 'Temporary rule ended', area: 'overrides' },
-  'account.block': { label: 'Account blocked', area: 'accounts' },
-  'account.unblock': { label: 'Account unblocked', area: 'accounts' },
-  'keys.reload': { label: 'Signing keys reloaded', area: 'keys' },
-  'admin.enrol': { label: 'Administrator enrolled', area: 'administrators' },
-  'admin.password': { label: 'Password changed', area: 'administrators' },
-  'operator.install': { label: 'Installed by the operator', area: 'operator' },
-  'operator.enrol': { label: 'Enrolment issued by the operator', area: 'operator' },
-  'operator.restore': { label: 'Restored from a backup by the operator', area: 'operator' },
-  'operator.migrate': { label: 'Database migrated by the operator', area: 'operator' },
+  genesis: { label: 'First Policy Established', area: 'policy' },
+  recovery_base: { label: 'Starting Policy After a Restore Established', area: 'policy' },
+  'candidate.create': { label: 'Draft Change Saved', area: 'policy' },
+  'candidate.withdraw': { label: 'Draft Change Withdrawn', area: 'policy' },
+  'cpa.activate': { label: 'Trial Started', area: 'policy' },
+  'cpa.confirm': { label: 'Change Kept (Confirmed)', area: 'policy' },
+  'cpa.rollback': { label: 'Change Undone (Rolled Back)', area: 'policy' },
+  'cpa.timeout': { label: 'Change Undone Automatically at the Deadline', area: 'policy' },
+  publish: { label: 'Policy Activated', area: 'policy' },
+  'tpo.create': { label: 'Temporary Rule Added', area: 'overrides' },
+  'tpo.revoke': { label: 'Temporary Rule Revoked', area: 'overrides' },
+  'tpo.expire': { label: 'Temporary Rule Ended', area: 'overrides' },
+  'account.block': { label: 'Account Blocked', area: 'accounts' },
+  'account.unblock': { label: 'Account Unblocked', area: 'accounts' },
+  'keys.reload': { label: 'Signing Keys Reloaded', area: 'keys' },
+  'admin.enrol': { label: 'Administrator Enrolled', area: 'administrators' },
+  'admin.password': { label: 'Password Changed', area: 'administrators' },
+  'operator.install': { label: 'Installed by the Operator', area: 'operator' },
+  'operator.enrol': { label: 'Enrolment Issued by the Operator', area: 'operator' },
+  'operator.restore': { label: 'Restored from a Backup by the Operator', area: 'operator' },
+  'operator.migrate': { label: 'Database Migrated by the Operator', area: 'operator' },
 }
 
 const areas: { id: Area | 'all'; label: string }[] = [
-  { id: 'all', label: 'All areas' },
-  { id: 'policy', label: 'Policy lifecycle' },
-  { id: 'overrides', label: 'Temporary rules' },
-  { id: 'accounts', label: 'Blocked accounts' },
-  { id: 'keys', label: 'Signing keys' },
+  { id: 'all', label: 'All Areas' },
+  { id: 'policy', label: 'Policy Lifecycle' },
+  { id: 'overrides', label: 'Temporary Rules' },
+  { id: 'accounts', label: 'Blocked Accounts' },
+  { id: 'keys', label: 'Signing Keys' },
   { id: 'administrators', label: 'Administrators' },
   { id: 'operator', label: 'Operator' },
 ]
@@ -104,7 +118,7 @@ export function History({ admin }: ViewProps) {
     <>
       <PageHeader
         title="History"
-        lede="Every administrative transition the controller recorded, with its outcome. Request bodies, passwords and tokens are never recorded."
+        lede="Every administrative action, who made it and whether the gateway applied it."
       >
         <ReadStamp okAt={history.last?.at ?? null} failed={history.failed} loading={history.loading} onRefresh={history.refresh} />
       </PageHeader>
@@ -127,7 +141,7 @@ export function History({ admin }: ViewProps) {
               <div className="field">
                 <label htmlFor={`${id}-outcome`}>Outcome</label>
                 <select id={`${id}-outcome`} className="input" value={outcome} onChange={(e) => choose({ outcome: e.target.value })}>
-                  <option value="all">All outcomes</option>
+                  <option value="all">All Outcomes</option>
                   <option value="committed">Applied</option>
                   <option value="rejected">Refused</option>
                 </select>
@@ -145,7 +159,7 @@ export function History({ admin }: ViewProps) {
               </div>
               <label className="check">
                 <input type="checkbox" checked={newestFirst} onChange={(e) => choose({ newestFirst: e.target.checked })} />
-                <span>Newest first</span>
+                <span>Newest First</span>
               </label>
             </div>
             <p className="hint list-count" role="status">
@@ -160,7 +174,7 @@ export function History({ admin }: ViewProps) {
         ) : null}
         {history.reply?.kind === 'ok' && shown.length === 0 && filtered ? <Empty title="No recorded transition matches these filters." /> : null}
         {shown.length > 0 ? (
-          <TableScroll label="Administrative history">
+          <TableScroll label="Administrative History">
             <table>
               <thead>
                 <tr>
@@ -187,7 +201,9 @@ export function History({ admin }: ViewProps) {
                       </td>
                       <td>{actorName(h.actor)}</td>
                       <td>
-                        <span className="cell-main">{targetWords(h.target)}</span>
+                        <span className="cell-main">
+                          <TargetLink target={h.target} />
+                        </span>
                         {targetWords(h.target) !== h.target ? <code className="cell-sub">{h.target}</code> : null}
                       </td>
                       <td>
@@ -233,7 +249,7 @@ export function History({ admin }: ViewProps) {
           <ShowMore list={history} />
           {history.next ? (
             <button type="button" className="btn" onClick={() => history.rest(allPages)} disabled={history.paging}>
-              Load all
+              Load All
             </button>
           ) : null}
         </div>
@@ -251,8 +267,8 @@ const entryFields: [keyof HistoryEntry, string][] = [
   ['expected_revision', 'Based on version'],
   ['outcome', 'Outcome'],
   ['reason', 'Reason'],
-  ['revision', 'Resulting version'],
-  ['candidate', 'Draft change'],
+  ['revision', 'Resulting Version'],
+  ['candidate', 'Draft Change'],
   ['recorded_at', 'Recorded'],
   ['published_at', 'Published'],
   ['published_by', 'Published by'],
@@ -286,7 +302,7 @@ function Entry({ admin, id }: { admin: ViewProps['admin']; id: string }) {
                 ))}
             </dl>
             <details className="document">
-              <summary>Record as stored</summary>
+              <summary>Record as Stored</summary>
               <CodeBlock label={`Entry ${h.seq} as stored`}>{JSON.stringify(h, null, 2)}</CodeBlock>
             </details>
           </>

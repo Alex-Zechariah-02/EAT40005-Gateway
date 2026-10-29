@@ -1,5 +1,5 @@
 import { CaretRight, ChatsCircle, Receipt } from '@phosphor-icons/react'
-import { when } from '../lib/format'
+import { when, reference } from '../lib/format'
 import { describe } from '../lib/messages'
 import { useQuery } from '../lib/query'
 import { navigate, useLocation } from '../lib/router'
@@ -33,7 +33,7 @@ export function SupportPage() {
   }
   return (
     <>
-      <WorkspaceTitle title="Tickets" subtitle="Customer requests, newest first." />
+      <WorkspaceTitle title="Tickets" />
       <Tabs tabs={[{ id: 'open', label: 'Waiting' }, { id: 'answered', label: 'Answered' }, { id: 'resolved', label: 'Resolved' }, { id: 'all', label: 'All' }]} current={filter} href={(id) => (id === 'open' ? '/support' : `/support?status=${id}`)} />
       <div className="mt-6 grid grid-cols-1 items-start gap-6 lg:grid-cols-[380px_1fr]">
         <section aria-label="Ticket queue">
@@ -52,7 +52,7 @@ export function SupportPage() {
                     <span className="min-w-0 flex-1">
                       <span className="flex flex-wrap items-center gap-2"><span className="font-bold">{t.subject}</span><Badge tone={ticketTone[t.status]}>{ticketStatus[t.status]}</Badge></span>
                       <span className="mt-1 block truncate text-sm text-ink-2">{t.messages.at(-1)?.body}</span>
-                      <span className="mt-1 block text-xs text-ink-3">{t.id} · {t.customer} · {when(t.created_at)}</span>
+                      <span className="mt-1 block text-xs text-ink-3">{reference(t.id)} · {t.customer} · {when(t.created_at)}</span>
                     </span>
                     <CaretRight size={16} className="text-ink-3" aria-hidden="true" />
                   </button>

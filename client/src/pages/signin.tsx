@@ -13,16 +13,16 @@ import { ProblemNotice } from '../ui/notice'
 // people on a demonstration platform, and Fetch Accounts still checks it.
 const demoPassword = 'FetchDemo2026!'
 const demoAccounts: { name: string; email: string; roles: Role[]; note?: string }[] = [
-  { name: 'Aisyah Rahman', email: 'aisyah@fetch.test', roles: ['CUSTOMER'] },
-  { name: 'Daniel Tan', email: 'daniel@fetch.test', roles: ['CUSTOMER'] },
-  { name: 'Priya Nair', email: 'priya@fetch.test', roles: ['CUSTOMER'], note: 'First Mart order is free' },
-  { name: 'Rosnah Ismail', email: 'ros@fetch.test', roles: ['MERCHANT'], note: 'Warung Kak Ros' },
-  { name: 'Hafiz Zainal', email: 'mart@fetch.test', roles: ['MERCHANT'], note: 'Fetch Mart Express' },
-  { name: 'Amir Hakim', email: 'amir@fetch.test', roles: ['RIDER'] },
-  { name: 'Siva Kumar', email: 'siva@fetch.test', roles: ['RIDER'] },
-  { name: 'Nurul Huda', email: 'nurul@fetch.test', roles: ['SUPPORT'] },
-  { name: 'Jason Lim', email: 'jason@fetch.test', roles: ['OPERATIONS'] },
-  { name: 'Farah Ismail', email: 'farah@fetch.test', roles: ['SUPPORT', 'OPERATIONS'] },
+  { name: 'Customer 1', email: 'customer1@fetch.test', roles: ['CUSTOMER'] },
+  { name: 'Customer 2', email: 'customer2@fetch.test', roles: ['CUSTOMER'] },
+  { name: 'Customer 3', email: 'customer3@fetch.test', roles: ['CUSTOMER'], note: 'First Mart order is free' },
+  { name: 'Merchant 1', email: 'merchant1@fetch.test', roles: ['MERCHANT'], note: 'Warung Nasi Lemak' },
+  { name: 'Merchant 5', email: 'merchant5@fetch.test', roles: ['MERCHANT'], note: 'Fetch Mart Express' },
+  { name: 'Rider 1', email: 'rider1@fetch.test', roles: ['RIDER'] },
+  { name: 'Rider 2', email: 'rider2@fetch.test', roles: ['RIDER'] },
+  { name: 'Support 1', email: 'support1@fetch.test', roles: ['SUPPORT'] },
+  { name: 'Admin 1', email: 'admin1@fetch.test', roles: ['OPERATIONS'] },
+  { name: 'Admin 2', email: 'admin2@fetch.test', roles: ['SUPPORT', 'OPERATIONS'] },
 ]
 
 // next must be a path on this site: never an absolute or protocol-relative URL.
@@ -68,9 +68,9 @@ export function SignInPage() {
     <div className="mx-auto mt-10 grid max-w-[1040px] grid-cols-1 items-start gap-8 lg:grid-cols-[1fr_1.1fr]">
       <section className="rounded-[28px] bg-surface p-8 shadow-raised" aria-labelledby="signin-heading">
         <h1 id="signin-heading" className="text-[32px] leading-none font-extrabold tracking-[-0.035em]">Sign in to Fetch</h1>
-        <p className="mt-2 text-ink-2">
-          {session ? `You’re signed in as ${session.user.name}. Signing in again switches this tab to another account.` : 'One account for ordering, running a shop, riding or helping customers.'}
-        </p>
+        {session ? (
+          <p className="mt-2 text-ink-2">You’re signed in as {session.user.name}. Signing in again switches this tab to another account.</p>
+        ) : null}
         <form onSubmit={submit} noValidate className="mt-6 flex flex-col gap-4">
           <TextField label="Email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} error={emailError} maxLength={254} />
           <div className="relative">
@@ -85,9 +85,9 @@ export function SignInPage() {
         </form>
       </section>
       <section aria-labelledby="demo-heading">
-        <h2 id="demo-heading" className="text-lg font-extrabold tracking-[-0.02em]">Demonstration accounts</h2>
+        <h2 id="demo-heading" className="text-lg font-extrabold tracking-[-0.02em]">Test accounts</h2>
         <p className="mt-1 text-sm text-ink-2">
-          Every account’s password is <span className="rounded bg-sunken px-1.5 py-0.5 font-bold text-ink ring-1 ring-line">{demoPassword}</span>. Choose one to fill the form.
+          Password for every account: <span className="rounded bg-sunken px-1.5 py-0.5 font-bold text-ink ring-1 ring-line">{demoPassword}</span>. Select one to fill the form.
         </p>
         <ul className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
           {demoAccounts.map((account) => (

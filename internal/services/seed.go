@@ -12,20 +12,20 @@ type User struct {
 func Users() []User {
 	merchant := func(id string) *string { return &id }
 	return []User{
-		{"cust-001", "Aisyah Rahman", "aisyah@fetch.test", []string{"CUSTOMER"}, nil, "/"},
-		{"cust-002", "Daniel Tan", "daniel@fetch.test", []string{"CUSTOMER"}, nil, "/"},
-		{"cust-003", "Priya Nair", "priya@fetch.test", []string{"CUSTOMER"}, nil, "/"},
-		{"merchant-001", "Rosnah Ismail", "ros@fetch.test", []string{"MERCHANT"}, merchant("MER-001"), "/merchant"},
-		{"merchant-002", "Bala Krishnan", "bintang@fetch.test", []string{"MERCHANT"}, merchant("MER-002"), "/merchant"},
-		{"merchant-003", "Lim Wei Ming", "kopitiam@fetch.test", []string{"MERCHANT"}, merchant("MER-003"), "/merchant"},
-		{"merchant-004", "Ong Siew Lan", "dapur@fetch.test", []string{"MERCHANT"}, merchant("MER-004"), "/merchant"},
-		{"merchant-005", "Hafiz Zainal", "mart@fetch.test", []string{"MERCHANT"}, merchant("MER-005"), "/merchant"},
-		{"merchant-006", "Grace Wong", "sihat@fetch.test", []string{"MERCHANT"}, merchant("MER-006"), "/merchant"},
-		{"rider-01", "Amir Hakim", "amir@fetch.test", []string{"RIDER"}, nil, "/rider"},
-		{"rider-02", "Siva Kumar", "siva@fetch.test", []string{"RIDER"}, nil, "/rider"},
-		{"support-01", "Nurul Huda", "nurul@fetch.test", []string{"SUPPORT"}, nil, "/support"},
-		{"ops-01", "Jason Lim", "jason@fetch.test", []string{"OPERATIONS"}, nil, "/ops"},
-		{"lead-01", "Farah Ismail", "farah@fetch.test", []string{"SUPPORT", "OPERATIONS"}, nil, "/ops"},
+		{"cust-001", "Customer 1", "customer1@fetch.test", []string{"CUSTOMER"}, nil, "/"},
+		{"cust-002", "Customer 2", "customer2@fetch.test", []string{"CUSTOMER"}, nil, "/"},
+		{"cust-003", "Customer 3", "customer3@fetch.test", []string{"CUSTOMER"}, nil, "/"},
+		{"merchant-001", "Merchant 1", "merchant1@fetch.test", []string{"MERCHANT"}, merchant("MER-001"), "/merchant"},
+		{"merchant-002", "Merchant 2", "merchant2@fetch.test", []string{"MERCHANT"}, merchant("MER-002"), "/merchant"},
+		{"merchant-003", "Merchant 3", "merchant3@fetch.test", []string{"MERCHANT"}, merchant("MER-003"), "/merchant"},
+		{"merchant-004", "Merchant 4", "merchant4@fetch.test", []string{"MERCHANT"}, merchant("MER-004"), "/merchant"},
+		{"merchant-005", "Merchant 5", "merchant5@fetch.test", []string{"MERCHANT"}, merchant("MER-005"), "/merchant"},
+		{"merchant-006", "Merchant 6", "merchant6@fetch.test", []string{"MERCHANT"}, merchant("MER-006"), "/merchant"},
+		{"rider-01", "Rider 1", "rider1@fetch.test", []string{"RIDER"}, nil, "/rider"},
+		{"rider-02", "Rider 2", "rider2@fetch.test", []string{"RIDER"}, nil, "/rider"},
+		{"support-01", "Support 1", "support1@fetch.test", []string{"SUPPORT"}, nil, "/support"},
+		{"ops-01", "Admin 1", "admin1@fetch.test", []string{"OPERATIONS"}, nil, "/ops"},
+		{"lead-01", "Admin 2", "admin2@fetch.test", []string{"SUPPORT", "OPERATIONS"}, nil, "/ops"},
 	}
 }
 
@@ -78,7 +78,7 @@ func seedCategories() []Category {
 }
 func seedMerchants() []Merchant {
 	return []Merchant{
-		{"MER-001", "Warung Kak Ros", "food", "nasi-lemak", "Bangsar, Kuala Lumpur", DeliveryMinutes{20, 35}, 399, true},
+		{"MER-001", "Warung Nasi Lemak", "food", "nasi-lemak", "Bangsar, Kuala Lumpur", DeliveryMinutes{20, 35}, 399, true},
 		{"MER-002", "Restoran Bintang Mamak", "food", "mamak", "Petaling Jaya, Selangor", DeliveryMinutes{15, 30}, 299, true},
 		{"MER-003", "Kopitiam Lama", "food", "kopitiam", "Cheras, Kuala Lumpur", DeliveryMinutes{20, 35}, 399, true},
 		{"MER-004", "Dapur Penang", "food", "hawker", "Subang Jaya, Selangor", DeliveryMinutes{25, 40}, 499, true},

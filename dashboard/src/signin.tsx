@@ -19,7 +19,7 @@ export function SignIn(props: { signedIn: (session: SessionInfo) => void }) {
 
   return (
     <section className="entry-card" aria-labelledby="signin-title">
-      <h1 id="signin-title">{mode === 'password' ? 'Sign in' : 'First sign-in'}</h1>
+      <h1 id="signin-title">{mode === 'password' ? 'Sign in' : 'First Sign-In'}</h1>
       <p className="entry-state">
         Gateway:{' '}
         {health.reply?.kind === 'ok' ? (
@@ -32,12 +32,12 @@ export function SignIn(props: { signedIn: (session: SessionInfo) => void }) {
           'not available'
         )}
       </p>
-      <div className="segmented" role="group" aria-label="Sign-in method">
+      <div className="segmented" role="group" aria-label="Sign-In Method">
         <button type="button" aria-pressed={mode === 'password'} onClick={() => setMode('password')}>
           Password
         </button>
         <button type="button" aria-pressed={mode === 'enrol'} onClick={() => setMode('enrol')}>
-          First sign-in with an enrolment secret
+          First Sign-In with an Enrolment Secret
         </button>
       </div>
       {mode === 'password' ? <PasswordForm signedIn={props.signedIn} /> : <EnrolForm enrolled={() => setMode('password')} />}
@@ -69,7 +69,7 @@ function PasswordForm(props: { signedIn: (session: SessionInfo) => void }) {
   return (
     <>
       <form onSubmit={submit}>
-        <Field id={`${id}-name`} label="Administrator name">
+        <Field id={`${id}-name`} label="Administrator Name">
           <input id={`${id}-name`} className="input" autoComplete="username" spellCheck={false} required value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
         <Field id={`${id}-password`} label="Password">
@@ -125,13 +125,13 @@ function EnrolForm(props: { enrolled: () => void }) {
     <>
       <p className="hint form-intro">Use the one-time enrolment secret the operator received from the gateway's install or enrol command.</p>
       <form onSubmit={submit}>
-        <Field id={`${id}-name`} label="Administrator name">
+        <Field id={`${id}-name`} label="Administrator Name">
           <input id={`${id}-name`} className="input" autoComplete="username" spellCheck={false} required value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
-        <Field id={`${id}-secret`} label="Enrolment secret">
+        <Field id={`${id}-secret`} label="Enrolment Secret">
           <input id={`${id}-secret`} className="input" type="password" autoComplete="off" required value={secret} onChange={(e) => setSecret(e.target.value)} />
         </Field>
-        <Field id={`${id}-password`} label="New password" hint="15 to 256 bytes." error={length}>
+        <Field id={`${id}-password`} label="New Password" hint="15 to 256 bytes." error={length}>
           <input
             id={`${id}-password`}
             className="input"
@@ -144,7 +144,7 @@ function EnrolForm(props: { enrolled: () => void }) {
             onChange={(e) => setPassword(e.target.value)}
           />
         </Field>
-        <Field id={`${id}-repeat`} label="Repeat the new password" error={mismatch}>
+        <Field id={`${id}-repeat`} label="Repeat the New Password" error={mismatch}>
           <input
             id={`${id}-repeat`}
             className="input"
@@ -168,7 +168,7 @@ function EnrolForm(props: { enrolled: () => void }) {
           <div className="notice tone-ok">
             <p className="notice-title">Enrolled. Sign in with the new password.</p>
             <button type="button" className="btn" onClick={props.enrolled}>
-              Go to sign-in
+              Go to Sign-In
             </button>
           </div>
         ) : reply ? (

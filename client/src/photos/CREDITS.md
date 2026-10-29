@@ -4,7 +4,7 @@ Every photo in this folder comes from [Unsplash](https://unsplash.com) under the
 
 | File | Shows | Photographer | Unsplash page |
 |---|---|---|---|
-| MER-001.webp | Nasi lemak plate (Warung Kak Ros) | Aldrin Rachman Pradana | https://unsplash.com/photos/B_1GyWCsc1s |
+| MER-001.webp | Nasi lemak plate (Warung Nasi Lemak) | Aldrin Rachman Pradana | https://unsplash.com/photos/B_1GyWCsc1s |
 | MER-002.webp | Roti on the griddle (Restoran Bintang Mamak) | Mugabi Owen | https://unsplash.com/photos/d2KrELzu9Qw |
 | MER-003.webp | Kopitiam coffee cup (Kopitiam Lama) | Alfred | https://unsplash.com/photos/lv0c9E5WNSA |
 | MER-004.webp | Noodle bowl (Dapur Penang) | Amanda Lim | https://unsplash.com/photos/7af2iJQ0HaY |

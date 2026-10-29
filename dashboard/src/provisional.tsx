@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { newKey, type Activation, type Admin, type Outcome, type ProvisionalView, type Reply, type Status } from './api'
-import { useGatewayState, useMutation, usePaged, usePoll, useRereadWhen, useResource } from './hooks'
+import { useGatewayState, useMutation, usePaged, liveMs, usePoll, useRereadWhen, useResource } from './hooks'
 import { reasonOf, type Traffic } from './monitor'
 import { actorName, age, Badge, clock, Confirm, Empty, MutationResult, Problem, Receipt, Remaining, ShowMore, staleAfterMs, TableScroll, Time, TimeOfDay } from './ui'
 
@@ -82,7 +82,7 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
         : Promise.resolve({ kind: 'aborted' } as Reply<Traffic>),
     [activatedAt, variant],
   )
-  usePoll(traffic.refresh, activatedAt && variant === 'full' ? 3_000 : null, true)
+  usePoll(traffic.refresh, activatedAt && variant === 'full' ? liveMs : null, true)
 
   // runCheck reads the trial, the status and the trial's traffic again and
   // compares them with what the administrator was looking at. It never
@@ -121,8 +121,8 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
     const reasons: string[] = []
     if (whileOpen) reasons.push("The gateway's status changed while this dialog was open.")
     if (trial.body.activation.deadline !== before.deadline) reasons.push('Its deadline is different from the one you were looking at.')
-    if (trial.body.generation !== before.generation) reasons.push('The policy that requests use changed (a new generation is in force).')
-    if (status.kind === 'ok' && JSON.stringify(status.body.overrides ?? []) !== before.overrides) reasons.push('The temporary rules in force changed.')
+    if (trial.body.generation !== before.generation) reasons.push('The policy that requests use changed (a new generation is active).')
+    if (status.kind === 'ok' && JSON.stringify(status.body.overrides ?? []) !== before.overrides) reasons.push('The active temporary rules changed.')
     if (before.failed.length > 0) reasons.push(`An earlier read of ${before.failed.join(' and ')} had failed, so what you saw may not have been current.`)
     if (status.kind !== 'ok') reasons.push("The gateway's status could not be read again.")
     if (figures.kind !== 'ok') reasons.push("The trial's traffic could not be read again.")
@@ -193,7 +193,7 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
       success={(o) => (
         <>
           <p className="notice-title">
-            {o.disposition === 'confirmed' ? `Kept: version ${o.revision} is now the policy in force.` : `Undone: version ${o.revision} is in force again.`}
+            {o.disposition === 'confirmed' ? `Kept: version ${o.revision} is now the active policy.` : `Undone: version ${o.revision} is active again.`}
           </p>
           {variant === 'full' ? <Receipt outcome={o} /> : null}
         </>
@@ -208,19 +208,19 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
       <Confirm
         open={asking === 'confirm'}
         title={`Keep version ${asked.activation.revision}?`}
-        confirmLabel="Keep change"
+        confirmLabel="Keep Change"
         disabled={!ready || (ready.reasons.length > 0 && !reviewed)}
         onCancel={cancel}
         onConfirm={confirm}
       >
         <p>
-          Version {asked.activation.revision} stays in force and is no longer undone at the deadline. Version {asked.activation.rollback_target} is then no
+          Version {asked.activation.revision} stays active and is no longer undone at the deadline. Version {asked.activation.rollback_target} is then no
           longer restored by an undo.
         </p>
         <p className="hint">The Admin API calls this “confirm”.</p>
         {asked.changes.length > 0 ? (
           <div className="change-set">
-            <h3>What stays in force ({asked.changes.length} {asked.changes.length === 1 ? 'change' : 'changes'})</h3>
+            <h3>What Stays Active ({asked.changes.length} {asked.changes.length === 1 ? 'change' : 'changes'})</h3>
             <ul>
               {asked.changes.slice(0, 8).map((c) => (
                 <li key={`${c.control}:${c.target}`}>
@@ -259,13 +259,13 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
         <Confirm
           open={asking === 'rollback'}
           title={`Undo the change and return to version ${view.activation.rollback_target}?`}
-          confirmLabel="Undo change"
+          confirmLabel="Undo Change"
           danger
           onCancel={() => setAsking(null)}
           onConfirm={rollback}
         >
           <p>
-            Version {view.activation.rollback_target} is in force again from the next request, and the trial of version {view.activation.revision} ends.
+            Version {view.activation.rollback_target} is active again from the next request, and the trial of version {view.activation.revision} ends.
           </p>
           <p className="hint">The Admin API calls this “roll back”.</p>
         </Confirm>
@@ -283,17 +283,17 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
   if (variant === 'tile') {
     if (!view) {
       return (
-        <div className="tile">
-          <p className="tile-label">Change on trial</p>
+        <div className="tile tile-empty">
+          <p className="tile-label">Change on Trial</p>
           {current.reply && current.reply.kind !== 'ok' && !none ? (
             <Problem reply={current.reply} />
           ) : (
-            <>
-              <p className="tile-value tile-value-quiet">None</p>
-              <p className="tile-note">
-                {mutation.phase.state === 'replied' ? null : 'Changes go live on trial first and are undone at the deadline unless kept.'}
-              </p>
-            </>
+            <p className="tile-value tile-value-quiet">None</p>
+          )}
+          {mutation.phase.state === 'replied' ? null : (
+            <p className="tile-foot">
+              <a href="#/candidates">Open Changes</a>
+            </p>
           )}
           {result}
         </div>
@@ -303,7 +303,7 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
       <div className="tile tile-trial tone-pending">
         <div className="tile-row">
           <div>
-            <p className="tile-label tile-label-tone">Change on trial</p>
+            <p className="tile-label tile-label-tone">Change on Trial</p>
             <p className="tile-value">Version {view.activation.revision}</p>
           </div>
           <div className="tile-end">
@@ -321,11 +321,11 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
           <div className="actions">
             {manage ? (
               <button type="button" className="btn btn-small" onClick={() => setAsking('rollback')} disabled={mutation.pending}>
-                Undo change
+                Undo Change
               </button>
             ) : null}
             <a className="btn btn-small btn-primary" href="#/candidates">
-              {manage ? 'Review and keep' : 'Open Changes'}
+              {manage ? 'Review and Keep' : 'Open Changes'}
             </a>
           </div>
         </div>
@@ -345,7 +345,7 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
       {view ? (
         <section className="section card trial tone-pending" aria-labelledby="trial-title">
           <div className="trial-main">
-            <p className="tile-label tile-label-tone">Change on trial</p>
+            <p className="tile-label tile-label-tone">Change on Trial</p>
             <h2 id="trial-title">Version {view.activation.revision} is on trial</h2>
             <div className="trial-clock">
               <p className="tile-countdown">
@@ -361,17 +361,17 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
             {manage ? (
               <div className="actions">
                 <button type="button" className="btn" onClick={() => setAsking('rollback')} disabled={mutation.pending}>
-                  Undo change
+                  Undo Change
                 </button>
                 <button type="button" className="btn btn-primary" onClick={askConfirm} disabled={mutation.pending}>
-                  Keep change
+                  Keep Change
                 </button>
               </div>
             ) : null}
             <TrialTraffic traffic={traffic} activatedAt={view.activation.activated_at} />
           </div>
           <div className="trial-side">
-            <h3>What changed from version {view.activation.rollback_target}</h3>
+            <h3>What Changed from Version {view.activation.rollback_target}</h3>
             {view.changes.length === 0 ? (
               <p className="hint">Nothing, as the gateway reports it.</p>
             ) : (
@@ -382,7 +382,7 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
                 <ChangedControls changes={view.changes.slice(0, shownChanges)} />
                 {view.changes.length > shownChanges ? (
                   <details className="more-changes">
-                    <summary>Show the other {view.changes.length - shownChanges}</summary>
+                    <summary>Show the Other {view.changes.length - shownChanges}</summary>
                     <ChangedControls changes={view.changes.slice(shownChanges)} />
                   </details>
                 ) : null}
@@ -390,7 +390,7 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
             )}
             <dl className="facts facts-compact">
               <div className="fact">
-                <dt>From draft change</dt>
+                <dt>From Draft Change</dt>
                 <dd>{view.activation.candidate}</dd>
               </div>
               <div className="fact">
@@ -400,8 +400,8 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
                 </dd>
               </div>
               <div className="fact">
-                <dt>Generation in force</dt>
-                <dd>{view.generation ? <code>{view.generation}</code> : 'not the generation in force'}</dd>
+                <dt>Active Generation</dt>
+                <dd>{view.generation ? <code>{view.generation}</code> : 'not the active generation'}</dd>
               </div>
             </dl>
           </div>
@@ -423,7 +423,7 @@ function TrialTraffic(props: { traffic: ReturnType<typeof useResource<Traffic>>;
   const last = traffic.last
   return (
     <section className="trial-traffic" aria-labelledby="trial-traffic-title">
-      <h3 id="trial-traffic-title">Requests since the trial started</h3>
+      <h3 id="trial-traffic-title">Requests Since the Trial Started</h3>
       {last ? <TrafficFigures traffic={last.body} activatedAt={activatedAt} /> : <p className="hint">{traffic.failed ? 'Not read.' : 'Reading…'}</p>}
       <p className={traffic.failed ? 'hint read-stamp-failed' : 'hint'}>
         {last ? `Updated ${clock(last.at.toISOString(), true)}` : ''}
@@ -467,7 +467,7 @@ function CheckedFacts({ check }: { check: Extract<Check, { phase: 'ready' }> }) 
         </dd>
       </div>
       <div className="fact">
-        <dt>Requests since it started</dt>
+        <dt>Requests Since It Started</dt>
         <dd>{counts ? `${counts.total} decided: ${counts.allowed} allowed, ${counts.refused} refused` : 'not read'}</dd>
       </div>
     </dl>
@@ -536,7 +536,7 @@ export const controls: Record<string, string> = {
 const dispositions: Record<string, { tone: 'ok' | 'neutral' | 'refused'; word: string }> = {
   confirmed: { tone: 'ok', word: 'Kept' },
   rolled_back: { tone: 'neutral', word: 'Undone' },
-  timed_out: { tone: 'neutral', word: 'Undone at the deadline' },
+  timed_out: { tone: 'neutral', word: 'Undone at the Deadline' },
   quarantined: { tone: 'refused', word: 'Set aside after a restore' },
 }
 
@@ -545,19 +545,19 @@ export function ActivationHistory({ admin, reads }: { admin: Admin; reads: unkno
   const history = usePaged<Activation>(admin, '/admin/activations', [reads])
   return (
     <section className="section" aria-labelledby="trials-title">
-      <h2 id="trials-title">Past trials</h2>
+      <h2 id="trials-title">Past Trials</h2>
       {history.reply && history.reply.kind !== 'ok' ? <Problem reply={history.reply} /> : null}
       {history.reply?.kind === 'ok' && history.items.length === 0 ? <Empty title="No change has been put on trial yet." /> : null}
       {history.items.length > 0 ? (
-        <TableScroll label="Past trials">
+        <TableScroll label="Past Trials">
           <table>
             <thead>
               <tr>
                 <th scope="col">Version</th>
-                <th scope="col">From draft change</th>
+                <th scope="col">From Draft Change</th>
                 <th scope="col">Started</th>
                 <th scope="col">Deadline</th>
-                <th scope="col">How it ended</th>
+                <th scope="col">How It Ended</th>
               </tr>
             </thead>
             <tbody>
@@ -575,7 +575,7 @@ export function ActivationHistory({ admin, reads }: { admin: Admin; reads: unkno
                     {a.disposition ? (
                       <Badge tone={dispositions[a.disposition]?.tone ?? 'neutral'}>{dispositions[a.disposition]?.word ?? a.disposition}</Badge>
                     ) : (
-                      <Badge tone="pending">On trial now</Badge>
+                      <Badge tone="pending">On Trial Now</Badge>
                     )}
                     {a.resolved_at ? (
                       <span className="cell-sub">

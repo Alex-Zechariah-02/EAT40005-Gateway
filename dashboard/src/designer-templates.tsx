@@ -1,14 +1,6 @@
-import { useId, useRef, useState, type SyntheticEvent } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { Policy } from './api'
 import { limitSignIn, readOnlyAccess, removeApiAccess, tightenRate, type TemplateResult } from './designer-model'
-
-// closeOtherMenus keeps one toolbar menu open at a time: opening one closes
-// the others, which would otherwise lie over it.
-export function closeOtherMenus(event: SyntheticEvent<HTMLDetailsElement>) {
-  const menu = event.currentTarget
-  if (!menu.open) return
-  for (const other of menu.parentElement?.querySelectorAll('details[open]') ?? []) if (other !== menu) other.removeAttribute('open')
-}
 
 // Templates offers ready-made starting points for common changes. Applying one
 // only edits the unsaved draft; the draft is then saved, checked by the
@@ -24,6 +16,25 @@ export function Templates(props: { policy: Policy; apply: (document: Policy, sum
   const [endpoint, setEndpoint] = useState('')
   const [count, setCount] = useState('5')
   const [problem, setProblem] = useState('')
+  // The open menu lies over the page, so a click elsewhere or Escape closes it.
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    if (!open) return
+    const away = (event: PointerEvent) => {
+      if (!menu.current?.contains(event.target as Node)) menu.current?.removeAttribute('open')
+    }
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || !menu.current?.contains(document.activeElement)) return
+      menu.current.removeAttribute('open')
+      menu.current.querySelector('summary')?.focus()
+    }
+    document.addEventListener('pointerdown', away)
+    document.addEventListener('keydown', escape)
+    return () => {
+      document.removeEventListener('pointerdown', away)
+      document.removeEventListener('keydown', escape)
+    }
+  }, [open])
   // A choice that the draft no longer has falls back to the first one.
   const chosenRole = roles.includes(role) ? role : (roles[0] ?? '')
   const chosenApi = apis.includes(api) ? api : (apis[0] ?? '')
@@ -50,19 +61,20 @@ export function Templates(props: { policy: Policy; apply: (document: Policy, sum
     </div>
   )
   return (
-    <details ref={menu} className="designer-add designer-templates" onToggle={closeOtherMenus}>
+    <details ref={menu} className="designer-add designer-templates" onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary className="btn">Templates</summary>
-      <div>
-        <p className="hint">Each template changes only this draft. Nothing is saved until you choose Save draft change.</p>
+      {/* nowheel lets the wheel scroll this menu instead of moving the canvas. */}
+      <div className="nowheel">
+        <p className="hint">Templates edit this draft only.</p>
         <section aria-labelledby={`${id}-login`}>
-          <h3 id={`${id}-login`}>Limit sign-in attempts</h3>
+          <h3 id={`${id}-login`}>Limit Sign-In Attempts</h3>
           <p className="hint">accounts.login: 5 requests per 60 s per client address.</p>
           <button type="button" className="btn btn-small" onClick={() => run(limitSignIn(props.policy))}>
             Apply: limit sign-in attempts
           </button>
         </section>
         <section aria-labelledby={`${id}-access`}>
-          <h3 id={`${id}-access`}>A role's access to an API</h3>
+          <h3 id={`${id}-access`}>A Role's Access to an API</h3>
           {select('role', 'Role', chosenRole, roles, setRole)}
           {select('api', 'API', chosenApi, apis, setApi)}
           <div className="actions">
@@ -75,10 +87,10 @@ export function Templates(props: { policy: Policy; apply: (document: Policy, sum
           </div>
         </section>
         <section aria-labelledby={`${id}-rate`}>
-          <h3 id={`${id}-rate`}>Tighten an endpoint's rate limit</h3>
+          <h3 id={`${id}-rate`}>Tighten an Endpoint's Rate Limit</h3>
           {select('endpoint', 'Endpoint', chosenEndpoint, endpoints, setEndpoint)}
           <div className="field">
-            <label htmlFor={`${id}-count`}>Requests per window</label>
+            <label htmlFor={`${id}-count`}>Requests per Window</label>
             <input id={`${id}-count`} className="input" type="number" min={1} value={count} onChange={(event) => setCount(event.target.value)} />
           </div>
           <button type="button" className="btn btn-small" onClick={() => run(tightenRate(props.policy, chosenEndpoint, Number(count)))}>

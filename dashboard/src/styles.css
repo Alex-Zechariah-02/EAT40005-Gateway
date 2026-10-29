@@ -24,9 +24,25 @@
   --rule-strong: oklch(86% 0.006 262);
   /* Control edges: at least 3:1 against paper, well and ground (WCAG 1.4.11). */
   --control-line: oklch(62% 0.01 262);
-  --focus: oklch(51% 0.19 260);
-  --link: oklch(51% 0.19 260);
-  --link-hover: oklch(42% 0.18 262);
+  --focus: oklch(52% 0.2 268);
+  --link: oklch(50% 0.2 268);
+  --link-hover: oklch(42% 0.19 268);
+  --accent: oklch(50% 0.2 268);
+  --accent-hover: oklch(43% 0.19 268);
+  --accent-active: oklch(37% 0.17 268);
+  --accent-tint: oklch(96.4% 0.024 268);
+  --accent-line: oklch(86% 0.07 268);
+  --accent-soft: oklch(91% 0.05 268);
+  --on-accent: oklch(100% 0 0);
+  --glass: oklch(100% 0 0 / 0.78);
+  --kind-role: oklch(50% 0.2 268);
+  --kind-role-tint: oklch(96.4% 0.024 268);
+  --kind-operation: oklch(50% 0.13 200);
+  --kind-operation-tint: oklch(96.5% 0.022 200);
+  --kind-api: oklch(50% 0.16 310);
+  --kind-api-tint: oklch(96.5% 0.022 310);
+  --kind-upstream: oklch(50% 0.11 160);
+  --kind-upstream-tint: oklch(96.5% 0.025 160);
 
   --ok: oklch(48% 0.12 152);
   --ok-tint: oklch(96% 0.035 152);
@@ -52,8 +68,9 @@
   --refused-strong: oklch(44% 0.18 26);
   --row-hover: oklch(97.9% 0.003 250);
   --hover: oklch(20% 0.012 262 / 0.05);
-  --chart-allowed: oklch(52% 0.012 262 / 0.36);
+  --chart-allowed: oklch(62% 0.12 268);
   --chart-refused: oklch(53% 0.2 26);
+  --chart-latency: oklch(52% 0.1 195);
   --step-cleared: oklch(62% 0.11 152);
   --card-shadow: 0 0 0 1px oklch(20% 0.012 262 / 0.07), 0 1px 2px -1px oklch(20% 0.012 262 / 0.06), 0 2px 4px oklch(20% 0.012 262 / 0.03);
   --shadow-overlay: 0 0 0 1px oklch(20% 0.012 262 / 0.08), 0 18px 48px oklch(20% 0.012 262 / 0.18), 0 2px 6px oklch(20% 0.012 262 / 0.08);
@@ -63,19 +80,19 @@
   --font-ui: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'Geist Mono', ui-monospace, monospace;
 
-  --text-xs: 0.75rem;
-  --text-sm: 0.8125rem;
-  --text-md: 0.875rem;
-  --text-lg: 0.9375rem;
-  --text-xl: 1.25rem;
-  --text-2xl: 1.375rem;
+  --text-xs: 0.8rem;
+  --text-sm: 0.85rem;
+  --text-md: 0.92rem;
+  --text-lg: 0.98rem;
+  --text-xl: 1.31rem;
+  --text-2xl: 1.44rem;
 
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 12px;
-  --control-h: 32px;
-  --sidebar-w: 244px;
-  --content-w: 1160px;
+  --control-h: 34px;
+  --sidebar-w: 248px;
+  --content-w: 1920px;
   --gutter: 40px;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   color-scheme: light;
@@ -96,9 +113,25 @@
     --rule: oklch(28% 0.008 262);
     --rule-strong: oklch(36% 0.01 262);
     --control-line: oklch(52% 0.01 262);
-    --focus: oklch(73% 0.13 258);
-    --link: oklch(76% 0.12 258);
-    --link-hover: oklch(84% 0.09 258);
+    --focus: oklch(74% 0.14 268);
+    --link: oklch(77% 0.12 268);
+    --link-hover: oklch(85% 0.09 268);
+    --accent: oklch(70% 0.15 268);
+    --accent-hover: oklch(77% 0.12 268);
+    --accent-active: oklch(83% 0.09 268);
+    --accent-tint: oklch(27% 0.06 268);
+    --accent-line: oklch(42% 0.1 268);
+    --accent-soft: oklch(33% 0.08 268);
+    --on-accent: oklch(16% 0.02 268);
+    --glass: oklch(22% 0.01 262 / 0.78);
+    --kind-role: oklch(74% 0.14 268);
+    --kind-role-tint: oklch(26% 0.05 268);
+    --kind-operation: oklch(76% 0.11 200);
+    --kind-operation-tint: oklch(26% 0.04 200);
+    --kind-api: oklch(76% 0.12 310);
+    --kind-api-tint: oklch(26% 0.045 310);
+    --kind-upstream: oklch(76% 0.11 160);
+    --kind-upstream-tint: oklch(26% 0.04 160);
     --ok: oklch(75% 0.14 152);
     --ok-tint: oklch(28% 0.05 152);
     --ok-line: oklch(40% 0.08 152);
@@ -121,8 +154,10 @@
     --refused-strong: oklch(77% 0.15 25);
     --row-hover: oklch(23% 0.007 262);
     --hover: oklch(100% 0 0 / 0.06);
-    --chart-allowed: oklch(66% 0.01 262 / 0.42);
+    --chart-allowed: oklch(66% 0.11 268);
     --chart-refused: oklch(68% 0.18 25);
+    --chart-latency: oklch(72% 0.1 195);
+  --chart-latency: oklch(72% 0.1 195);
     --step-cleared: oklch(66% 0.12 152);
     --card-shadow: 0 0 0 1px oklch(100% 0 0 / 0.07);
     --shadow-overlay: 0 0 0 1px oklch(100% 0 0 / 0.1), 0 18px 48px oklch(0% 0 0 / 0.55);
@@ -141,9 +176,25 @@
   --rule: oklch(28% 0.008 262);
   --rule-strong: oklch(36% 0.01 262);
   --control-line: oklch(52% 0.01 262);
-  --focus: oklch(73% 0.13 258);
-  --link: oklch(76% 0.12 258);
-  --link-hover: oklch(84% 0.09 258);
+  --focus: oklch(74% 0.14 268);
+  --link: oklch(77% 0.12 268);
+  --link-hover: oklch(85% 0.09 268);
+  --accent: oklch(70% 0.15 268);
+  --accent-hover: oklch(77% 0.12 268);
+  --accent-active: oklch(83% 0.09 268);
+  --accent-tint: oklch(27% 0.06 268);
+  --accent-line: oklch(42% 0.1 268);
+  --accent-soft: oklch(33% 0.08 268);
+  --on-accent: oklch(16% 0.02 268);
+  --glass: oklch(22% 0.01 262 / 0.78);
+  --kind-role: oklch(74% 0.14 268);
+  --kind-role-tint: oklch(26% 0.05 268);
+  --kind-operation: oklch(76% 0.11 200);
+  --kind-operation-tint: oklch(26% 0.04 200);
+  --kind-api: oklch(76% 0.12 310);
+  --kind-api-tint: oklch(26% 0.045 310);
+  --kind-upstream: oklch(76% 0.11 160);
+  --kind-upstream-tint: oklch(26% 0.04 160);
   --ok: oklch(75% 0.14 152);
   --ok-tint: oklch(28% 0.05 152);
   --ok-line: oklch(40% 0.08 152);
@@ -166,8 +217,9 @@
   --refused-strong: oklch(77% 0.15 25);
   --row-hover: oklch(23% 0.007 262);
   --hover: oklch(100% 0 0 / 0.06);
-  --chart-allowed: oklch(66% 0.01 262 / 0.42);
+  --chart-allowed: oklch(66% 0.11 268);
   --chart-refused: oklch(68% 0.18 25);
+  --chart-latency: oklch(72% 0.1 195);
   --step-cleared: oklch(66% 0.12 152);
   --card-shadow: 0 0 0 1px oklch(100% 0 0 / 0.07);
   --shadow-overlay: 0 0 0 1px oklch(100% 0 0 / 0.1), 0 18px 48px oklch(0% 0 0 / 0.55);
@@ -440,7 +492,7 @@ code.tag {
   box-shadow: inset 0 0 0 1px var(--rule);
   color: var(--ink-3);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1148,18 +1200,18 @@ dialog h2 {
   display: inline-grid;
   flex: none;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: var(--radius-md);
-  background: var(--ink);
-  color: var(--paper);
-  font-size: 13px;
-  font-weight: 700;
+  background: var(--accent-tint);
+  color: var(--accent);
 }
 
 .brand-text {
   display: flex;
   flex-direction: column;
+  gap: 1px;
+  min-width: 0;
   line-height: 1.25;
 }
 
@@ -1168,17 +1220,11 @@ dialog h2 {
   font-weight: 600;
 }
 
-.brand-env > summary {
-  color: var(--ink-3);
-  font-size: 12px;
-  cursor: pointer;
-}
-
 .brand-host {
-  display: block;
-  margin-top: 2px;
+  overflow: hidden;
   color: var(--ink-3);
-  font-size: 11px;
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
 }
 
 /* Sign-in */
@@ -1251,6 +1297,7 @@ dialog h2 {
   flex-direction: column;
   height: 100vh;
   padding: 16px 12px 12px;
+  overflow-x: hidden;
   overflow-y: auto;
   border-right: 1px solid var(--rule);
   background: var(--side);
@@ -1275,11 +1322,22 @@ dialog h2 {
 }
 
 .nav-group-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
   margin: 0;
-  padding: 0 10px 4px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
   color: var(--ink-3);
-  font-size: var(--text-xs);
-  font-weight: 500;
+  font: 500 var(--text-xs)/1.4 var(--font-ui);
+  cursor: pointer;
+}
+
+.nav-group-label:hover {
+  color: var(--ink);
 }
 
 .nav-group ul {
@@ -1333,7 +1391,7 @@ dialog h2 {
   border-radius: 999px;
   background: var(--tone-tint);
   color: var(--tone);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -1434,6 +1492,11 @@ dialog h2 {
   padding-bottom: 72px;
 }
 
+/* The policy canvas runs to the window's bottom edge, less a small margin. */
+.page:has(.designer-canvas) {
+  padding-bottom: 16px;
+}
+
 .page > * {
   max-width: var(--content-w);
   margin-inline: var(--gutter);
@@ -1454,7 +1517,7 @@ dialog h2 {
   align-items: center;
   gap: 12px 20px;
   min-height: 64px;
-  margin-bottom: 28px;
+  margin-bottom: 16px;
   padding: 12px var(--gutter);
   border-bottom: 1px solid var(--rule);
   background: var(--ground);
@@ -1481,7 +1544,7 @@ dialog h2 {
 
 .page-about {
   max-width: 72ch;
-  margin-top: -12px;
+  margin-top: 0;
   margin-bottom: 24px;
   padding: 10px 14px;
   border-radius: var(--radius-md);
@@ -1662,6 +1725,70 @@ dialog h2 {
   align-items: start;
 }
 
+/* A column of cards that stacks on its own, independent of the column
+   beside it. */
+.card-stack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+  align-content: start;
+}
+
+.card-stack:empty {
+  display: none;
+}
+
+/* Beside a long list the narrow column stays in view as the page scrolls. */
+@media (min-width: 1101px) {
+  .card-stack-sticky {
+    position: sticky;
+    top: 88px;
+  }
+}
+
+.card-sub {
+  margin: 20px 0 10px;
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+
+.card-head + .card-sub {
+  margin-top: 0;
+}
+
+.card-quiet {
+  margin: 0;
+}
+
+/* A ranked list for the narrow column (who was refused most, the busiest
+   endpoints): the name with its details beneath, the count at the end. */
+.rank-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rank-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 12px;
+  font-size: var(--text-sm);
+}
+
+.rank-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.rank-list .num {
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
 .narrow {
   max-width: 34rem;
 }
@@ -1670,22 +1797,34 @@ dialog h2 {
   margin-bottom: 16px;
 }
 
-/* Overview: the status strip, three tiles side by side. */
+/* Overview: the status strip, three tiles side by side in one short row. A
+   change on trial gets the widest tile, as it is the one with a decision. */
 .strip {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) minmax(0, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   overflow: hidden;
+}
+
+.strip:has(> .tile-trial) {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) minmax(0, 1fr);
 }
 
 .tile {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  padding: 20px;
+  padding: 16px 20px;
 }
 
 .tile + .tile {
   border-left: 1px solid var(--rule);
+}
+
+/* A tile with nothing to report keeps its value quiet, so it does not weigh
+   as much as one that does. */
+.tile-empty .tile-value {
+  font-size: var(--text-lg);
+  font-weight: 500;
 }
 
 .tile-trial {
@@ -2223,25 +2362,47 @@ dialog h2 {
 }
 
 /* The same five columns line up from one API to the next. */
+/* APIs: each endpoint is its route with its ID under it; who may call it is
+   a row of role chips; limits and bodies are short figures. */
 .ops-table {
   table-layout: fixed;
-  min-width: 52rem;
+  min-width: 44rem;
 }
 
 .ops-table th:nth-child(1) {
-  width: 22%;
+  width: 40%;
 }
 
 .ops-table th:nth-child(2) {
-  width: 26%;
+  width: 30%;
 }
 
 .ops-table th:nth-child(3) {
-  width: 18%;
+  width: 14%;
 }
 
-.ops-table th:nth-child(4) {
-  width: 20%;
+.ops-route {
+  display: block;
+}
+
+.chips .xref {
+  text-decoration: none;
+}
+
+.xref:hover .chip {
+  background: var(--accent-tint);
+  color: var(--accent-active);
+}
+
+/* A whole card a link opened gets a brief ring instead of a row tint. */
+.card[data-target='true'] {
+  animation: target-ring 2.4s var(--ease-out);
+}
+
+@keyframes target-ring {
+  from {
+    box-shadow: 0 0 0 3px var(--accent-soft), var(--card-shadow);
+  }
 }
 
 .ops-table td {
@@ -2299,15 +2460,6 @@ dialog h2 {
   font-size: var(--text-sm);
 }
 
-/* Accounts */
-.block-form h2 {
-  margin-bottom: 16px;
-}
-
-.block-form .mutation-result {
-  margin-top: 12px;
-}
-
 /* Policy as code */
 .code-block {
   max-height: 24rem;
@@ -2325,58 +2477,72 @@ dialog h2 {
   box-shadow: inset 0 0 0 1px var(--rule);
 }
 
-/* Changes: the steps a change takes, the change on trial, its impact. */
-.lifecycle {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 0;
-  margin: 0;
-  padding: 0;
+/* Changes: the guided steps of a change, the change on trial, its impact. */
+.stepper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+  margin: 4px 0 20px;
+  padding: 0 0 14px;
+  border-bottom: 1px solid var(--rule);
   list-style: none;
 }
 
-.lifecycle-step {
-  position: relative;
-  display: grid;
-  grid-template-columns: 22px minmax(0, 1fr);
-  gap: 2px 10px;
-  padding: 0 16px 0 0;
+.stepper button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  font: 500 var(--text-sm)/1.4 var(--font-ui);
+  cursor: pointer;
 }
 
-.lifecycle-number {
+.stepper button:disabled {
+  cursor: default;
+}
+
+.stepper-number {
   display: inline-grid;
-  grid-row: 1 / span 2;
   place-items: center;
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: var(--paper);
   box-shadow: inset 0 0 0 1px var(--rule-strong);
-  color: var(--ink-2);
   font-size: var(--text-xs);
   font-weight: 600;
 }
 
-.lifecycle-name {
-  padding-top: 1px;
-  font-size: var(--text-sm);
+.stepper .is-current button {
+  color: var(--accent-active);
   font-weight: 600;
 }
 
-.lifecycle-text {
-  color: var(--ink-3);
-  font-size: var(--text-xs);
-  line-height: 1.45;
-}
-
-.lifecycle-step.is-current .lifecycle-number {
-  background: var(--pending);
+.stepper .is-current .stepper-number {
+  background: var(--accent);
   box-shadow: none;
-  color: var(--paper);
+  color: var(--on-accent);
 }
 
-.lifecycle-step.is-current .lifecycle-name {
-  color: var(--pending);
+.stepper .is-done button {
+  color: var(--ink);
+}
+
+.stepper .is-done .stepper-number {
+  background: var(--accent-tint);
+  box-shadow: none;
+  color: var(--accent-active);
+}
+
+.stepper-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--rule);
 }
 
 .trial {
@@ -2855,10 +3021,6 @@ tr.row-detail code {
     grid-column: 1 / -1;
   }
 
-  .lifecycle {
-    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
-    gap: 16px 0;
-  }
 }
 
 @media (max-width: 960px) {
@@ -3120,4 +3282,1008 @@ dialog.wizard {
 
 .wizard-choices .check {
   margin-right: 0;
+}
+
+/* Cobalt accent: primary actions, the current page and selected controls
+   carry the brand blue; state colours keep their own meaning. */
+.btn-primary {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+  color: var(--on-accent);
+}
+
+.btn-primary:active {
+  background: var(--accent-active);
+}
+
+.nav-group a[aria-current='page'] {
+  background: var(--accent-tint);
+  box-shadow: none;
+  color: var(--accent-active);
+  font-weight: 600;
+}
+
+.nav-group a[aria-current='page'] .icon {
+  color: var(--accent);
+}
+
+.segmented button[aria-pressed='true'],
+.segmented button[aria-selected='true'] {
+  color: var(--accent-active);
+}
+
+tbody tr[aria-current] td:first-child {
+  box-shadow: none;
+}
+
+tbody tr[aria-current] {
+  background: var(--accent-tint);
+}
+
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--accent);
+}
+
+/* Nearly opaque, so text scrolled under the header never shows through. */
+.page-head {
+  background: color-mix(in oklch, var(--ground) 95%, transparent);
+  backdrop-filter: saturate(1.4) blur(16px);
+  -webkit-backdrop-filter: saturate(1.4) blur(16px);
+}
+
+/* Floating notifications: they overlay the page instead of pushing it
+   down. Success and progress notes leave by themselves; problems stay. */
+.notices {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 40;
+  width: min(420px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.notices:not(:empty) {
+  margin-bottom: 0;
+}
+
+.notice-bar {
+  position: relative;
+  overflow: hidden;
+  padding: 12px 14px;
+  background: color-mix(in oklch, var(--tone-tint) 82%, transparent);
+  backdrop-filter: saturate(1.5) blur(14px);
+  -webkit-backdrop-filter: saturate(1.5) blur(14px);
+  box-shadow: inset 0 0 0 1px var(--tone-line), var(--shadow-overlay);
+  pointer-events: auto;
+  animation: toast-in 260ms var(--ease-out);
+}
+
+.notice-timer {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: 100%;
+  background: var(--tone);
+  opacity: 0.55;
+  transform-origin: left;
+  animation: toast-timer var(--toast-ms) linear forwards;
+}
+
+.notice-bar:hover .notice-timer,
+.notice-bar:focus-within .notice-timer {
+  animation-play-state: paused;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+}
+
+@keyframes toast-timer {
+  to {
+    transform: scaleX(0);
+  }
+}
+
+/* Motion marks a change of state only: a new live row, an opened
+   explanation. Pages load straight into the task. */
+.card,
+.section.card {
+  transition: box-shadow 160ms var(--ease-out), transform 160ms var(--ease-out);
+}
+
+.events tbody tr:first-child {
+  animation: row-in 600ms var(--ease-out);
+}
+
+.page-about:not([hidden]) {
+  animation: rise-in 200ms var(--ease-out);
+}
+
+/* Movement only, no fade: text keeps its full contrast from the first frame. */
+@keyframes rise-in {
+  from {
+    transform: translateY(8px);
+  }
+}
+
+@keyframes row-in {
+  from {
+    background: var(--accent-tint);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notice-bar,
+  .events tbody tr:first-child,
+  .page-about:not([hidden]) {
+    animation: none;
+  }
+  .notice-timer {
+    animation-duration: var(--toast-ms);
+  }
+}
+
+/* Larger text must still fit a narrow screen: header rows wrap. */
+.sidebar-head {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Browser surfaces in the console's own style: selection, caret, scrollbars
+   and form controls carry the palette instead of the browser's defaults. */
+::selection {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+:root {
+  caret-color: var(--accent);
+}
+
+/* Thin scrollbars in the palette's ink that stay out of sight until the
+   pointer is over the area they scroll; the window's own shows while the page
+   scrolls or the pointer nears it (usePageScrollbar). The standard properties
+   win over the older -webkit- ones in every current browser. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+*:hover,
+*:focus-visible {
+  scrollbar-color: color-mix(in oklch, var(--ink) 30%, transparent) transparent;
+}
+
+html:not(.is-scrolling),
+html:not(.is-scrolling):hover {
+  scrollbar-color: transparent transparent;
+}
+
+html.is-scrolling {
+  scrollbar-color: color-mix(in oklch, var(--ink) 30%, transparent) transparent;
+}
+
+select.input {
+  appearance: none;
+  padding-right: 36px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--ink-3) 50%),
+    linear-gradient(135deg, var(--ink-3) 50%, transparent 50%);
+  background-position:
+    calc(100% - 19px) calc(50% + 1px),
+    calc(100% - 14px) calc(50% + 1px);
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+
+select.input:disabled {
+  background-color: var(--well);
+  color: var(--ink-3);
+  cursor: not-allowed;
+}
+
+select.input option {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+input[type='number'] {
+  appearance: textfield;
+}
+
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+input[type='search']::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+input[type='checkbox'],
+input[type='radio'] {
+  display: inline-grid;
+  flex: none;
+  place-content: center;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  border-radius: 5px;
+  background: var(--paper);
+  box-shadow: inset 0 0 0 1.5px var(--control-line);
+  cursor: pointer;
+  appearance: none;
+  transition:
+    background-color 120ms var(--ease-out),
+    box-shadow 120ms var(--ease-out);
+}
+
+input[type='radio'] {
+  border-radius: 50%;
+}
+
+input[type='checkbox']::before {
+  content: '';
+  width: 9px;
+  height: 5px;
+  border-bottom: 2px solid var(--on-accent);
+  border-left: 2px solid var(--on-accent);
+  transform: translateY(-1px) rotate(-45deg) scale(0);
+  transition: transform 120ms var(--ease-out);
+}
+
+input[type='radio']::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--on-accent);
+  transform: scale(0);
+  transition: transform 120ms var(--ease-out);
+}
+
+input[type='checkbox']:checked,
+input[type='radio']:checked {
+  background: var(--accent);
+  box-shadow: none;
+}
+
+input[type='checkbox']:checked::before {
+  transform: translateY(-1px) rotate(-45deg) scale(1);
+}
+
+input[type='radio']:checked::before {
+  transform: scale(1);
+}
+
+input[type='checkbox']:hover:not(:disabled):not(:checked),
+input[type='radio']:hover:not(:disabled):not(:checked) {
+  box-shadow: inset 0 0 0 1.5px var(--ink-2);
+}
+
+input[type='checkbox']:checked:hover:not(:disabled),
+input[type='radio']:checked:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+input[type='checkbox']:focus-visible,
+input[type='radio']:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+input[type='checkbox']:disabled,
+input[type='radio']:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Disclosure: a chevron that turns down when open. */
+details > summary::before {
+  width: 6px;
+  height: 6px;
+  margin: 0 2px;
+  border: 0;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 160ms var(--ease-out);
+}
+
+details[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+/* A modal dialog stays centred in the window, whatever page holds it. */
+.page > dialog {
+  margin: auto;
+}
+
+/* Tooltips for icon-only controls, drawn in the console's own style by
+   TooltipLayer in one layer above the page, so no scrolling list clips them. */
+.tooltip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 100;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--ink);
+  color: var(--paper);
+  font: 500 var(--text-xs)/1.4 var(--font-ui);
+  white-space: nowrap;
+  pointer-events: none;
+  animation: tip-in 120ms var(--ease-out);
+}
+
+@keyframes tip-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Page header: the title with one line saying what the page is for. */
+.page-title {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.page-lede {
+  max-width: 80ch;
+  margin: 0;
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+
+/* Sidebar: wide with labels, or a strip of icons (the default), chosen with
+   the button above the account and remembered by the browser. */
+.sidebar-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar-toggle:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+@media (min-width: 961px) {
+  .shell {
+    transition: grid-template-columns 200ms var(--ease-out);
+  }
+
+  .shell.is-rail {
+    grid-template-columns: 68px minmax(0, 1fr);
+  }
+
+  .is-rail .sidebar {
+    align-items: center;
+    padding: 16px 10px 12px;
+    overflow: visible;
+  }
+
+  .is-rail .sidebar-head {
+    padding: 0 0 16px;
+  }
+
+  .is-rail .nav-group-label,
+  .is-rail .theme-switch {
+    display: none;
+  }
+
+  /* The labels leave the strip but stay the links' accessible names. */
+  .is-rail .brand-text,
+  .is-rail .nav-label,
+  .is-rail .who-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .is-rail .sidebar-nav {
+    gap: 0;
+  }
+
+  .is-rail .nav-group + .nav-group {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--rule);
+  }
+
+  /* Every view stays one click away while the strip is narrow. */
+  .is-rail .nav-group ul[hidden] {
+    display: flex;
+  }
+
+  .is-rail .nav-group a,
+  .is-rail .sidebar-toggle {
+    justify-content: center;
+    width: 44px;
+    height: 40px;
+    padding: 0;
+  }
+
+  .is-rail .nav-flag,
+  .is-rail .nav-count {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+  }
+
+  .is-rail .nav-flag {
+    width: 8px;
+    height: 8px;
+    padding: 0;
+    overflow: hidden;
+    background: var(--tone);
+    color: transparent;
+  }
+
+  .is-rail .nav-count {
+    min-width: 16px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--accent-tint);
+    color: var(--accent-active);
+    font-size: 10px;
+    line-height: 16px;
+    text-align: center;
+  }
+
+  .is-rail .who {
+    align-items: center;
+  }
+
+  .is-rail .who-row {
+    flex-direction: column;
+    gap: 6px;
+    padding: 4px 0;
+  }
+}
+
+@media (max-width: 960px) {
+  .sidebar-toggle {
+    display: none;
+  }
+}
+
+@media (max-height: 760px) and (min-width: 961px) {
+  .is-rail .sidebar {
+    overflow-y: auto;
+  }
+}
+
+/* The Policy page's draft bar: the draft's state and its two actions, kept
+   at the bottom of the window under the work, where editors keep them. */
+/* The draft's state and its Save and Discard actions close the page, below
+   the views, and never cover them. */
+.save-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 10px 12px 10px 18px;
+  border-radius: var(--radius-lg);
+  background: var(--paper);
+  box-shadow: var(--card-shadow);
+}
+
+.save-bar.is-dirty {
+  box-shadow: inset 0 0 0 1px var(--accent-line), var(--card-shadow);
+}
+
+.save-bar-state {
+  flex: 1 1 12rem;
+  min-width: 0;
+  margin: 0;
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}
+
+.save-bar.is-dirty .save-bar-state {
+  color: var(--accent-active);
+  font-weight: 600;
+}
+
+.json-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.api-requests {
+  margin-top: 20px;
+}
+
+.api-requests > p {
+  max-width: 72ch;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+.page h2[tabindex='-1'] {
+  scroll-margin-top: 120px;
+}
+
+.page h2[tabindex='-1']:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Versions: the page's parts are tabs under the version line; within Roles,
+   each role is a pill, a step down from the page's own tabs. */
+.section-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-block: 0 8px;
+  box-shadow: inset 0 -1px 0 var(--rule);
+}
+
+.section-tabs button {
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  font: 500 var(--text-md)/1.4 var(--font-ui);
+  cursor: pointer;
+  transition: color 120ms var(--ease-out), box-shadow 120ms var(--ease-out);
+}
+
+.section-tabs button:hover {
+  color: var(--ink);
+  box-shadow: inset 0 -2px 0 var(--rule-strong);
+}
+
+.section-tabs button[aria-selected='true'] {
+  color: var(--ink);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.role-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 18px;
+}
+
+.role-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 4px 8px 4px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--paper);
+  box-shadow: inset 0 0 0 1px var(--rule-strong);
+  color: var(--ink-2);
+  font: 500 var(--text-sm)/1.4 var(--font-ui);
+  cursor: pointer;
+  transition: color 120ms var(--ease-out), background-color 120ms var(--ease-out);
+}
+
+.role-tabs button:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.role-tabs button[aria-selected='true'] {
+  background: var(--accent-tint);
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+  color: var(--accent-active);
+}
+
+.role-tab-name {
+  font-family: var(--font-mono);
+}
+
+.role-tab-count {
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--well);
+  color: var(--ink-2);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.role-tabs button[aria-selected='true'] .role-tab-count {
+  background: var(--accent-tint);
+  color: var(--accent-active);
+}
+
+.version-line {
+  margin-bottom: 12px;
+}
+
+.role-summary {
+  margin-bottom: 12px;
+}
+
+.role-summary-lead {
+  margin: 0 0 2px;
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.role-temporary {
+  margin-bottom: 12px;
+}
+
+.role-temporary ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+.role-view {
+  margin-bottom: 28px;
+}
+
+.role-table td:first-child {
+  width: 46%;
+}
+
+.role-table .role-group th {
+  padding-top: 18px;
+  background: var(--paper);
+  text-align: left;
+}
+
+.role-table tbody:first-of-type .role-group th {
+  padding-top: 10px;
+}
+
+.role-group-name {
+  margin-right: 10px;
+  color: var(--kind-api);
+  font-weight: 600;
+}
+
+.role-group-meta {
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+  font-weight: 400;
+}
+
+.role-table tbody tr.role-group:hover > * {
+  background: var(--paper);
+}
+
+/* Traffic chart: a scale line, the bars over a faint grid, and a tooltip
+   beside the interval under the pointer or the arrow keys. */
+.chart-scale {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 6px;
+  color: var(--ink-2);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-plot {
+  position: relative;
+  border-radius: var(--radius-sm);
+}
+
+.chart-plot:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 4px;
+}
+
+.chart-grid {
+  stroke: var(--rule);
+  stroke-dasharray: 2 4;
+  vector-effect: non-scaling-stroke;
+}
+
+.chart-base {
+  stroke: var(--rule-strong);
+  vector-effect: non-scaling-stroke;
+}
+
+.chart-hover {
+  fill: color-mix(in oklch, var(--accent) 9%, transparent);
+}
+
+.chart-tip {
+  position: absolute;
+  top: 6px;
+  z-index: 3;
+  min-width: 11rem;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  box-shadow: var(--shadow-overlay);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  transform: translateX(12px);
+}
+
+.chart-tip[data-side='left'] {
+  transform: translateX(calc(-100% - 12px));
+}
+
+.chart-tip-time {
+  margin: 0 0 6px;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.chart-tip dl {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+}
+
+.chart-tip dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.chart-tip dt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+}
+
+.chart-tip dd {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.chart-tip-note {
+  margin: 6px 0 0;
+  color: var(--ink-3);
+}
+
+/* Temporary rules: the quick rules open the dialog, two to a row. */
+dialog.wizard {
+  width: min(46rem, calc(100vw - 32px));
+}
+
+.wizard .quick-actions {
+  grid-template-columns: repeat(auto-fill, minmax(min(18rem, 100%), 1fr));
+  margin: 0 0 18px;
+}
+
+.wizard-steps [aria-current='step'] .wizard-number {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.lifetime-choices {
+  margin-bottom: 14px;
+}
+
+.review-summary {
+  margin: 0 0 12px;
+  color: var(--ink);
+}
+
+.review-facts {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: var(--well);
+  box-shadow: inset 0 0 0 1px var(--rule);
+  font-size: var(--text-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell,
+  input[type='checkbox'],
+  input[type='checkbox']::before,
+  input[type='radio'],
+  input[type='radio']::before,
+  details > summary::before,
+  .tooltip {
+    transition: none;
+    animation: none;
+  }
+}
+
+/* Menus opened by a + button: drawn above the page beside the button. */
+.action-menu {
+  position: fixed;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  min-width: 13rem;
+  max-width: 20rem;
+  padding: 4px;
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  box-shadow: var(--shadow-overlay);
+  animation: tip-in 120ms var(--ease-out);
+}
+
+.action-menu-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink);
+  font: 500 var(--text-sm)/1.4 var(--font-ui);
+  text-align: start;
+  cursor: pointer;
+}
+
+.action-menu-item:hover,
+.action-menu-item:focus-visible {
+  background: var(--hover);
+  outline: none;
+}
+
+.action-menu-item:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--focus);
+}
+
+.action-menu-item[aria-disabled='true'] {
+  color: var(--ink-3);
+  cursor: not-allowed;
+}
+
+.action-menu-why {
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+  font-weight: 400;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .action-menu {
+    animation: none;
+  }
+}
+
+/* Cross-references: an ID that opens its own page. Quiet until pointed at,
+   so tables stay calm, but always underlined so it reads as a link. */
+.xref {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklch, var(--link) 35%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition: color 120ms var(--ease-out), text-decoration-color 120ms var(--ease-out);
+}
+
+.xref:hover {
+  color: var(--link);
+  text-decoration-color: currentColor;
+}
+
+/* The item a link opened is tinted, then the tint fades. */
+[data-target='true'] > td,
+[data-target='true'] > th {
+  animation: target-fade 2.4s var(--ease-out);
+}
+
+@keyframes target-fade {
+  from {
+    background-color: var(--accent-soft);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-target='true'] > td,
+  [data-target='true'] > th {
+    animation: none;
+    background-color: var(--accent-tint);
+  }
+}
+
+/* Accounts: one table of every known account, filtered by status. */
+.accounts-head {
+  flex-wrap: wrap;
+  gap: 12px 16px;
+}
+
+.accounts-head .list-toolbar {
+  flex: 1 1 18rem;
+  margin: 0;
+}
+
+.segmented-count {
+  margin-inline-start: 4px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.segmented [aria-pressed='true'] .segmented-count {
+  color: inherit;
+}
+
+.accounts-table th:nth-child(1) {
+  width: 26%;
+}
+
+/* Response time under the request bars: typical as a solid line, slowest 5%
+   dashed in the same hue, so the two differ by shape as well as tone. */
+.latency {
+  margin-top: 12px;
+}
+
+.latency-scale {
+  margin-bottom: 4px;
+}
+
+.traffic-chart .latency svg {
+  height: 56px;
+}
+
+.latency-p50,
+.latency-p95 {
+  fill: none;
+  stroke: var(--chart-latency);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.latency-p95 {
+  stroke-opacity: 0.6;
+  stroke-dasharray: 4 3;
+}
+
+.key-p50 {
+  background: var(--chart-latency);
+}
+
+.key-p95 {
+  background: color-mix(in oklch, var(--chart-latency) 55%, transparent);
+}
+
+/* Each figure says how it changed against the window before. */
+.figure-change {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Two insight cards side by side, stacking on narrow screens. */
+.grid-halves {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(26rem, 100%), 1fr));
+  gap: 16px;
+  align-items: start;
 }

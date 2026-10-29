@@ -8,7 +8,7 @@ import { Badge, MoreDetails, PageHeader, Problem, ReadStamp, TimeOfDay } from '.
 import type { ViewProps } from './views'
 
 // Overview answers "is the gateway healthy and what is it enforcing?" at a
-// glance: the policy in force, any change on trial, temporary rules, then
+// glance: the active policy, any change on trial, temporary rules, then
 // what traffic is doing. Every figure is the gateway's own.
 export function Overview({ admin, can, open }: ViewProps) {
   const state = useGatewayState()
@@ -18,7 +18,7 @@ export function Overview({ admin, can, open }: ViewProps) {
   const blocked = status && (status.admission !== 'ready' || status.audit_failed)
   return (
     <>
-      <PageHeader title="Overview" lede="What the gateway enforces now and how it is deciding requests, as it reports them. Nothing here is decided by this page.">
+      <PageHeader title="Overview" lede="Gateway health, the active policy and recent request decisions.">
         <ReadStamp okAt={state.last?.at ?? null} failed={state.failed} loading={state.loading} onRefresh={state.refresh} />
       </PageHeader>
       {state.reply && state.reply.kind !== 'ok' ? <Problem reply={state.reply} /> : null}
@@ -42,9 +42,9 @@ function StatusStrip({ admin, can, status }: Pick<ViewProps, 'admin' | 'can'> & 
   const revision = policy.reply?.kind === 'ok' ? policy.reply.body : undefined
   const rules = overrides.reply?.kind === 'ok' ? overrides.reply.body.overrides : undefined
   return (
-    <section className="section card strip" aria-label="Policy status">
+    <section className="section card strip" aria-label="Policy Status">
       <div className="tile">
-        <p className="tile-label">Policy in force</p>
+        <p className="tile-label">Active Policy</p>
         {status.confirmed !== undefined ? (
           <>
             <p className="tile-value">Version {status.provisional ?? status.confirmed}</p>
@@ -75,32 +75,30 @@ function StatusStrip({ admin, can, status }: Pick<ViewProps, 'admin' | 'can'> & 
         )}
         <p className="tile-foot">
           <AdmissionBadge status={status} />
-          {status.generation ? <code className="muted" title="Generation in force">{status.generation}</code> : null}
+          {status.generation ? <code className="muted" title="Active Generation">{status.generation}</code> : null}
         </p>
         {policy.reply && policy.reply.kind !== 'ok' && !(policy.reply.kind === 'refused' && policy.reply.error === 'no_confirmed_policy') ? (
           <Problem reply={policy.reply} />
         ) : null}
       </div>
       <TrialDecision admin={admin} manage={can('manage_policy')} variant="tile" />
-      <div className="tile">
-        <p className="tile-label">Temporary rules</p>
+      <div className={rules?.length ? 'tile' : 'tile tile-empty'}>
+        <p className="tile-label">Temporary Rules</p>
         {rules ? (
-          <>
-            <p className={rules.length ? 'tile-value' : 'tile-value tile-value-quiet'}>{rules.length ? `${rules.length} active` : 'None active'}</p>
-            <p className="tile-note">
-              {rules.length ? (
-                <>
-                  {overrideChange(rules[0])} · ends <TimeOfDay value={rules[0].expires_at} />
-                  {rules.length > 1 ? ` · and ${rules.length - 1} more` : null}
-                </>
-              ) : (
-                'For incidents: freeze, block or open up an endpoint for a set time.'
-              )}
-            </p>
-          </>
+          rules.length ? (
+            <>
+              <p className="tile-value">{rules.length} active</p>
+              <p className="tile-note">
+                {overrideChange(rules[0])} · ends <TimeOfDay value={rules[0].expires_at} />
+                {rules.length > 1 ? ` · and ${rules.length - 1} more` : null}
+              </p>
+            </>
+          ) : (
+            <p className="tile-value tile-value-quiet">None active</p>
+          )
         ) : null}
         <p className="tile-foot">
-          <a href="#/overrides">{rules?.length ? 'Manage temporary rules' : 'Add a temporary rule'}</a>
+          <a href="#/overrides">{rules?.length ? 'Manage Temporary Rules' : 'Add a Temporary Rule'}</a>
         </p>
         {overrides.reply && overrides.reply.kind !== 'ok' ? <Problem reply={overrides.reply} /> : null}
       </div>
@@ -124,7 +122,7 @@ function Admission({ status }: { status: Status }) {
 // until My account shows it again; nothing is stored in the browser.
 export const guideHidden = 'overview.guide.hidden'
 
-// GettingStarted is the first-time guide once a policy is in force: three
+// GettingStarted is the first-time guide once a policy is active: three
 // steps to a first kept or undone change, each ticked from what the gateway
 // reports. It links to the pages that do each step and changes nothing itself.
 function GettingStarted({ admin, status, open }: Pick<ViewProps, 'admin' | 'open'> & { status: Status }) {
@@ -135,7 +133,7 @@ function GettingStarted({ admin, status, open }: Pick<ViewProps, 'admin' | 'open
   // has ended a trial has been kept or undone.
   const first = trials.reply?.kind === 'ok' ? trials.reply.body.items[0] : undefined
   const steps = [
-    { done: status.confirmed !== undefined, text: 'A policy is in force.', go: 'policy' as const, label: 'Policy versions' },
+    { done: status.confirmed !== undefined, text: 'A policy is active.', go: 'policy' as const, label: 'Versions' },
     { done: first !== undefined, text: 'A draft change has been saved, checked and put on trial.', go: 'candidates' as const, label: 'Changes' },
     { done: first?.disposition !== undefined, text: 'A trial has ended: the change was kept, or undone.', go: 'candidates' as const, label: 'Changes' },
   ]
@@ -143,21 +141,21 @@ function GettingStarted({ admin, status, open }: Pick<ViewProps, 'admin' | 'open
   return (
     <details className="section card card-pad getting-started">
       <summary>
-        Getting started · {done} of {steps.length} done
+        Getting Started · {done} of {steps.length} done
       </summary>
       <ol className="setup-steps">
         {steps.map((step) => (
           <li key={step.text}>
-            <Badge tone={step.done ? 'ok' : 'neutral'}>{step.done ? 'Done' : 'To do'}</Badge> {step.text}{' '}
+            <Badge tone={step.done ? 'ok' : 'neutral'}>{step.done ? 'Done' : 'To Do'}</Badge> {step.text}{' '}
             <button type="button" className="btn-link" onClick={() => open(step.go)}>
               {step.label}
             </button>
           </li>
         ))}
       </ol>
-      <p className="hint">Every change goes live on trial first and is undone at its deadline unless someone keeps it. Temporary rules end by themselves.</p>
+      <p className="hint">Changes go live on trial and are undone at the deadline unless kept. Temporary rules end automatically.</p>
       <button type="button" className="btn btn-small" onClick={() => setHidden(true)}>
-        Hide this guide
+        Hide This Guide
       </button>
     </details>
   )

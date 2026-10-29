@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { CaretRight, ChatsCircle, Lifebuoy } from '@phosphor-icons/react'
 import { outcomeOfWrite } from '../lib/api'
-import { when } from '../lib/format'
+import { when, reference } from '../lib/format'
 import { describe, type Problem } from '../lib/messages'
 import { useQuery } from '../lib/query'
 import { Link, navigate, useLocation } from '../lib/router'
@@ -38,7 +38,7 @@ export function HelpPage() {
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-center gap-2"><span className="font-bold">{ticket.subject}</span><Badge tone={ticketTone[ticket.status]}>{ticketStatus[ticket.status]}</Badge></span>
                     <span className="mt-1 block truncate text-sm text-ink-2">{ticket.messages.at(-1)?.body}</span>
-                    <span className="mt-1 block text-xs text-ink-3">{ticket.id}{ticket.order ? ` · ${ticket.order}` : ''} · {when(ticket.messages.at(-1)?.at ?? ticket.created_at)}</span>
+                    <span className="mt-1 block text-xs text-ink-3">{reference(ticket.id)}{ticket.order ? ` · Order ${reference(ticket.order)}` : ''} · {when(ticket.messages.at(-1)?.at ?? ticket.created_at)}</span>
                   </span>
                   <CaretRight size={18} className="text-ink-3" aria-hidden="true" />
                 </Link>
@@ -94,8 +94,8 @@ function NewTicket({ onCreated }: { onCreated: (id: string) => void }) {
         <TextField label="What is it about?" value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={120} error={tried ? errors.subject : null} placeholder="Missing item" />
         <SelectField label="Order" optional value={order} onChange={(e) => setOrder(e.target.value)}>
           <option value="">Not about one order</option>
-          {orders.data?.items.map((o) => <option key={o.id} value={o.id}>{o.id} · {o.merchant_name}</option>)}
-          {order && !orders.data?.items.some((o) => o.id === order) && <option value={order}>{order}</option>}
+          {orders.data?.items.map((o) => <option key={o.id} value={o.id}>{reference(o.id)} · {o.merchant_name}</option>)}
+          {order && !orders.data?.items.some((o) => o.id === order) && <option value={order}>{reference(order)}</option>}
         </SelectField>
         <TextArea label="What happened?" value={message} onChange={(e) => setMessage(e.target.value.slice(0, 2000))} rows={5} error={tried ? errors.message : null} hint="Include anything that helps, like which item or what you saw on screen." />
         <TextField

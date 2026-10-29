@@ -17,6 +17,9 @@ import { Photo } from '../ui/photo'
 import { useQuote } from './parts'
 
 const blank: Address = { line1: '', line2: '', postcode: '', city: 'Kuala Lumpur', state: 'Wilayah Persekutuan Kuala Lumpur' }
+// defaultAddress fills the form in one step with a complete address the
+// order schema accepts.
+const defaultAddress: Address = { line1: '1 Jalan Ampang', line2: 'Level 10', postcode: '50450', city: 'Kuala Lumpur', state: 'Wilayah Persekutuan Kuala Lumpur' }
 const noteLimit = 200
 
 // One attempt at placing an order: its body and idempotency key are frozen
@@ -117,7 +120,10 @@ function Checkout({ basket }: { basket: Basket }) {
 
         <fieldset disabled={locked} className="rounded-3xl bg-surface p-6 shadow-card">
           <legend className="sr-only">Delivery address</legend>
-          <h2 className="text-lg font-extrabold tracking-[-0.015em]" aria-hidden="true">Deliver to</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-lg font-extrabold tracking-[-0.015em]" aria-hidden="true">Deliver to</h2>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setDraft(defaultAddress)}>Use default address</Button>
+          </div>
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <TextField className="sm:col-span-2" label="Street address" autoComplete="address-line1" value={address.line1} onChange={(e) => change('line1', e.target.value)} error={errors.line1} maxLength={100} />
             <TextField className="sm:col-span-2" label="Unit, floor or building" optional autoComplete="address-line2" value={address.line2} onChange={(e) => change('line2', e.target.value)} error={errors.line2} maxLength={100} />

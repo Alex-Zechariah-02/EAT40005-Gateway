@@ -38,8 +38,8 @@ func TestOrderFloodUsesASeparateCustomerAccount(t *testing.T) {
 	if err := attack([]string{"-dir", operatorTestState(t), "-scenario", "flood-orders", "-count", "12"}); err != nil {
 		t.Fatal(err)
 	}
-	if email := <-signedIn; email != "daniel@fetch.test" {
-		t.Errorf("flood signs in as %q; want Daniel, separate from Aisyah", email)
+	if email := <-signedIn; email != "customer2@fetch.test" {
+		t.Errorf("flood signs in as %q; want Customer 2, separate from Customer 1", email)
 	}
 	if orders.Load() != 12 {
 		t.Errorf("flood sent %d orders, want 12", orders.Load())

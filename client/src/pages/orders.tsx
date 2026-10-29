@@ -1,5 +1,5 @@
 import { CaretRight, Receipt } from '@phosphor-icons/react'
-import { rm, when } from '../lib/format'
+import { rm, when, reference } from '../lib/format'
 import { describe } from '../lib/messages'
 import { useQuery } from '../lib/query'
 import { Link } from '../lib/router'
@@ -55,7 +55,7 @@ function OrderList({ title, orders }: { title: string; orders: Order[] }) {
                     <OrderBadge status={order.status} />
                   </span>
                   <span className="mt-1 block truncate text-sm text-ink-2">{order.items.map((l) => `${l.quantity} × ${l.name}`).join(', ')}</span>
-                  <span className="mt-1 block text-xs text-ink-3">{when(order.created_at)} · {order.id} · {count === 1 ? '1 item' : `${count} items`}</span>
+                  <span className="mt-1 block text-xs text-ink-3">{when(order.created_at)} · Order {reference(order.id)} · {count === 1 ? '1 item' : `${count} items`}</span>
                 </span>
                 <span className="ml-auto font-bold tabular-nums">{rm(order.total_sen)}</span>
                 <CaretRight size={18} className="text-ink-3" aria-hidden="true" />

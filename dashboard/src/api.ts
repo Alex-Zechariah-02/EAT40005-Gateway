@@ -337,14 +337,14 @@ const messages: Record<string, Message> = {
     title: 'The signing keys could not be loaded',
     action: 'The gateway kept the keys it had. Check the key files in the operator settings, then reload the keys again.',
   },
-  precondition_required: { title: 'The current version is needed', action: 'Reload the page, so the change is based on the version in force, then try again.' },
+  precondition_required: { title: 'The current version is needed', action: 'Reload the page, so the change is based on the active version, then try again.' },
   unsupported_media_type: { title: 'The request must be JSON', action: 'Send the document as JSON.' },
   payload_too_large: { title: 'The request is too large', action: 'Make the document smaller, then try again.' },
   too_many_attempts: { title: 'Too many failed sign-in attempts', action: 'Sign-in is locked for a while. Wait, then try again.' },
   unavailable: { title: 'The gateway cannot do this now', action: 'Try again shortly. If it goes on, open the Overview to see why.' },
   busy: { title: 'The gateway is busy', action: 'It is checking other passwords. Try again in a moment.' },
   session_limit: { title: 'Too many sessions are open', action: 'Sign out of a session you no longer use, then try again.' },
-  no_confirmed_policy: { title: 'No policy is in force yet', action: 'Put the first policy in force from Changes first.' },
+  no_confirmed_policy: { title: 'No policy is active yet', action: 'Put the first active policy from Changes first.' },
   no_provisional: { title: 'No change is on trial', action: 'There is nothing to keep or undo. Refresh to see the current state.' },
   STALE: { title: 'The policy changed while you were editing', action: 'Reload to see the latest version, then make your change again.' },
   PRECONDITION_FAILED: {
@@ -355,11 +355,11 @@ const messages: Record<string, Message> = {
   INVALID_STATE: { title: 'The gateway cannot do this in its current state', action: 'Open the Overview to see what the gateway is doing now.' },
   CANDIDATE_UNAVAILABLE: {
     title: 'This draft can no longer be used',
-    action: 'It was withdrawn, already put in force, or set aside after a restore. Save a new draft from the current policy.',
+    action: 'It was withdrawn, already activated, or set aside after a restore. Save a new draft from the current policy.',
   },
   CANDIDATE_STALE: {
     title: 'This draft is based on an older version',
-    action: 'The version in force changed after it was saved. Save it again from the current policy.',
+    action: 'The active version changed after it was saved. Save it again from the current policy.',
   },
   CANDIDATE_INTEGRITY: { title: 'This draft change is damaged', action: 'Its stored copy no longer matches its checksum. Save a new draft.' },
   NOT_FOUND: { title: 'Not found', action: 'It does not exist, or it was removed. Refresh to see the current list.' },
@@ -375,7 +375,7 @@ const messages: Record<string, Message> = {
   ALREADY_RESOLVED: { title: 'This has already ended', action: 'It was kept, undone or revoked already. Refresh to see the current state.' },
   DEADLINE_PASSED: {
     title: 'The trial deadline has passed',
-    action: 'The gateway undoes the change by itself. Refresh to see the version in force.',
+    action: 'The gateway undoes the change by itself. Refresh to see the active version.',
   },
   TARGET_INVALID: {
     title: 'The earlier version could not be restored',
@@ -397,11 +397,11 @@ const messages: Record<string, Message> = {
   },
   NOT_DENY_ALL: {
     title: 'The first policy must block everything',
-    action: 'Start from the policy that denies everything; add permissions after it is in force.',
+    action: 'Start from the policy that denies everything; add permissions after it is active.',
   },
   OUTCOME_AUDIT_PENDING: {
     title: 'Applied, but the security log could not record it',
-    action: 'The change is in force. The gateway stops accepting requests until it restarts and records it.',
+    action: 'The change is active. The gateway stops accepting requests until it restarts and records it.',
   },
   UNKNOWN_FIELD: { title: 'The document has a field the gateway does not know', action: 'Remove or correct the field named under More details.' },
   DUPLICATE_MEMBER: { title: 'The document repeats a name', action: 'Each name may appear once in an object. Remove the repeat.' },
@@ -430,8 +430,8 @@ const messages: Record<string, Message> = {
     action: 'It did not complete this request. If you sent the identical request before, check in History whether that one was applied.',
   },
   PUBLICATION_FAILED: {
-    title: 'Applied, but not put in force',
-    action: 'The change was stored but could not be put in force, so the gateway stopped accepting requests. Restart the gateway.',
+    title: 'Applied, but not activated',
+    action: 'The change was stored but could not be activated, so the gateway stopped accepting requests. Restart the gateway.',
   },
   CREDENTIAL_CHANGED: { title: 'Your password changed during this request', action: 'Sign in again.' },
   ENROLMENT_CONSUMED: { title: 'This enrolment secret was already used', action: 'Ask the operator for a new one.' },
@@ -467,7 +467,7 @@ export function explain(code: string): string {
 
 // committedAnyway says whether a non-success answer still reports a
 // committed change: in force but not yet recorded in the audit log, or
-// stored but not put in force. Such a change is never shown as refused.
+// stored but not activated. Such a change is never shown as refused.
 export function committedAnyway(reply: { error: string; outcome?: Outcome }): boolean {
   return reply.outcome?.outcome === 'committed' || reply.error.toUpperCase() === 'OUTCOME_AUDIT_PENDING'
 }

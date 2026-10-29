@@ -9,8 +9,35 @@ import { ButtonLink } from '../ui/button'
 import { AnswerLine, Empty, Loading, ProblemNotice, Skeleton } from '../ui/notice'
 import { Photo } from '../ui/photo'
 import { BasketPanel, ItemRow, categoryName, useAdd, useQuote } from './parts'
+import { itemIdIn, slugOf, storeLink, useMerchantId } from '../lib/links'
+import { ItemPage } from './item'
 
-const slug = (group: string) => `group-${group.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
+const groupAnchor = (group: string) => `group-${slugOf(group)}`
+
+// StoreRoute opens a shop by its readable address, or one of its items when
+// the address names one (?item=).
+export function StoreRoute({ address, item }: { address: string; item: string | null }) {
+  const { id, list } = useMerchantId(address)
+  const problem = list?.answer && !list.data ? describe(list.answer) : null
+  if (problem) return <ProblemNotice className="mt-10" problem={problem} action={<button type="button" onClick={list!.reload} className="text-sm font-bold text-brand hover:underline">Try again</button>} />
+  if (id === undefined) return <Loading label="Loading the shop"><Skeleton className="mt-10 h-72 w-full rounded-[28px]" /></Loading>
+  if (id === null) return <MissingShop />
+  if (item) return <StoreItem merchant={id} item={item} />
+  return <StorePage id={id} />
+}
+
+function MissingShop() {
+  return <Empty className="mt-10" icon={<Storefront size={26} weight="bold" />} title="This shop isn’t on Fetch" body="It may have closed or the link may be old." action={<ButtonLink to="/">Browse shops</ButtonLink>} />
+}
+
+function StoreItem({ merchant, item }: { merchant: string; item: string }) {
+  const page = useQuery<MerchantPage>(`/inventory/merchants/${encodeURIComponent(merchant)}`)
+  const problem = page.answer && !page.data ? describe(page.answer) : null
+  if (problem) return problem.status === 404 ? <MissingShop /> : <ProblemNotice className="mt-10" problem={problem} action={<button type="button" onClick={page.reload} className="text-sm font-bold text-brand hover:underline">Try again</button>} />
+  if (!page.data) return <Loading label="Loading the item"><Skeleton className="mt-10 aspect-square w-full max-w-xl rounded-[28px]" /></Loading>
+  const id = itemIdIn(page.data, item)
+  return id ? <ItemPage key={id} id={id} /> : <Empty className="mt-10" icon={<Storefront size={26} weight="bold" />} title="This item isn’t on the menu" body="It may have been removed or the link may be old." action={<ButtonLink to={storeLink(page.data.merchant.name)}>See the menu</ButtonLink>} />
+}
 
 export function StorePage({ id }: { id: string }) {
   const page = useQuery<MerchantPage>(`/inventory/merchants/${encodeURIComponent(id)}`)
@@ -72,7 +99,7 @@ function Store({ data, categories }: { data: MerchantPage; categories?: Category
       <nav aria-label="Menu sections" className="sticky top-[72px] z-20 -mx-4 mt-6 overflow-x-auto bg-bg/95 px-4 py-2 backdrop-blur lg:hidden">
         <ul className="flex gap-2">
           {menu.map((g) => (
-            <li key={g.group}><a href={`#${slug(g.group)}`} className="block rounded-full bg-surface px-4 py-2 text-sm font-semibold whitespace-nowrap text-ink-2 ring-1 ring-line">{g.group}</a></li>
+            <li key={g.group}><a href={`#${groupAnchor(g.group)}`} className="block rounded-full bg-surface px-4 py-2 text-sm font-semibold whitespace-nowrap text-ink-2 ring-1 ring-line">{g.group}</a></li>
           ))}
         </ul>
       </nav>
@@ -80,7 +107,7 @@ function Store({ data, categories }: { data: MerchantPage; categories?: Category
       <div className="mt-6 grid grid-cols-1 items-start gap-8 lg:mt-8 lg:grid-cols-[200px_1fr_360px]">
         <nav aria-label="Menu sections" className="sticky top-24 hidden flex-col text-sm font-semibold lg:flex">
           {menu.map((g) => (
-            <a key={g.group} href={`#${slug(g.group)}`} className="flex justify-between rounded-lg px-3 py-2.5 text-ink-2 hover:bg-sunken hover:text-ink">
+            <a key={g.group} href={`#${groupAnchor(g.group)}`} className="flex justify-between rounded-lg px-3 py-2.5 text-ink-2 hover:bg-sunken hover:text-ink">
               {g.group}<span className="tabular-nums opacity-60">{g.items.length}</span>
             </a>
           ))}
@@ -88,8 +115,8 @@ function Store({ data, categories }: { data: MerchantPage; categories?: Category
         <div className="flex min-w-0 flex-col gap-10">
           {menu.length === 0 && <Empty icon={<Storefront size={26} weight="bold" />} title="Nothing on the menu yet" body={`${merchant.name} hasn’t added anything to Fetch yet.`} />}
           {menu.map((g) => (
-            <section key={g.group} id={slug(g.group)} className="scroll-mt-36 lg:scroll-mt-24" aria-labelledby={`${slug(g.group)}-heading`}>
-              <h2 id={`${slug(g.group)}-heading`} className="text-xl font-extrabold tracking-[-0.02em]">{g.group}</h2>
+            <section key={g.group} id={groupAnchor(g.group)} className="scroll-mt-36 lg:scroll-mt-24" aria-labelledby={`${groupAnchor(g.group)}-heading`}>
+              <h2 id={`${groupAnchor(g.group)}-heading`} className="text-xl font-extrabold tracking-[-0.02em]">{g.group}</h2>
               <div className="mt-4 flex flex-col gap-3">
                 {g.items.map((item) => <ItemRow key={item.id} item={item} merchant={merchant} onAdd={(it) => add(it)} justAdded={added === item.id} />)}
               </div>

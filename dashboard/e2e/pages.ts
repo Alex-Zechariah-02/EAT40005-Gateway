@@ -17,11 +17,11 @@ export function moreDetail(notice: Locator, label: string): Locator {
 }
 
 // nav finds a view's link in the sidebar. A link may carry a flag after its
-// name: "On trial", or a count of temporary rules.
+// name: "On Trial", or a count of temporary rules.
 export function nav(page: Page, name: string): Locator {
   return page
     .getByRole('navigation', { name: 'Administration' })
-    .getByRole('link', { name: new RegExp(`^${escape(name)}(?: (?:On trial|\\d+(?: active)?))?$`) })
+    .getByRole('link', { name: new RegExp(`^${escape(name)}(?: (?:On Trial|\\d+(?: active)?))?$`) })
 }
 
 export async function go(page: Page, name: string) {
@@ -30,12 +30,14 @@ export async function go(page: Page, name: string) {
   await expect(page.getByText(/^Reading/)).toHaveCount(0)
 }
 
-// revisions opens Policy versions, which the Policy page links to.
+// revisions opens Versions: the active policy in detail and every version.
 export async function revisions(page: Page) {
-  await go(page, 'Policy')
-  await page.getByRole('link', { name: 'Versions and tables' }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'Policy versions', exact: true })).toBeVisible()
-  await expect(page.getByText(/^Reading/)).toHaveCount(0)
+  await go(page, 'Versions')
+}
+
+// versionsPart opens one of the Versions page's tabs.
+export async function versionsPart(page: Page, name: 'Roles' | 'Endpoints' | 'Service Addresses' | 'Version History') {
+  await page.getByRole('tablist', { name: 'Versions sections' }).getByRole('tab', { name, exact: true }).click()
 }
 
 export function dialogButton(page: Page, name: string | RegExp): Locator {
@@ -43,18 +45,18 @@ export function dialogButton(page: Page, name: string | RegExp): Locator {
 }
 
 export async function enrol(page: Page, name: string, secret: string, password: string) {
-  await page.getByRole('button', { name: 'First sign-in with an enrolment secret' }).click()
-  await page.getByLabel('Administrator name').fill(name)
-  await page.getByLabel('Enrolment secret').fill(secret)
-  await page.getByLabel('New password', { exact: true }).fill(password)
-  await page.getByLabel('Repeat the new password').fill(password)
+  await page.getByRole('button', { name: 'First Sign-In with an Enrolment Secret' }).click()
+  await page.getByLabel('Administrator Name').fill(name)
+  await page.getByLabel('Enrolment Secret').fill(secret)
+  await page.getByLabel('New Password', { exact: true }).fill(password)
+  await page.getByLabel('Repeat the New Password').fill(password)
   await page.getByRole('button', { name: 'Enrol', exact: true }).click()
   await expect(page.getByText('Enrolled. Sign in with the new password.')).toBeVisible()
-  await page.getByRole('button', { name: 'Go to sign-in' }).click()
+  await page.getByRole('button', { name: 'Go to Sign-In' }).click()
 }
 
 export async function signIn(page: Page, name: string, password: string) {
-  await page.getByLabel('Administrator name').fill(name)
+  await page.getByLabel('Administrator Name').fill(name)
   await page.getByLabel('Password', { exact: true }).fill(password)
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await expect(page.getByText(`Signed in as ${name}`)).toBeAttached()
@@ -64,27 +66,41 @@ export async function signIn(page: Page, name: string, password: string) {
 // change's id, with the change open for review.
 export async function stage(page: Page, document: { text?: string; file?: string }): Promise<number> {
   await go(page, 'Changes')
-  if (document.file) await page.getByLabel('Load a policy document from a file (optional)').setInputFiles(document.file)
-  if (document.text) await page.getByLabel('Complete policy document (JSON)').fill(document.text)
-  await page.getByRole('button', { name: 'Save draft and check' }).click()
+  if (document.file) await page.getByLabel('Load a Policy Document from a File (Optional)').setInputFiles(document.file)
+  if (document.text) await page.getByLabel('Complete Policy Document (JSON)').fill(document.text)
+  await page.getByRole('button', { name: 'Save Draft and Check' }).click()
   const staged = page.getByText(/^The gateway checked it: saved as draft change \d+/)
   await expect(staged).toBeVisible()
   const id = Number((await staged.textContent())!.match(/change (\d+)/)![1])
   await page
-    .getByRole('region', { name: 'Save a draft change' })
-    .getByRole('button', { name: `Review change ${id}` })
+    .getByRole('region', { name: 'Save a Draft Change' })
+    .getByRole('button', { name: `Review Change ${id}` })
     .click()
   await expect(page.getByRole('heading', { name: `Change ${id}`, exact: true })).toBeVisible()
   return id
 }
 
+// trialStep moves the change open for review through its guided steps
+// (review, then impact preview) to its trial step, by keyboard.
+export async function trialStep(page: Page) {
+  for (const next of ['Next: Preview Impact', 'Next: Start Trial']) {
+    const button = page.getByRole('main').getByRole('button', { name: next, exact: true })
+    if (await button.isVisible()) {
+      await button.focus()
+      await page.keyboard.press('Enter')
+    }
+  }
+  await expect(page.getByLabel('Trial Length (Seconds)')).toBeVisible()
+}
+
 // activate puts the change open for review on trial and returns the
 // version on trial from the receipt.
 export async function activate(page: Page, seconds: number): Promise<number> {
-  await page.getByLabel('Trial length (seconds)').fill(String(seconds))
-  await page.getByRole('main').getByRole('button', { name: 'Put on trial', exact: true }).click()
-  await dialogButton(page, 'Put on trial').click()
-  const done = page.getByText(/^Version \d+ is on trial and in force/)
+  await trialStep(page)
+  await page.getByLabel('Trial Length (Seconds)').fill(String(seconds))
+  await page.getByRole('main').getByRole('button', { name: 'Put on Trial', exact: true }).click()
+  await dialogButton(page, 'Put on Trial').click()
+  const done = page.getByText(/^Version \d+ is on trial and active/)
   await expect(done).toBeVisible()
   return Number((await done.textContent())!.match(/Version (\d+)/)![1])
 }
@@ -101,26 +117,26 @@ export function trial(page: Page): Locator {
 // guard itself is tested on its own.
 export async function confirmTrial(page: Page): Promise<void> {
   await trial(page)
-    .getByRole('button', { name: 'Keep change', exact: true })
+    .getByRole('button', { name: 'Keep Change', exact: true })
     .click()
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByText(/^Read again at /)).toBeVisible()
   const reviewed = dialog.getByLabel('I have reviewed the current facts above')
   if (await reviewed.count()) await reviewed.check()
-  await dialogButton(page, 'Keep change').click()
+  await dialogButton(page, 'Keep Change').click()
 }
 
 export async function resolve(page: Page, action: 'confirm' | 'rollback'): Promise<void> {
   await go(page, 'Changes')
   if (action === 'confirm') {
     await confirmTrial(page)
-    await expect(page.getByText(/^Kept: version \d+ is now the policy in force\.$/)).toBeVisible()
+    await expect(page.getByText(/^Kept: version \d+ is now the active policy\.$/)).toBeVisible()
   } else {
     await trial(page)
-      .getByRole('button', { name: 'Undo change', exact: true })
+      .getByRole('button', { name: 'Undo Change', exact: true })
       .click()
-    await dialogButton(page, 'Undo change').click()
-    await expect(page.getByText(/^Undone: version \d+ is in force again\.$/)).toBeVisible()
+    await dialogButton(page, 'Undo Change').click()
+    await expect(page.getByText(/^Undone: version \d+ is active again\.$/)).toBeVisible()
   }
 }
 
@@ -132,32 +148,37 @@ export interface OverrideInput {
   seconds: number
 }
 
-// createOverride adds a temporary rule after the gateway's check and returns
-// its id.
+// createOverride adds a temporary rule through the dialog's steps, after the
+// gateway's check on the review, and returns its id.
 export async function createOverride(page: Page, o: OverrideInput): Promise<number> {
-  await go(page, 'Temporary rules')
-  await page.getByLabel('Action', { exact: true }).selectOption({ label: o.action })
-  await page.getByLabel('Endpoint', { exact: true }).selectOption(o.operation)
-  if (o.role) await page.getByLabel('Role', { exact: true }).selectOption(o.role)
-  if (o.count !== undefined) await page.getByLabel('Temporary request count per window').fill(String(o.count))
-  await page.getByLabel('Lifetime (seconds)').fill(String(o.seconds))
-  await page.getByRole('button', { name: 'Check with the gateway' }).click()
-  await expect(page.getByText('The gateway would accept it now. Nothing has been created.')).toBeVisible()
-  await page.getByRole('main').getByRole('button', { name: 'Add rule', exact: true }).click()
-  await dialogButton(page, 'Add rule').click()
-  const done = page.getByText(/^Rule \d+ is in force until/)
+  await go(page, 'Temporary Rules')
+  await page.getByRole('main').getByRole('button', { name: 'Add a Temporary Rule', exact: true }).click()
+  const wizard = page.getByRole('dialog', { name: 'Add a Temporary Rule' })
+  await wizard.getByRole('radio', { name: o.action, exact: true }).check()
+  await wizard.getByRole('button', { name: 'Next', exact: true }).click()
+  await wizard.getByLabel('Endpoint', { exact: true }).selectOption(o.operation)
+  if (o.role) await wizard.getByLabel('Role', { exact: true }).selectOption(o.role)
+  if (o.count !== undefined) await wizard.getByLabel('Temporary Request Count per Window').fill(String(o.count))
+  await wizard.getByRole('button', { name: 'Next', exact: true }).click()
+  await wizard.getByLabel('Lifetime (Seconds)').fill(String(o.seconds))
+  await wizard.getByRole('button', { name: 'Next', exact: true }).click()
+  await wizard.getByRole('button', { name: 'Check with the Gateway' }).click()
+  await expect(wizard.getByText('The gateway would accept it now. Nothing has been created.')).toBeVisible()
+  await wizard.getByRole('button', { name: 'Add Rule', exact: true }).click()
+  await expect(wizard).toHaveCount(0)
+  const done = page.getByText(/^Rule \d+ is active until/)
   await expect(done).toBeVisible()
   return Number((await done.textContent())!.match(/Rule (\d+)/)![1])
 }
 
 export async function revokeOverride(page: Page, id: number) {
-  await go(page, 'Temporary rules')
+  await go(page, 'Temporary Rules')
   await page
     .getByRole('main')
     .getByRole('button', { name: `Revoke rule ${id}` })
     .click()
   await dialogButton(page, `Revoke rule ${id}`).click()
-  await expect(page.getByText(`Rule ${id} revoked. The policy in force no longer includes it.`)).toBeVisible()
+  await expect(page.getByText(`Rule ${id} revoked. It no longer applies.`)).toBeVisible()
 }
 
 // record appends one evidence entry when E2E_EVIDENCE names a file. Entries

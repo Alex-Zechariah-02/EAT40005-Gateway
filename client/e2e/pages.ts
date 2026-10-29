@@ -75,7 +75,7 @@ export async function placeOrder(page: Page, base: string, payment: 'Cash on del
 
 // orderCard is one order on a merchant's, rider's or support board.
 export function orderCard(page: Page, order: string): Locator {
-  return page.getByRole('article', { name: `Order ${order}` })
+  return page.getByRole('article', { name: `Order #${order.replace(/^ORD-/, '')}` })
 }
 
 // storage lists what the page keeps in the browser: every sessionStorage and

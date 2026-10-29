@@ -88,3 +88,23 @@ func BenchmarkObservationWindowRead(b *testing.B) {
 		}
 	})
 }
+
+// A traffic comparison needs to know whether the ring still holds every
+// request back to the start of the earlier window.
+func TestRetainedSinceReportsDroppedRequests(t *testing.T) {
+	o := newObservations()
+	if _, dropped := o.retainedSince(); dropped {
+		t.Fatal("an empty ring reports dropped requests")
+	}
+	end := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
+	fillObservations(o, recentEventLimit, end)
+	oldest, dropped := o.retainedSince()
+	if dropped || !oldest.Equal(end.Add(-time.Duration(recentEventLimit-1)*time.Second)) {
+		t.Fatalf("full ring: oldest %v, dropped %v", oldest, dropped)
+	}
+	fillObservations(o, 1, end.Add(time.Second))
+	oldest, dropped = o.retainedSince()
+	if !dropped || !oldest.Equal(end.Add(-time.Duration(recentEventLimit-2)*time.Second)) {
+		t.Fatalf("after one more: oldest %v, dropped %v", oldest, dropped)
+	}
+}

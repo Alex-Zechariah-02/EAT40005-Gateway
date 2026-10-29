@@ -46,7 +46,7 @@ export function Account(props: { admin: Admin; session: SessionInfo; signedOut: 
 
   return (
     <>
-      <PageHeader title="My account"lede="Your administrator account and this session. Permissions are granted by the operator, not here." />
+      <PageHeader title="My Account" lede="Your session, when it expires, and your password." />
       <section className="section" aria-labelledby={`${id}-session`}>
         <h2 id={`${id}-session`}>Session</h2>
         <dl className="facts">
@@ -67,30 +67,30 @@ export function Account(props: { admin: Admin; session: SessionInfo; signedOut: 
             </dd>
           </div>
           <div className="fact">
-            <dt>Gateway address</dt>
+            <dt>Gateway Address</dt>
             <dd>
               <code>{window.location.host}</code>
             </dd>
           </div>
           <div className="fact">
-            <dt>Session ends at the latest</dt>
+            <dt>Session Ends at the Latest</dt>
             <dd>
               <Time value={props.session.expires_at} />
             </dd>
           </div>
         </dl>
-        <p className="hint">The session also ends after a period without activity, set by the operator.</p>
+        <p className="hint">Sessions also end after an idle timeout set by the operator.</p>
         <button type="button" className="btn btn-small" onClick={props.showGuide}>
-          Show the Getting started guide
+          Show the Getting Started Guide
         </button>
       </section>
       <section className="section panel narrow" aria-labelledby={`${id}-password`}>
-        <h2 id={`${id}-password`}>Change password</h2>
+        <h2 id={`${id}-password`}>Change Password</h2>
         <p className="hint form-intro">Changing the password ends every session of this administrator, including this one.</p>
         <form onSubmit={submit}>
           {/* Names the account the passwords belong to, for password managers. */}
           <input type="text" name="username" autoComplete="username" value={props.session.name} readOnly hidden />
-          <Field id={`${id}-current`} label="Current password" error={currentError}>
+          <Field id={`${id}-current`} label="Current Password" error={currentError}>
             <input
               id={`${id}-current`}
               className="input"
@@ -103,7 +103,7 @@ export function Account(props: { admin: Admin; session: SessionInfo; signedOut: 
               onChange={(e) => setCurrent(e.target.value)}
             />
           </Field>
-          <Field id={`${id}-next`} label="New password" hint="15 to 256 bytes." error={lengthError}>
+          <Field id={`${id}-next`} label="New Password" hint="15 to 256 bytes." error={lengthError}>
             <input
               id={`${id}-next`}
               className="input"
@@ -116,7 +116,7 @@ export function Account(props: { admin: Admin; session: SessionInfo; signedOut: 
               onChange={(e) => setNext(e.target.value)}
             />
           </Field>
-          <Field id={`${id}-repeat`} label="Repeat the new password" error={repeatError}>
+          <Field id={`${id}-repeat`} label="Repeat the New Password" error={repeatError}>
             <input
               id={`${id}-repeat`}
               className="input"
@@ -131,7 +131,7 @@ export function Account(props: { admin: Admin; session: SessionInfo; signedOut: 
           </Field>
           <div className="actions">
             <button type="submit" className="btn btn-primary" disabled={mutation.pending}>
-              Change password
+              Change Password
             </button>
           </div>
         </form>

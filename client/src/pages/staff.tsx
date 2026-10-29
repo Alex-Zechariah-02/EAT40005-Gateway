@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { outcomeOfWrite, type Answer } from '../lib/api'
-import { rm, time } from '../lib/format'
+import { rm, time, reference } from '../lib/format'
 import { describe, type Problem, type Write } from '../lib/messages'
 import { Link } from '../lib/router'
 import { call } from '../lib/session'
@@ -74,10 +74,10 @@ export function OrderCard({ order, action, problem, view, wide = false }: { orde
   const count = order.items.reduce((sum, line) => sum + line.quantity, 0)
   const address = `${order.address.line1}${order.address.line2 ? `, ${order.address.line2}` : ''}, ${order.address.postcode} ${order.address.city}`
   return (
-    <article className={cx('flex flex-col gap-3 rounded-2xl bg-surface p-4 shadow-card', wide && 'sm:flex-row sm:items-start')} aria-label={`Order ${order.id}`}>
+    <article className={cx('flex flex-col gap-3 rounded-2xl bg-surface p-4 shadow-card', wide && 'sm:flex-row sm:items-start')} aria-label={`Order ${reference(order.id)}`}>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-extrabold tracking-[-0.01em]">{order.id}</span>
+          <span className="font-extrabold tracking-[-0.01em]">Order {reference(order.id)}</span>
           <OrderBadge status={order.status} />
           <span className="text-xs text-ink-3 tabular-nums">{time(order.created_at)}</span>
         </div>

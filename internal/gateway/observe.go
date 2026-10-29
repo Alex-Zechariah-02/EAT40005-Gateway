@@ -160,6 +160,17 @@ func (o *observations) recent(keep func(*observedRequest) bool, limit int) []obs
 	return result
 }
 
+// retainedSince returns the time of the oldest request still kept and
+// whether older requests have already been dropped from the ring.
+func (o *observations) retainedSince() (time.Time, bool) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.count == 0 {
+		return time.Time{}, false
+	}
+	return o.ring[(o.next-uint64(o.count))%recentEventLimit].Time, o.next > recentEventLimit
+}
+
 func (o *observations) snapshot() []observedRequest {
 	o.mu.Lock()
 	defer o.mu.Unlock()

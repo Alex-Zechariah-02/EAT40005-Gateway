@@ -31,7 +31,7 @@ export function trace(policy: Policy, who: string, operation: Operation): TraceS
   )
   const isPublic = operation.auth === 'none'
   step(
-    'Sign-in',
+    'Sign-In',
     isPublic
       ? 'not checked (public)'
       : who === 'none'
@@ -40,7 +40,7 @@ export function trace(policy: Policy, who: string, operation: Operation): TraceS
     !isPublic && who === 'none',
   )
   step(
-    'Blocked list',
+    'Blocked List',
     isPublic ? 'not applicable' : 'An account on the blocked list is refused (403 account_blocked). The list is kept apart from the policy.',
     false,
     !isPublic,

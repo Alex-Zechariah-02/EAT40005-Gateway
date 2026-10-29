@@ -1,29 +1,62 @@
 /* The Policy Designer: canvas, form and JSON views of one draft policy. */
-.designer-toolbar {
+/* The command row: view tabs and what each view is for on the left; the
+   version shown, the draft's state and its actions on the right. */
+.designer-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px 24px;
+  margin-bottom: 12px;
+  box-shadow: inset 0 -1px 0 var(--rule);
+}
+.designer-views {
+  min-width: 0;
+}
+.designer-view-tabs.section-tabs {
+  margin: 0;
+  box-shadow: none;
+}
+.designer-view-note {
+  margin: 2px 0 10px;
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}
+.designer-bar-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 16px;
-  min-height: 48px;
-  padding: 8px 16px;
-  background: var(--paper);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--card-shadow);
+  gap: 8px;
+  padding-bottom: 10px;
 }
-.designer-toolbar .segmented {
+.designer-viewing {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}
+.designer-viewing .input {
+  width: auto;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 32px;
+}
+/* On a narrow screen or with large text, every control wraps and shrinks
+   instead of widening the page. */
+.designer-viewing {
   flex-wrap: wrap;
+  max-width: 100%;
+}
+.designer-bar > *,
+.designer-bar-actions > * {
+  min-width: 0;
+  max-width: 100%;
 }
 .designer-draft-state {
   margin: 0;
   color: var(--ink-2);
   font-size: var(--text-sm);
-}
-.designer-toolbar-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-inline-start: auto;
 }
 .designer-option {
   display: inline-flex;
@@ -36,10 +69,10 @@
 .designer-choice input,
 .designer-permit-list input,
 .matrix-table input {
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
   flex-shrink: 0;
-  accent-color: var(--ink);
+  accent-color: var(--accent);
 }
 .designer-add {
   position: relative;
@@ -62,6 +95,11 @@
 }
 .designer-templates > div {
   width: min(22rem, calc(100vw - 32px));
+  /* The canvas clips what lies outside it, so the menu scrolls within the
+     canvas's height (below the toolbar) instead of running past its edge. */
+  max-height: calc(100cqh - 64px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .designer-templates section {
   display: grid;
@@ -73,28 +111,20 @@
   margin: 0;
   font-size: var(--text-sm);
 }
-.designer-tab-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-block: 16px;
-}
 .designer-workspace {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
+  position: relative;
 }
 .designer-canvas-area {
   min-width: 0;
 }
 .designer-canvas {
   position: relative;
-  /* As tall as the window allows, so more of the graph is readable at once. */
-  height: max(560px, calc(100vh - 220px));
-  min-height: 560px;
+  /* As tall as the window allows; the canvas measures the exact height it
+     needs to end at the window's bottom edge and sets it inline. */
+  height: max(420px, calc(100vh - 220px));
+  min-height: 420px;
+  /* Its menus size themselves to the canvas's height. */
+  container-type: size;
   background: var(--well);
   border-radius: var(--radius-lg);
   box-shadow: inset 0 0 0 1px var(--rule);
@@ -154,6 +184,27 @@
 .designer-permit-list {
   margin-block-start: 24px;
 }
+.designer-permit-list legend .muted {
+  font-weight: 400;
+  font-size: var(--text-sm);
+}
+.designer-permit-group + .designer-permit-group {
+  margin-block-start: 12px;
+}
+.designer-permit-api {
+  margin-block: 12px 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--ink-3);
+}
+.designer-permit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  column-gap: 16px;
+}
+.designer-permit-grid code {
+  font-size: var(--text-sm);
+}
 .designer-delete {
   margin-block-start: 24px;
 }
@@ -171,74 +222,17 @@
   white-space: normal;
   overflow-wrap: anywhere;
 }
-.designer-box {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  width: 100%;
-  padding: 12px;
-  background: var(--paper);
-  color: var(--ink);
-  border: 1px solid var(--rule-strong);
-  border-radius: var(--radius-md);
-}
 .designer-node-role {
   width: 220px;
 }
 .designer-node-operation {
-  width: 380px;
+  width: 420px;
 }
 .designer-node-api {
   width: 200px;
 }
 .designer-node-upstream {
   width: 220px;
-}
-.designer-box:hover {
-  border-color: var(--control-line);
-}
-.designer-box-title {
-  font: 600 var(--text-md)/1.5 var(--font-ui);
-  overflow-wrap: anywhere;
-}
-.designer-operation-title {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-}
-.designer-operation-title > code {
-  font-size: var(--text-sm);
-  min-width: 0;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-.designer-operation-title .badge {
-  flex-shrink: 0;
-  font-family: var(--font-mono);
-  font-weight: 600;
-}
-.designer-object-id {
-  margin: 0;
-  color: var(--ink-3);
-  font: var(--text-xs)/1.5 var(--font-mono);
-  overflow-wrap: anywhere;
-}
-.designer-object-id code {
-  white-space: normal;
-  font-size: inherit;
-}
-.designer-box.is-incomplete {
-  border: 1px dashed var(--pending);
-}
-.designer-box.is-refused {
-  border: 2px solid var(--refused);
-}
-.designer-canvas .react-flow__node.selected,
-.designer-canvas .react-flow__node:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-  border-radius: var(--radius-md);
 }
 .designer-checks {
   display: flex;
@@ -288,31 +282,7 @@
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
-.designer-canvas .react-flow__handle {
-  width: 10px;
-  height: 10px;
-  border: 1.5px solid var(--control-line);
-  border-radius: 50%;
-  background: var(--paper);
-}
-.designer-canvas .react-flow__handle::after {
-  content: '';
-  position: absolute;
-  inset-block-start: 50%;
-  inset-inline-start: 50%;
-  transform: translate(-50%, -50%);
-  width: 24px;
-  height: 24px;
-}
-.designer-canvas .react-flow__handle.connectingto.valid {
-  outline: 2px solid var(--ok);
-}
-.designer-canvas .react-flow__handle.connectingto:not(.valid) {
-  border-color: var(--rule);
-  cursor: not-allowed;
-}
-.designer-canvas .react-flow__edge-path,
-.designer-canvas .react-flow__connection-path {
+.designer-canvas .react-flow__edge-path {
   stroke: var(--ink-3);
   stroke-width: 1.5px;
 }
@@ -320,86 +290,112 @@
   stroke: var(--focus);
   stroke-width: 2px;
 }
-.designer-canvas .designer-edge-temporary .react-flow__edge-path {
-  stroke: var(--pending);
-  stroke-dasharray: 6 4;
-}
-.designer-canvas .designer-edge-removed .react-flow__edge-path {
-  stroke: var(--refused);
-  stroke-dasharray: 4 4;
-  opacity: 0.5;
-}
-.designer-canvas .designer-edge-temporary .react-flow__edge-textbg {
-  fill: var(--pending-tint);
-}
-.designer-canvas .designer-edge-temporary .react-flow__edge-text {
-  fill: var(--pending);
-}
-.designer-canvas .designer-edge-removed .react-flow__edge-textbg {
-  fill: var(--refused-tint);
-}
-.designer-canvas .designer-edge-removed .react-flow__edge-text {
-  fill: var(--refused);
-}
 .designer-canvas .react-flow__edge-text {
   font: var(--text-xs) var(--font-ui);
 }
-.designer-canvas .designer-edge-traced .react-flow__edge-path {
-  stroke: var(--focus);
-  stroke-width: 3px;
+.designer-form-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
 }
-.designer-canvas .designer-edge-refused .react-flow__edge-path {
-  stroke: var(--refused);
-  stroke-width: 2px;
+@media (min-width: 960px) {
+  .designer-form-split {
+    grid-template-columns: 300px minmax(0, 1fr);
+  }
+  .designer-form-list {
+    position: sticky;
+    top: 96px;
+    max-height: calc(100vh - 200px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
 }
-.designer-not-traced .react-flow__edge-path {
-  opacity: 0.3;
+.designer-form-list {
+  padding: 8px;
+  background: var(--paper);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--card-shadow);
 }
-.designer-column-heading {
-  font: 600 var(--text-xs)/1.5 var(--font-display);
-  color: var(--ink-3);
+.designer-form-group + .designer-form-group,
+.designer-form-matrix {
+  margin-block-start: 12px;
 }
-.designer-viewport-controls {
+.designer-form-group-head {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  margin: 12px;
-}
-.designer-legend {
-  margin-block: 8px 0;
-  color: var(--ink-3);
-  font-size: var(--text-xs);
-}
-.designer-form {
-  max-width: 880px;
-}
-.designer-form-nav {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  display: flex;
-  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  padding-block: 8px;
-  background: var(--ground);
+  padding: 6px 8px;
+  border-radius: var(--radius-md);
 }
-.designer-form .section {
-  scroll-margin-top: 48px;
+.designer-form-group-head:hover {
+  background: var(--hover);
 }
-.designer-form .section:focus {
-  outline: none;
+.designer-form-group-head h2 {
+  flex: 1;
+  margin: 0;
+  font: 600 var(--text-sm)/1.5 var(--font-display);
 }
-.designer-form .panel + .panel {
-  margin-block-start: 16px;
-}
-.designer-form .section-head {
+.designer-form-group-toggle {
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin-block-end: 16px;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--lane-ink);
+  font: inherit;
+  cursor: pointer;
 }
-.designer-form .section-head h2 {
-  margin: 0;
+.designer-form-group ul {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.designer-form-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--ink);
+  font: var(--text-sm)/1.4 var(--font-ui);
+  text-align: start;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.designer-form-item:hover {
+  background: var(--hover);
+}
+.designer-form-item[aria-current] {
+  background: var(--accent-tint);
+  color: var(--accent-active);
+  font-weight: 600;
+}
+.designer-form-item code {
+  white-space: normal;
+}
+.designer-form-item-id {
+  color: var(--ink-3);
+  font: var(--text-xs)/1.4 var(--font-mono);
+}
+.designer-form-detail {
+  min-width: 0;
+  padding: 20px;
+  background: var(--paper);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--card-shadow);
+}
+.designer-form-detail > section > h2 {
+  margin-block: 0 16px;
+  font: 600 var(--text-lg)/1.5 var(--font-display);
 }
 .designer-json textarea {
   min-height: 560px;
@@ -411,9 +407,6 @@
 }
 .designer-json .field {
   margin-block-end: 12px;
-}
-.designer-mobile-note {
-  display: none;
 }
 .designer-trace .field + .field {
   margin-block-start: 16px;
@@ -451,24 +444,10 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-@media (min-width: 1200px) {
-  .designer-workspace {
-    grid-template-columns: minmax(0, 1fr) 360px;
-  }
-}
 @media (max-width: 767px) {
   .designer-canvas {
     height: 420px;
     min-height: 420px;
-  }
-  .designer-mobile-note {
-    display: block;
-  }
-  .designer-toolbar {
-    padding: 8px;
-  }
-  .designer-toolbar-actions {
-    margin-inline-start: 0;
   }
 }
 @media (prefers-reduced-motion: no-preference) {
@@ -491,4 +470,561 @@
     animation: none !important;
     transition: none !important;
   }
+}
+
+.designer-kind-role,
+.designer-node-role {
+  --lane: var(--kind-role-tint);
+  --lane-ink: var(--kind-role);
+}
+
+.designer-kind-operation,
+.designer-node-operation {
+  --lane: var(--kind-operation-tint);
+  --lane-ink: var(--kind-operation);
+}
+
+.designer-kind-api,
+.designer-node-api {
+  --lane: var(--kind-api-tint);
+  --lane-ink: var(--kind-api);
+}
+
+.designer-kind-upstream,
+.designer-node-upstream {
+  --lane: var(--kind-upstream-tint);
+  --lane-ink: var(--kind-upstream);
+}
+.designer-canvas .react-flow__edge-path {
+  transition: opacity 200ms var(--ease-out), stroke-width 200ms var(--ease-out);
+}
+
+.designer-draft-state {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--neutral-tint);
+}
+.designer-draft-state.is-dirty {
+  background: var(--accent-tint);
+  color: var(--accent-active);
+  font-weight: 600;
+}
+
+/* The canvas library leaves boxes that cannot be dragged or selected
+   unclickable; the cards' rows and toggles are buttons, so they take clicks. */
+.designer-canvas .react-flow__node-card {
+  /* The library sets this inline, so only an important rule overrides it. */
+  pointer-events: all !important;
+  cursor: default;
+}
+/* Cards: one per group, white on the canvas well, with a quiet coloured
+   title that names the kind of box. */
+.designer-card {
+  overflow: hidden;
+  background: var(--paper);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 1px 2px oklch(20% 0.012 262 / 0.06), 0 4px 12px oklch(20% 0.012 262 / 0.04);
+  transition: opacity 160ms var(--ease-out);
+}
+/* A card outside the traced path steps back in colour, not opacity, so its
+   text keeps a readable contrast. */
+.designer-card.is-dim {
+  border-color: var(--rule);
+  box-shadow: none;
+}
+.designer-card.is-dim .designer-card-title,
+.designer-card.is-dim .designer-card-count {
+  color: var(--ink-3);
+}
+.designer-card.is-dim .designer-card-count {
+  background: var(--well);
+}
+.designer-card-head {
+  margin: 0;
+  border-bottom: 1px solid var(--rule);
+  font: inherit;
+}
+.designer-card-toggle,
+.designer-card-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: 600 var(--text-sm)/1.4 var(--font-ui);
+  text-align: start;
+}
+.designer-card-toggle {
+  cursor: pointer;
+}
+.designer-card-toggle:hover {
+  background: var(--hover);
+}
+.designer-card-toggle svg {
+  flex: none;
+  color: var(--ink-3);
+}
+.designer-card-title {
+  flex: 1;
+  min-width: 0;
+  color: var(--lane-ink);
+  overflow-wrap: anywhere;
+}
+.designer-card-count {
+  flex: none;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--lane);
+  color: var(--lane-ink);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+.designer-card-rows {
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+}
+.designer-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--ink);
+  font: var(--text-sm)/1.4 var(--font-ui);
+  text-align: start;
+  cursor: pointer;
+}
+.designer-row:hover {
+  background: var(--hover);
+}
+.designer-row[aria-current] {
+  background: var(--accent-tint);
+  color: var(--accent-active);
+}
+.designer-row-main {
+  display: flex;
+  flex: 1 1 160px;
+  flex-direction: column;
+  min-width: 0;
+}
+.designer-row-title {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.designer-row-title code {
+  white-space: normal;
+}
+.designer-row-detail {
+  color: var(--ink-3);
+  font: var(--text-xs)/1.4 var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.designer-row-mark {
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+.designer-row.is-allowed .designer-row-mark {
+  color: var(--ok);
+}
+.designer-canvas .react-flow__handle {
+  width: 1px;
+  height: 1px;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+}
+.designer-canvas .react-flow__edge-path {
+  stroke: var(--control-line);
+  stroke-width: 1.5px;
+  transition: opacity 160ms var(--ease-out), stroke 160ms var(--ease-out);
+}
+.designer-canvas .react-flow__arrowhead polyline {
+  stroke: var(--control-line);
+  fill: var(--control-line);
+}
+.designer-canvas .designer-edge-focus .react-flow__edge-path {
+  stroke: var(--accent);
+  stroke-width: 2px;
+}
+.designer-canvas .designer-edge-dim .react-flow__edge-path {
+  opacity: 0.25;
+}
+.designer-viewport-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 12px;
+}
+.designer-viewport-controls .btn {
+  gap: 6px;
+  background: var(--paper);
+}
+/* The canvas's own tools sit before the view controls, set apart by a gap. */
+.designer-canvas-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-inline-end: 8px;
+}
+.designer-canvas-tools .designer-option {
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  box-shadow: inset 0 0 0 1px var(--rule-strong);
+  font-size: var(--text-sm);
+}
+.designer-canvas-tools .designer-add summary.btn {
+  min-height: 30px;
+  font-size: var(--text-sm);
+}
+
+/* The editor opens as a drawer over the canvas, so the canvas keeps the
+   whole width until a box is chosen. */
+.designer-side-panel {
+  position: absolute;
+  /* Below the canvas controls, which stay in reach. */
+  top: 60px;
+  right: 12px;
+  z-index: 6;
+  width: min(400px, calc(100% - 24px));
+  max-height: calc(100% - 72px - 48px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-shadow: var(--shadow-overlay);
+  animation: drawer-in 180ms var(--ease-out);
+}
+.designer-panel-close {
+  float: right;
+  margin: 0 0 8px 8px;
+}
+@keyframes drawer-in {
+  from {
+    transform: translateX(12px);
+  }
+}
+/* Full screen: the canvas fills the window above the page. */
+.designer-workspace.is-expanded {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  padding: 16px;
+  background: var(--ground);
+}
+.designer-workspace.is-expanded .designer-canvas {
+  height: calc(100vh - 32px - 40px);
+}
+.designer-workspace.is-expanded .designer-side-panel {
+  top: 76px;
+  right: 28px;
+}
+.designer-live {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+.designer-issues ul {
+  margin: 6px 0 0;
+  padding-inline-start: 18px;
+}
+.designer-issues {
+  margin-block: 0 12px;
+}
+@media (max-width: 767px) {
+  .designer-side-panel {
+    position: static;
+    width: auto;
+    max-height: none;
+    margin-top: 12px;
+    box-shadow: var(--card-shadow);
+  }
+}
+
+/* An endpoint's checks in the gateway's order: one numbered row per step,
+   the check's name in a fixed column and its value beside it, so a long
+   route or forwarding target reads on one line instead of wrapping inside a
+   small box. */
+.designer-checks {
+  display: grid;
+  gap: 2px;
+  margin: 8px 0 16px;
+  padding: 0;
+  list-style: none;
+}
+.designer-check {
+  display: grid;
+  grid-template-columns: 18px 4.5rem minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  font-size: var(--text-sm);
+}
+.designer-check.tone-refused,
+.designer-check.tone-pending,
+.designer-check.is-none {
+  background: transparent;
+}
+.designer-check:hover {
+  background: var(--well);
+}
+.designer-check-step {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px currentColor;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.designer-check-name {
+  color: var(--ink-2);
+  font-weight: 500;
+}
+.designer-check-value {
+  min-width: 0;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+.designer-check.tone-refused .designer-check-value {
+  color: var(--refused);
+}
+.designer-check.tone-pending .designer-check-value {
+  color: var(--pending);
+}
+.designer-check.is-none .designer-check-value {
+  color: var(--ink-3);
+}
+.designer-check[aria-pressed='true'] {
+  background: var(--accent-tint);
+}
+.designer-check[aria-pressed='true'] .designer-check-name {
+  color: var(--ink);
+  font-weight: 600;
+}
+/* A checkbox field and the rules summary sit close to what they belong to. */
+.designer-object .field:has(> .designer-option) {
+  margin-bottom: 8px;
+}
+.designer-object .api-rules {
+  margin: 0 0 16px;
+}
+
+/* While a role is selected: each endpoint row is tinted green where the role
+   may call it and red where it may not, with the word beside it, and the
+   other roles step back. */
+.designer-row.is-allowed {
+  background: var(--ok-tint);
+}
+.designer-row.is-allowed:hover {
+  background: color-mix(in oklch, var(--ok-tint), var(--ok) 8%);
+}
+.designer-row.is-not-allowed {
+  background: var(--refused-tint);
+}
+.designer-row.is-not-allowed:hover {
+  background: color-mix(in oklch, var(--refused-tint), var(--refused) 8%);
+}
+.designer-card-rows li + li .designer-row.is-allowed,
+.designer-card-rows li + li .designer-row.is-not-allowed {
+  margin-top: 2px;
+}
+.designer-row.is-allowed .designer-row-title,
+.designer-row.is-allowed .designer-row-title .method {
+  color: var(--ok);
+}
+.designer-row.is-allowed .designer-row-detail {
+  color: color-mix(in oklch, var(--ok) 70%, var(--ink-3));
+}
+.designer-row.is-not-allowed {
+  opacity: 1;
+}
+.designer-row.is-not-allowed .designer-row-title,
+.designer-row.is-not-allowed .designer-row-title .method {
+  color: var(--ink-2);
+}
+.designer-row.is-not-allowed .designer-row-detail {
+  color: var(--ink-3);
+}
+.designer-row.is-not-allowed .designer-row-mark {
+  color: var(--refused);
+}
+/* Rows outside the selection or the trace step back in colour, not opacity,
+   so their text keeps a readable contrast. */
+.designer-row.is-dim .designer-row-title,
+.designer-row.is-dim .designer-row-title .method,
+.designer-row.is-dim .designer-row-detail {
+  color: var(--ink-3);
+}
+.designer-row.is-dim .designer-row-title {
+  font-weight: 400;
+}
+.designer-canvas .react-flow__edge-path {
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+/* Form list: a + shows on hover while a group is closed; an open group has a
+   labelled Add button. */
+.designer-form-group-head {
+  flex-wrap: nowrap;
+}
+.designer-form-group-toggle {
+  min-width: 0;
+}
+.designer-form-group-title {
+  min-width: 0;
+}
+.designer-form-add {
+  flex: none;
+}
+.designer-form-add.btn-small {
+  gap: 4px;
+}
+.designer-form-add.is-icon {
+  width: 26px;
+  height: 26px;
+  opacity: 0;
+  transition: opacity 120ms var(--ease-out);
+}
+.designer-form-group-head:hover .designer-form-add.is-icon,
+.designer-form-add.is-icon:focus-visible,
+.designer-form-add.is-open {
+  opacity: 1;
+}
+@media (hover: none) {
+  .designer-form-add.is-icon {
+    opacity: 1;
+  }
+}
+
+/* Canvas cards: the same + shows in a card's title bar on hover and opens
+   what can be added to that group. */
+.designer-card-head {
+  display: flex;
+  align-items: center;
+  padding-inline-end: 6px;
+}
+.designer-card-head > .designer-card-toggle,
+.designer-card-head > .designer-card-heading {
+  flex: 1;
+  min-width: 0;
+}
+.designer-card-add {
+  width: 26px;
+  height: 26px;
+  opacity: 0;
+  transition: opacity 120ms var(--ease-out);
+}
+.designer-card:hover .designer-card-add,
+.designer-card-add:focus-visible,
+.designer-card-add.is-open {
+  opacity: 1;
+}
+@media (hover: none) {
+  .designer-card-add {
+    opacity: 1;
+  }
+}
+
+/* Permissions matrix: as wide as its columns need, scrolled sideways, with
+   endpoint names on one line under their API and the role column kept in
+   view. */
+.matrix-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.matrix-table th,
+.matrix-table td {
+  padding: 8px 12px;
+  border-top: 0;
+  border-bottom: 1px solid var(--rule);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.matrix-table tbody tr:last-child th,
+.matrix-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.matrix-table th code {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+.matrix-table .matrix-corner,
+.matrix-table .matrix-role {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--paper);
+  box-shadow: inset -1px 0 0 var(--rule);
+  text-align: left;
+}
+.matrix-table .matrix-corner {
+  vertical-align: bottom;
+}
+.matrix-api {
+  color: var(--kind-api);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-align: center;
+  box-shadow: inset 1px 0 0 var(--rule);
+}
+.matrix-endpoint {
+  color: var(--ink);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-align: center;
+}
+.matrix-route {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+  font-weight: 400;
+}
+.matrix-role code {
+  color: var(--ink);
+  font-weight: 600;
+}
+.matrix-role-count {
+  display: block;
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+  font-weight: 400;
+}
+.matrix-table td {
+  text-align: center;
+}
+.matrix-table tbody tr:hover > * {
+  background: var(--row-hover);
+}
+.designer-form-subhead {
+  margin: 10px 8px 2px;
+  color: var(--kind-api);
+  font-size: var(--text-xs);
+  font-weight: 600;
 }

@@ -13,7 +13,6 @@ import { differences } from './diff'
 import { useGatewayState, useMutation, useResource } from './hooks'
 import { DesignerCanvas, type TracePath } from './designer-canvas'
 import { FormView, Issues, ObjectForm } from './designer-form'
-import { forgetPositions, readPositions, writePositions } from './designer-layout'
 import {
   add,
   canonical,
@@ -26,14 +25,13 @@ import {
   splitKey,
   type BoxKey,
   type BoxKind,
-  kindNames,
+  type GroupAction,
   type DesignerDraft,
-  type Positions,
 } from './designer-model'
-import { closeOtherMenus, Templates } from './designer-templates'
-import { StepByStep } from './designer-wizards'
+import { Templates } from './designer-templates'
+import { GuidedChange, type GuidedTask } from './designer-wizards'
 import { trace, traceExplanation } from './designer-trace'
-import { Badge, ChangeList, Confirm, Empty, Field, MutationResult, PageHeader, Problem, ReadStamp, Remaining } from './ui'
+import { Badge, ChangeList, CodeBlock, Confirm, Empty, Field, MutationResult, PageHeader, Problem, ReadStamp, Remaining, TimeOfDay, useFocus } from './ui'
 import { controls } from './provisional'
 import type { ViewProps } from './views'
 
@@ -42,6 +40,13 @@ type Tab = 'canvas' | 'form' | 'json'
 interface Staged {
   receipt: Outcome
   candidate: Candidate
+}
+
+// What each view of the policy is for, said once under the view tabs.
+const viewNotes: Record<Tab, string> = {
+  canvas: 'Map of roles, endpoints, APIs and service addresses. Select a role to see what it may call.',
+  form: 'Edit each role, endpoint, API and service address, or tick permissions in the matrix.',
+  json: 'The complete policy document, to copy, download or load from a file.',
 }
 
 export function Designer({
@@ -64,14 +69,13 @@ export function Designer({
   const [mode, setMode] = useState<Mode>('draft')
   const [tab, setTab] = useState<Tab>('canvas')
   const [selection, setSelection] = useState<BoxKey | null>(null)
-  const [section, setSection] = useState<string | undefined>()
   const [json, setJson] = useState('')
   const [jsonError, setJsonError] = useState('')
   const [buffers, setBuffers] = useState<Record<string, string>>({})
-  const [positions, setPositions] = useState<Positions>(readPositions)
-  const [reset, setReset] = useState(0)
+  const [expanded, setExpanded] = useState(false)
   const [showLive, setShowLive] = useState(true)
   const [showTrace, setShowTrace] = useState(false)
+  const [wizard, setWizard] = useState<{ task: GuidedTask; api?: string } | null>(null)
   const [who, setWho] = useState('none')
   const [what, setWhat] = useState('')
   const [stageConfirm, setStageConfirm] = useState(false)
@@ -82,7 +86,6 @@ export function Designer({
   const [checkMessage, setCheckMessage] = useState('')
   const [templateNote, setTemplateNote] = useState('')
   const review = useRef<HTMLButtonElement>(null)
-  const positionsTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const submitted = useRef<Policy | null>(null)
 
   const current = policy.reply?.kind === 'ok' ? policy.reply.body : undefined
@@ -153,12 +156,6 @@ export function Designer({
     window.addEventListener('beforeunload', warn)
     return () => window.removeEventListener('beforeunload', warn)
   }, [dirty, editable, tab, json, serialised])
-  useEffect(
-    () => () => {
-      if (positionsTimer.current) clearTimeout(positionsTimer.current)
-    },
-    [],
-  )
   useEffect(() => {
     if (mode === 'provisional' && pendingId === undefined) setMode('confirmed')
   }, [mode, pendingId])
@@ -183,11 +180,28 @@ export function Designer({
     }
   }, [phase])
 
-  const select = useCallback((key: BoxKey, check?: string) => {
+  const select = useCallback((key: BoxKey) => {
     setSelection(key)
-    setSection(check)
     if (key.startsWith('operation:')) setWhat(splitKey(key)[1])
   }, [])
+  // A link from another page opens the policy on one box: the canvas shows it
+  // selected, its group open, with its editor beside it.
+  const linked = useFocus('select')
+  const linkedReady = !!draft
+  useEffect(() => {
+    if (!linked || !draft) return
+    const [kind, id] = splitKey(linked as BoxKey)
+    const known: Record<string, { id: string }[]> = {
+      role: draft.document.roles,
+      operation: draft.document.operations,
+      api: draft.document.apis,
+      upstream: draft.document.upstreams,
+    }
+    if (!known[kind]?.some((item) => item.id === id)) return
+    setTab('canvas')
+    setShowTrace(false)
+    select(linked as BoxKey)
+  }, [linked, linkedReady])
   function update(next: Policy) {
     if (editable) {
       setDraft((previous) => (previous ? { ...previous, document: next } : previous))
@@ -203,15 +217,8 @@ export function Designer({
       return next
     })
   }
-  function renamePosition(before: BoxKey, after: BoxKey, policy: Policy) {
+  function renameBox(before: BoxKey, after: BoxKey) {
     if (selection === before) setSelection(after)
-    if (positionsTimer.current) clearTimeout(positionsTimer.current)
-    if (before in positions) {
-      const next = { ...positions, [after]: positions[before] }
-      delete next[before]
-      setPositions(next)
-      writePositions(policy, next)
-    }
     setBuffers((previous) =>
       Object.fromEntries(
         Object.entries(previous).map(([key, value]) => [key.startsWith(`${before}.`) ? after + key.slice(before.length) : key, value]),
@@ -225,6 +232,32 @@ export function Designer({
       update(added.document)
       setSelection(added.key)
       setShowTrace(false)
+    }
+  }
+  // addActions are what a group's + offers: a blank box opened in the side
+  // form, or a guided change that starts in that group.
+  function addActions(kind: BoxKind, api?: string): GroupAction[] {
+    if (!document || !editable) return []
+    const noApi = document.apis.length ? undefined : 'Add an API first.'
+    switch (kind) {
+      case 'role':
+        return [
+          { label: 'Add Role', adds: 'role', run: () => addBox('role') },
+          {
+            label: 'Give a Role Access',
+            run: () => setWizard({ task: 'access' }),
+            unavailable: !document.roles.length ? 'Add a role first.' : !document.operations.length ? 'Add an endpoint first.' : undefined,
+          },
+        ]
+      case 'operation':
+        return [
+          { label: 'Add Endpoint', run: () => setWizard({ task: 'endpoint', api }), unavailable: noApi },
+          { label: 'Change a Rate Limit', run: () => setWizard({ task: 'rate', api }), unavailable: document.operations.length ? undefined : 'Add an endpoint first.' },
+        ]
+      case 'api':
+        return [{ label: 'Add API', adds: 'api', run: () => addBox('api'), unavailable: document.upstreams.length ? undefined : 'Add a service address first.' }]
+      case 'upstream':
+        return [{ label: 'Add Service Address', adds: 'upstream', run: () => addBox('upstream') }]
     }
   }
   function applyJson(): boolean {
@@ -276,7 +309,7 @@ export function Designer({
       : undefined
   const stale = current && draft && current.id !== draft.baseRevision
   const formProps = document
-    ? { policy: document, editable, onChange: update, onRename: renamePosition, onDelete: setDeleteKey, onBufferIssue }
+    ? { policy: document, editable, onChange: update, onRename: renameBox, onDelete: setDeleteKey, onBufferIssue }
     : null
   const canStage =
     editable &&
@@ -292,11 +325,8 @@ export function Designer({
     <>
       <PageHeader
         title="Policy"
-        lede="The policy as a picture: who may call which endpoint, the checks each request meets in the gateway's fixed order, and where it is forwarded. Edit a draft here and save it as a draft change; nothing is in force until a trial of it is kept."
+        lede="Define which roles may call each endpoint and where each API forwards requests."
       >
-        <a className="btn btn-small" href="#/policy">
-          Versions and tables
-        </a>
         <ReadStamp okAt={policy.last?.at ?? null} failed={policy.failed} loading={policy.loading || overrides.loading || provisional.loading} onRefresh={refresh} />
       </PageHeader>
       {none ? (
@@ -318,16 +348,16 @@ export function Designer({
         <>
           {pending ? (
             <div className="notice tone-pending">
-              Version {pending.activation.revision} is on trial until {new Date(pending.activation.deadline).toLocaleString()}. Putting another change
-              on trial is refused until it is kept or undone.
+              Version {pending.activation.revision} is on trial until <TimeOfDay value={pending.activation.deadline} seconds /> (
               <Remaining until={pending.activation.deadline} onPassed={refresh} />
+              ). Another change can go on trial once it is kept or undone.
             </div>
           ) : null}
           {overrides.reply && overrides.reply.kind !== 'ok' ? (
             <>
               <Problem reply={overrides.reply} />
               <button className="btn btn-small" type="button" onClick={overrides.refresh}>
-                Retry live overrides
+                Retry Live Overrides
               </button>
             </>
           ) : null}
@@ -337,101 +367,86 @@ export function Designer({
             <>
               <Problem reply={provisional.reply} />
               <button className="btn btn-small" type="button" onClick={provisional.refresh}>
-                Retry reading the trial
+                Retry Reading the Trial
               </button>
             </>
           ) : null}
-          <div className="designer-toolbar">
-            <div className="segmented" aria-label="Policy mode">
-              {(['draft', 'confirmed', ...(pendingId !== undefined ? ['provisional'] : [])] as Mode[]).map((choice) => (
-                <button className="btn" type="button" key={choice} aria-pressed={mode === choice} onClick={() => changeMode(choice)}>
-                  {choice === 'draft' ? 'Draft' : choice === 'confirmed' ? `In force · version ${current.id}` : `On trial · version ${pendingId}`}
-                </button>
-              ))}
+          {/* One command row: the views on the left with what each is for, and
+              which version is shown, the draft's state and its actions on the
+              right, so the canvas below can take the rest of the window. */}
+          <div className="designer-bar">
+            <div className="designer-views">
+                <div className="section-tabs designer-view-tabs" role="tablist" aria-label="Policy views">
+                  {(['canvas', 'form', 'json'] as Tab[]).map((choice, index, tabs) => (
+                    <button
+                      id={`designer-tab-${choice}`}
+                      role="tab"
+                      type="button"
+                      key={choice}
+                      aria-selected={tab === choice}
+                      aria-controls="designer-view"
+                      tabIndex={tab === choice ? 0 : -1}
+                      onClick={() => changeTab(choice)}
+                      onKeyDown={(event) => {
+                        let next: Tab | undefined
+                        if (event.key === 'ArrowRight') next = tabs[(index + 1) % tabs.length]
+                        if (event.key === 'ArrowLeft') next = tabs[(index + tabs.length - 1) % tabs.length]
+                        if (event.key === 'Home') next = tabs[0]
+                        if (event.key === 'End') next = tabs[tabs.length - 1]
+                        if (next) {
+                          event.preventDefault()
+                          changeTab(next)
+                        }
+                      }}
+                    >
+                      {choice === 'json' ? 'JSON' : choice[0].toUpperCase() + choice.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              <p className="designer-view-note">{viewNotes[tab]}</p>
             </div>
-            <p className="designer-draft-state">
-              {dirty
-                ? `Unsaved draft · ${changed.length} ${changed.length === 1 ? 'change' : 'changes'} against version ${draft.baseRevision}`
-                : `No draft changes against version ${draft.baseRevision}`}
-            </p>
-            <div className="designer-toolbar-actions">
-              <button
-                className="btn"
-                type="button"
-                aria-pressed={showTrace}
-                onClick={() => {
-                  if (tab === 'json' && !applyJson()) return
-                  setTab('canvas')
-                  setShowTrace((value) => !value)
-                }}
-              >
-                Trace
-              </button>
-              <label className="designer-option">
-                <input type="checkbox" checked={showLive} onChange={(event) => setShowLive(event.target.checked)} /> Show what is in force
+            <div className="designer-bar-actions">
+              <label className="designer-viewing">
+                <span>Viewing</span>
+                <select className="input" value={mode} onChange={(event) => changeMode(event.target.value as Mode)}>
+                  <option value="draft">Draft</option>
+                  <option value="confirmed">Active · Version {current.id}</option>
+                  {pendingId !== undefined ? <option value="provisional">On Trial · Version {pendingId}</option> : null}
+                </select>
               </label>
-              {editable ? (
-                <details className="designer-add" onToggle={closeOtherMenus}>
-                  <summary className="btn">Add</summary>
-                  <div>
-                    {(['role', 'operation', 'api', 'upstream'] as BoxKind[]).map((kind) => (
-                      <div key={kind}>
-                        <button
-                          className="btn btn-small"
-                          type="button"
-                          disabled={(kind === 'operation' && !document.apis.length) || (kind === 'api' && !document.upstreams.length)}
-                          onClick={(event) => {
-                            addBox(kind)
-                            event.currentTarget.closest('details')?.removeAttribute('open')
-                          }}
-                        >
-                          Add {kindNames[kind].one}
-                        </button>
-                        {kind === 'operation' && !document.apis.length ? (
-                          <p className="hint">Add an API first.</p>
-                        ) : kind === 'api' && !document.upstreams.length ? (
-                          <p className="hint">Add a service address first.</p>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                </details>
-              ) : null}
-              {editable && document ? (
-                <>
-                  <StepByStep
-                    policy={document}
-                    apply={(next, summary) => {
-                      update(next)
-                      setTemplateNote(`Applied to the draft: ${summary} Nothing is saved: review it, then choose Save draft change.`)
-                    }}
-                  />
-                  <Templates
-                    policy={document}
-                    apply={(next, summary) => {
-                      update(next)
-                      setTemplateNote(`Template applied to the draft: ${summary} Nothing is saved: review it, then choose Save draft change.`)
-                    }}
-                  />
-                </>
-              ) : null}
+              <Badge tone={issues.length ? 'pending' : 'ok'}>{issues.length ? `${issues.length} ${issues.length === 1 ? 'Issue' : 'Issues'}` : 'No Issues'}</Badge>
               {can('manage_policy') ? (
                 <>
-                  <button
-                    className="btn btn-danger-quiet"
-                    type="button"
-                    disabled={!canDiscard || mutation.pending}
-                    onClick={() => setDiscardConfirm(true)}
-                  >
-                    Discard draft
+                  <p className={`designer-draft-state${dirty ? ' is-dirty' : ''}`} role="status">
+                    {mode !== 'draft'
+                      ? 'Edits go to the draft.'
+                      : dirty
+                        ? `${changed.length} unsaved ${changed.length === 1 ? 'change' : 'changes'}`
+                        : `No changes to version ${draft.baseRevision}`}
+                  </p>
+                  <button className="btn btn-danger-quiet" type="button" disabled={!canDiscard || mutation.pending} onClick={() => setDiscardConfirm(true)}>
+                    Discard
                   </button>
                   <button className="btn btn-primary" type="button" disabled={!canStage} onClick={() => setStageConfirm(true)}>
-                    Save draft change
+                    Save Changes
                   </button>
                 </>
               ) : null}
             </div>
           </div>
+          {wizard && editable && document ? (
+            <GuidedChange
+              policy={document}
+              task={wizard.task}
+              api={wizard.api}
+              close={() => setWizard(null)}
+              apply={(next, summary) => {
+                setWizard(null)
+                update(next)
+                setTemplateNote(`Applied to the draft: ${summary} Nothing is saved: review it, then choose Save Changes.`)
+              }}
+            />
+          ) : null}
           {templateNote && mode === 'draft' ? (
             <p role="status" className="hint">
               {templateNote}
@@ -439,21 +454,21 @@ export function Designer({
           ) : null}
           {!can('manage_policy') ? (
             <p className="notice tone-neutral">
-              Read-only administrator: you can inspect the policy in every view. Changing it needs the “Change the policy” permission (manage_policy).
+              Read-only. Editing needs the “Change the policy” permission (manage_policy).
             </p>
           ) : null}
           {tab === 'json' && editable && json !== serialised ? (
-            <p className="hint">Apply the JSON before saving the draft change. The draft stays unchanged until it is applied.</p>
+            <p className="hint">Apply the JSON to update the draft before saving.</p>
           ) : null}
           {stale ? (
             <section className="notice tone-pending">
               <p>
-                The policy in force changed to version {current.id} since your draft was started from version {draft.baseRevision}. Your draft keeps
+                The active policy changed to version {current.id} since your draft was started from version {draft.baseRevision}. Your draft keeps
                 its own changes; saving it unchanged would be refused.
               </p>
               <div className="actions">
                 <button className="btn" type="button" aria-expanded={showChanges} onClick={() => setShowChanges((value) => !value)}>
-                  Show what changed
+                  Show What Changed
                 </button>
                 <button
                   className="btn"
@@ -481,7 +496,7 @@ export function Designer({
                     Check
                   </button>{' '}
                   <button className="btn" type="button" onClick={() => void mutation.run(phase.request)}>
-                    Send the same request again
+                    Send the Same Request Again
                   </button>
                   {checkMessage ? <p>{checkMessage}</p> : null}
                 </div>
@@ -489,53 +504,41 @@ export function Designer({
             }
             success={(body) => (
               <>
-                <p className="notice-title">The gateway checked it: saved as draft change {body.candidate.id}. Nothing is in force yet.</p>
+                <p className="notice-title">The gateway checked it: saved as draft change {body.candidate.id}. Nothing is active yet.</p>
                 <button ref={review} className="btn" type="button" onClick={() => open('candidates', { candidate: body.candidate.id })}>
-                  Preview its impact and put it on trial
+                  Preview Its Impact and Put It on Trial
                 </button>
               </>
             )}
           />
-          <div className="designer-tab-row">
-            <div className="segmented" role="tablist" aria-label="Policy views">
-              {(['canvas', 'form', 'json'] as Tab[]).map((choice, index, tabs) => (
-                <button
-                  id={`designer-tab-${choice}`}
-                  role="tab"
-                  className="btn"
-                  type="button"
-                  key={choice}
-                  aria-selected={tab === choice}
-                  aria-controls="designer-view"
-                  tabIndex={tab === choice ? 0 : -1}
-                  onClick={() => changeTab(choice)}
-                  onKeyDown={(event) => {
-                    let next: Tab | undefined
-                    if (event.key === 'ArrowRight') next = tabs[(index + 1) % tabs.length]
-                    if (event.key === 'ArrowLeft') next = tabs[(index + tabs.length - 1) % tabs.length]
-                    if (event.key === 'Home') next = tabs[0]
-                    if (event.key === 'End') next = tabs[tabs.length - 1]
-                    if (next) {
-                      event.preventDefault()
-                      changeTab(next)
-                    }
-                  }}
-                >
-                  {choice === 'json' ? 'JSON' : choice[0].toUpperCase() + choice.slice(1)}
-                </button>
+          {/* Issues stand above the work, where they are seen before saving. */}
+          <Issues
+            issues={issues}
+            onSelect={(key) => {
+              select(key)
+              if (tab === 'json') changeTab('canvas')
+            }}
+          />
+          {showLive && live.length ? (
+            <ul className="designer-live" aria-label="Active temporary rules">
+              {live.map((override) => (
+                <li key={override.id}>
+                  <Badge tone={override.type === 'containment' ? 'refused' : 'pending'}>Temporary</Badge>{' '}
+                  {override.type === 'containment' ? 'Restricts' : 'Allows'} {override.role ? `${override.role} · ` : ''}
+                  <code>{override.operation}</code> until {new Date(override.expires_at).toLocaleTimeString()} ·{' '}
+                  <Remaining until={override.expires_at} onPassed={refresh} />
+                </li>
               ))}
-            </div>
-            <Badge tone={issues.length ? 'pending' : 'neutral'}>Issues: {issues.length}</Badge>
-          </div>
+            </ul>
+          ) : null}
           <div id="designer-view" role="tabpanel" aria-labelledby={`designer-tab-${tab}`}>
             {tab === 'canvas' ? (
-              <div className="designer-workspace">
+              <div className={`designer-workspace${expanded ? ' is-expanded' : ''}`}>
                 <div className="designer-canvas-area">
                   <DesignerCanvas
                     policy={document}
                     editable={editable}
                     selection={selection}
-                    positions={positions}
                     issues={issues}
                     overlays={live}
                     provisional={
@@ -543,69 +546,79 @@ export function Designer({
                     }
                     refused={refused}
                     trace={tracePath}
-                    reset={reset}
+                    expanded={expanded}
+                    panelOpen={showTrace || (selection !== null && formProps !== null)}
+                    onExpand={() => setExpanded((value) => !value)}
                     onSelect={select}
-                    onChange={update}
                     onDelete={setDeleteKey}
-                    onPositions={(next) => {
-                      setPositions(next)
-                      if (positionsTimer.current) clearTimeout(positionsTimer.current)
-                      positionsTimer.current = setTimeout(() => writePositions(document, next), 300)
-                    }}
-                    onReset={() => {
-                      if (positionsTimer.current) clearTimeout(positionsTimer.current)
-                      forgetPositions()
-                      setPositions({})
-                      setReset((value) => value + 1)
-                    }}
+                    actions={addActions}
+                    tools={
+                      <>
+                        <button
+                          className="btn btn-small"
+                          type="button"
+                          aria-pressed={showTrace}
+                          onClick={() => setShowTrace((value) => !value)}
+                        >
+                          Trace
+                        </button>
+                        <label className="designer-option">
+                          <input type="checkbox" checked={showLive} onChange={(event) => setShowLive(event.target.checked)} /> Temporary Rules
+                        </label>
+                        {editable ? (
+                          <Templates
+                            policy={document}
+                            apply={(next, summary) => {
+                              update(next)
+                              setTemplateNote(`Template applied to the draft: ${summary} Nothing is saved: review it, then choose Save Changes.`)
+                            }}
+                          />
+                        ) : null}
+                      </>
+                    }
                   />
                 </div>
-                <aside className="designer-side-panel" aria-label={showTrace ? 'Trace policy document' : 'Selected policy box'}>
-                  {showTrace ? (
-                    <TracePanel
-                      policy={document}
-                      who={who}
-                      setWho={setWho}
-                      what={currentOperation?.id ?? ''}
-                      setWhat={(operation) => {
-                        setWhat(operation)
-                        setSelection(`operation:${operation}`)
-                      }}
-                      steps={steps}
-                    />
-                  ) : selection && formProps ? (
-                    <ObjectForm {...formProps} selection={selection} section={section} inPanel />
-                  ) : (
-                    <p className="hint">Select a box to see and change it.</p>
-                  )}
-                  <Issues issues={issues} onSelect={select} />
-                  {showLive
-                    ? live.map((override) => (
-                        <p className="hint" key={override.id}>
-                          {override.type} {override.control}: {override.role ? `${override.role} · ` : ''}
-                          {override.operation}, until {new Date(override.expires_at).toLocaleTimeString()} ·{' '}
-                          <Remaining until={override.expires_at} onPassed={refresh} />
-                        </p>
-                      ))
-                    : null}
-                </aside>
+                {showTrace || (selection && formProps) ? (
+                  <aside className="designer-side-panel" aria-label={showTrace ? 'Trace policy document' : 'Selected policy box'}>
+                    <button
+                      type="button"
+                      className="btn btn-small designer-panel-close"
+                      onClick={() => (showTrace ? setShowTrace(false) : setSelection(null))}
+                    >
+                      Close
+                    </button>
+                    {showTrace ? (
+                      <TracePanel
+                        policy={document}
+                        who={who}
+                        setWho={setWho}
+                        what={currentOperation?.id ?? ''}
+                        setWhat={(operation) => {
+                          setWhat(operation)
+                          setSelection(`operation:${operation}`)
+                        }}
+                        steps={steps}
+                      />
+                    ) : selection && formProps ? (
+                      <ObjectForm {...formProps} selection={selection} inPanel />
+                    ) : null}
+                  </aside>
+                ) : null}
               </div>
             ) : null}
-            {tab === 'form' && formProps ? (
-              <>
-                <FormView {...formProps} onAdd={addBox} />
-                <Issues
-                  issues={issues}
-                  onSelect={(key) => {
-                    select(key)
-                    changeTab('canvas')
-                  }}
-                />
-              </>
-            ) : null}
+            {tab === 'form' && formProps ? <FormView {...formProps} actions={addActions} /> : null}
             {tab === 'json' ? (
               <div className="designer-json">
-                <Field id="designer-json-document" label="Complete policy document (JSON)">
+                <JsonTools
+                  text={json}
+                  name={mode === 'draft' ? `gateway-policy-draft-r${draft.baseRevision}.json` : `gateway-policy-r${mode === 'confirmed' ? current.id : pendingId}.json`}
+                  editable={editable}
+                  onLoad={(text) => {
+                    setJson(text)
+                    setJsonError('')
+                  }}
+                />
+                <Field id="designer-json-document" label="Complete Policy Document (JSON)">
                   <textarea
                     id="designer-json-document"
                     className="input code-input"
@@ -630,13 +643,29 @@ export function Designer({
                     Apply JSON
                   </button>
                 ) : null}
+                <details className="api-requests">
+                  <summary>Save a Draft Change with the Admin API</summary>
+                  <p>
+                    Each request needs a signed-in session cookie and its CSRF token; saving a draft change (API: candidate) also needs the base
+                    version and a new idempotency key. The gateway validates the whole document on save.
+                  </p>
+                  <CodeBlock label="Admin API requests" className="code-block code-block-short">{`GET /admin/policy
+
+POST /admin/candidates
+Content-Type: application/json
+If-Match: "r<active version>"
+Idempotency-Key: <a new key: 16 to 64 letters, digits, _ or ->
+X-CSRF-Token: <the session's CSRF token>
+
+{"policy": <the complete policy document>}`}</CodeBlock>
+                </details>
               </div>
             ) : null}
           </div>
           <Confirm
             open={stageConfirm}
             title="Save this as a draft change?"
-            confirmLabel="Save draft change"
+            confirmLabel="Save Draft Change"
             onCancel={() => setStageConfirm(false)}
             onConfirm={() => {
               setStageConfirm(false)
@@ -651,7 +680,7 @@ export function Designer({
               })
             }}
           >
-            <p>The gateway checks the whole document. Nothing is in force until the draft change is put on trial and kept.</p>
+            <p>The gateway checks the whole document. Nothing is active until the draft change is put on trial and kept.</p>
             <ul>
               {changed.map((change) => (
                 <li key={`${change.control}:${change.target}`}>
@@ -663,7 +692,7 @@ export function Designer({
           <Confirm
             open={discardConfirm}
             title="Discard your draft?"
-            confirmLabel="Discard draft"
+            confirmLabel="Discard Draft"
             danger
             onCancel={() => setDiscardConfirm(false)}
             onConfirm={() => {
@@ -682,7 +711,7 @@ export function Designer({
           <Confirm
             open={deleteKey !== null}
             title={`Delete ${deleteKey ? splitKey(deleteKey).join(' ') : 'box'}?`}
-            confirmLabel="Delete box"
+            confirmLabel="Delete Box"
             danger
             onCancel={() => setDeleteKey(null)}
             onConfirm={() => {
@@ -695,8 +724,7 @@ export function Designer({
             }}
           >
             <p>
-              The box and its permissions are removed from this draft. Nothing changes in the gateway until it is saved as a draft change and put on
-              trial.
+              Removes the box and its permissions from this draft. The gateway is unchanged until the draft is saved and put on trial.
             </p>
           </Confirm>
         </>
@@ -705,11 +733,77 @@ export function Designer({
         <>
           <Problem reply={provisionalDocument.reply} />
           <button type="button" className="btn" onClick={provisionalDocument.refresh}>
-            Retry reading the version on trial
+            Retry Reading the Version on Trial
           </button>
         </>
       ) : null}
     </>
+  )
+}
+
+// JsonTools copies or downloads the document shown, or loads one from a
+// file into the editor; loading changes nothing until Apply JSON.
+function JsonTools(props: { text: string; name: string; editable: boolean; onLoad: (text: string) => void }) {
+  const [copied, setCopied] = useState(false)
+  const [href, setHref] = useState('')
+  const [fileProblem, setFileProblem] = useState('')
+  const file = useRef<HTMLInputElement>(null)
+  // The download link is a blob URL of the shown text, released when the
+  // text changes or the page closes.
+  useEffect(() => {
+    setCopied(false)
+    const url = URL.createObjectURL(new Blob([props.text], { type: 'application/json' }))
+    setHref(url)
+    return () => URL.revokeObjectURL(url)
+  }, [props.text])
+  return (
+    <div className="json-tools">
+      <button
+        type="button"
+        className="btn btn-small"
+        onClick={() =>
+          navigator.clipboard.writeText(props.text).then(
+            () => setCopied(true),
+            () => setCopied(false),
+          )
+        }
+      >
+        {copied ? 'Copied' : 'Copy'}
+      </button>
+      <a className="btn btn-small" href={href || undefined} download={props.name}>
+        Download JSON
+      </a>
+      {props.editable ? (
+        <>
+          <button type="button" className="btn btn-small" onClick={() => file.current?.click()}>
+            Load from a File
+          </button>
+          <input
+            ref={file}
+            type="file"
+            accept="application/json,.json"
+            hidden
+            onChange={(event) => {
+              const chosen = event.target.files?.[0]
+              event.target.value = ''
+              if (!chosen) return
+              chosen.text().then(
+                (text) => {
+                  setFileProblem('')
+                  props.onLoad(text)
+                },
+                () => setFileProblem('The file could not be read.'),
+              )
+            }}
+          />
+        </>
+      ) : null}
+      {fileProblem ? (
+        <p role="alert" className="field-error">
+          {fileProblem}
+        </p>
+      ) : null}
+    </div>
   )
 }
 

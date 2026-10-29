@@ -1,8 +1,9 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { Operation, Policy } from './api'
-import { capital, copy, deleteReason, kindNames, rename, sections, splitKey, type BoxKey, type BoxKind, type Issue } from './designer-model'
+import { capital, copy, deleteReason, kindNames, rename, sections, splitKey, type BoxKey, type BoxKind, type GroupAction, type Issue } from './designer-model'
 import { RequestRules } from './policy'
-import { Badge, Confirm, Field, TableScroll, describedBy } from './ui'
+import { CaretDown, CaretRight } from '@phosphor-icons/react'
+import { ActionMenu, Confirm, Field, TableScroll, describedBy } from './ui'
 
 interface FormProps {
   policy: Policy
@@ -13,32 +14,28 @@ interface FormProps {
   onBufferIssue: (key: string, issue: string | null) => void
 }
 
+// Issues lists what this page can already tell is incomplete, above the
+// work and only when there is something to fix. The gateway still checks the
+// whole document when it is saved.
 export function Issues({ issues, onSelect }: { issues: Issue[]; onSelect: (key: BoxKey) => void }) {
+  if (!issues.length) return null
   return (
-    <section className="designer-issues" aria-label="Issues">
-      <h2>
-        Issues <Badge tone={issues.length ? 'pending' : 'neutral'}>{issues.length}</Badge>
-      </h2>
-      <p className="hint">Checks in this page. The gateway checks the whole document when you save it as a draft change.</p>
-      {issues.length ? (
-        <ul>
-          {issues.map((issue, index) => (
-            <li key={`${issue.field}:${index}`}>
-              <code>
-                {issue.id} {issue.field}
-              </code>
-              : {issue.message}{' '}
-              {issue.box ? (
-                <button className="btn btn-small" type="button" onClick={() => onSelect(issue.box!)}>
-                  Select box
-                </button>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="hint">No drawing issue. Make a change, then save it as a draft change for the gateway to check.</p>
-      )}
+    <section className="notice tone-pending designer-issues" aria-label="Issues">
+      <p className="notice-title">
+        {issues.length} {issues.length === 1 ? 'issue' : 'issues'} to fix before saving
+      </p>
+      <ul>
+        {issues.map((issue, index) => (
+          <li key={`${issue.field}:${index}`}>
+            {issue.message} <code className="soft">{issue.field}</code>{' '}
+            {issue.box ? (
+              <button className="link-button" type="button" onClick={() => onSelect(issue.box!)}>
+                Show
+              </button>
+            ) : null}
+          </li>
+        ))}
+      </ul>
     </section>
   )
 }
@@ -66,7 +63,7 @@ function SchemaEditor({
     onIssue(null)
   }, [serialised])
   return (
-    <Field id={id} label={label} hint="The gateway checks the schema subset when you save this as a draft change." error={error || undefined} wide>
+    <Field id={id} label={label} hint="The gateway validates the schema on save." error={error || undefined} wide>
       <textarea
         id={id}
         className="input code-input"
@@ -97,12 +94,7 @@ function SchemaEditor({
 
 // In the side panel the object is the panel's top heading (h2); in the Form
 // view it sits under its section's h2.
-export function ObjectForm({
-  selection,
-  section,
-  inPanel = false,
-  ...props
-}: FormProps & { selection: BoxKey; section?: string; inPanel?: boolean }) {
+export function ObjectForm({ selection, inPanel = false, ...props }: FormProps & { selection: BoxKey; inPanel?: boolean }) {
   const Title = inPanel ? 'h2' : 'h3'
   const Subtitle = inPanel ? 'h3' : 'h4'
   const { policy, editable, onChange, onRename, onDelete, onBufferIssue } = props
@@ -110,11 +102,15 @@ export function ObjectForm({
   const item = policy[sections[kind]].find((entry) => entry.id === id)
   const prefix = useId()
   const [makingPublic, setMakingPublic] = useState(false)
+  // section is the check last chosen in the endpoint's check list; its
+  // control takes the focus.
+  const [section, setSection] = useState<string>()
   // The typed ID is applied only while it names no other object of its kind:
   // renaming onto an existing ID would merge the two objects' references.
   const [idText, setIdText] = useState(id)
   useEffect(() => {
     setIdText(id)
+    setSection(undefined)
     return () => onBufferIssue(`${selection}.id`, null)
   }, [selection])
   useEffect(() => {
@@ -128,6 +124,8 @@ export function ObjectForm({
   }, [selection, section, prefix])
   if (!item) return <p className="hint">Select a box to see and change it.</p>
   const operation = kind === 'operation' ? (item as Operation) : null
+  // Endpoints a role can be granted: public ones take no role permission.
+  const signedIn = policy.operations.filter((entry) => entry.auth !== 'none')
   const blockedDelete = deleteReason(policy, selection)
   function idProblem(value: string): string | null {
     if (!value) return 'Enter an ID.'
@@ -185,6 +183,26 @@ export function ObjectForm({
       <Title className="designer-object-title">
         {capital(kindNames[kind].one)} <code>{id || '(empty ID)'}</code>
       </Title>
+      {operation ? (
+        <ol className="designer-checks" aria-label={`Checks for ${operation.id}, in the gateway's order`}>
+          {checks(policy, operation).map((check, index) => (
+            <li key={check.name}>
+              <button
+                type="button"
+                className={`designer-check${check.tone ? ` tone-${check.tone}` : ' is-none'}`}
+                aria-pressed={section === check.name}
+                onClick={() => setSection(check.name)}
+              >
+                <span className="designer-check-step" aria-hidden="true">
+                  {index + 1}
+                </span>
+                <span className="designer-check-name">{check.name}</span>{' '}
+                <span className="designer-check-value">{check.value}</span>
+              </button>
+            </li>
+          ))}
+        </ol>
+      ) : null}
       <div className="form-grid">
         {input(
           'id',
@@ -202,7 +220,7 @@ export function ObjectForm({
           idText !== id && idProblem(idText)
             ? `${idProblem(idText)} The draft keeps the ID ${id || '(empty)'} until this is changed.`
             : kind === 'role'
-              ? 'Changing a role ID changes its permissions. Tokens that still carry the old name lose them.'
+              ? 'Renaming moves its permissions. Tokens carrying the old name lose them.'
               : 'Changing an ID also changes its references in this draft.',
         )}
         {kind === 'upstream'
@@ -233,7 +251,7 @@ export function ObjectForm({
               'Target',
               operation.target,
               (target) => patch({ target }),
-              'Exact path or prefix ending /*; starts with /; no empty, . or .. segments, encoded characters or backslashes. The gateway checks the complete syntax.',
+              'Exact path, or prefix ending /*. Starts with /; no empty, . or .. segments, encoded characters or backslashes.',
             )}
             {select(
               'api',
@@ -243,7 +261,7 @@ export function ObjectForm({
               (api) => patch({ api }),
             )}
             <fieldset id={fieldId('Access')} className="designer-choice">
-              <legend>Endpoint access</legend>
+              <legend>Endpoint Access</legend>
               {['allow', 'deny'].map((access) => (
                 <label key={access}>
                   <input
@@ -262,7 +280,7 @@ export function ObjectForm({
               <legend>Token</legend>
               {[
                 { value: 'required', label: 'Required' },
-                { value: 'none', label: 'Public (no token)' },
+                { value: 'none', label: 'Public (No Token)' },
               ].map((auth) => (
                 <label key={auth.value}>
                   <input
@@ -303,10 +321,10 @@ export function ObjectForm({
             {operation.rate ? (
               <>
                 <fieldset id={fieldId('rate-key')} className="designer-choice">
-                  <legend>Count requests</legend>
+                  <legend>Count Requests</legend>
                   {[
-                    { value: 'subject', label: 'Per account' },
-                    { value: 'client_address', label: 'Per client address' },
+                    { value: 'subject', label: 'Per Account' },
+                    { value: 'client_address', label: 'Per Client Address' },
                   ].map((key) => (
                     <label key={key.value}>
                       <input
@@ -368,7 +386,7 @@ export function ObjectForm({
                   'number',
                 )}
                 <SchemaEditor
-                  label="Body schema (JSON)"
+                  label="Body Schema (JSON)"
                   value={operation.body.schema}
                   editable={editable}
                   onChange={(schema) => patch({ body: { ...operation.body!, schema } })}
@@ -395,7 +413,7 @@ export function ObjectForm({
             </div>
             {operation.headers !== undefined ? (
               <SchemaEditor
-                label="Header schema (JSON)"
+                label="Header Schema (JSON)"
                 value={operation.headers}
                 editable={editable}
                 onChange={(headers) => patch({ headers })}
@@ -404,7 +422,7 @@ export function ObjectForm({
             ) : null}
             {operation.body || operation.headers ? (
               <details className="api-rules">
-                <summary>These rules in words</summary>
+                <summary>These Rules in Words</summary>
                 <RequestRules operation={operation} />
               </details>
             ) : null}
@@ -412,36 +430,58 @@ export function ObjectForm({
         ) : null}
       </div>
       {kind === 'role' ? (
-        <>
-          <Subtitle className="designer-object-subtitle">Who holds it</Subtitle>
-          <p className="hint">
-            Each person's sign-in token, issued by Fetch Accounts, carries their roles. The policy decides what a role may call; an account is
-            stopped on the Accounts page.
-          </p>
-        </>
+        <fieldset className="designer-permit-list" id={fieldId('Role')}>
+          <legend>
+            Permissions{' '}
+            <span className="muted">
+              {policy.permits.filter((permit) => permit.role === id).length} of {signedIn.length}
+            </span>
+          </legend>
+          <p className="hint">Granted to every account whose sign-in token carries this role.</p>
+          {[...new Set(signedIn.map((entry) => entry.api))].map((api) => (
+            <div className="designer-permit-group" key={api}>
+              <Subtitle className="designer-permit-api">{api}</Subtitle>
+              <div className="designer-permit-grid">
+                {signedIn
+                  .filter((entry) => entry.api === api)
+                  .map((entry) => (
+                    <label key={entry.id} title={entry.id}>
+                      <input
+                        type="checkbox"
+                        checked={policy.permits.some((permit) => permit.role === id && permit.operation === entry.id)}
+                        disabled={!editable}
+                        aria-label={`${entry.method} ${entry.target} (${entry.id})`}
+                        onChange={(event) => togglePermit(id, entry.id, event.target.checked)}
+                      />
+                      <code>
+                        <span className="method">{entry.method}</span> {entry.target}
+                      </code>
+                    </label>
+                  ))}
+              </div>
+            </div>
+          ))}
+        </fieldset>
       ) : null}
-      {kind === 'role' || operation ? (
+      {operation ? (
         <fieldset className="designer-permit-list" id={fieldId('Role')}>
           <legend>Permissions</legend>
-          {operation?.auth === 'none' ? (
+          {operation.auth === 'none' ? (
             <p className="hint">Public endpoints do not use role permissions.</p>
           ) : (
-            (kind === 'role'
-              ? policy.operations
-                  .filter((entry) => entry.auth !== 'none')
-                  .map((entry) => ({ role: id, operation: entry.id, label: `${entry.id}: ${entry.method} ${entry.target}` }))
-              : policy.roles.map((role) => ({ role: role.id, operation: id, label: role.id }))
-            ).map((permit) => (
-              <label key={`${permit.role}:${permit.operation}`}>
-                <input
-                  type="checkbox"
-                  checked={policy.permits.some((entry) => entry.role === permit.role && entry.operation === permit.operation)}
-                  disabled={!editable}
-                  onChange={(event) => togglePermit(permit.role, permit.operation, event.target.checked)}
-                />{' '}
-                <span>{permit.label}</span>
-              </label>
-            ))
+            <div className="designer-permit-grid">
+              {policy.roles.map((role) => (
+                <label key={role.id}>
+                  <input
+                    type="checkbox"
+                    checked={policy.permits.some((permit) => permit.role === role.id && permit.operation === id)}
+                    disabled={!editable}
+                    onChange={(event) => togglePermit(role.id, id, event.target.checked)}
+                  />
+                  <span>{role.id}</span>
+                </label>
+              ))}
+            </div>
           )}
         </fieldset>
       ) : null}
@@ -453,12 +493,11 @@ export function ObjectForm({
           {blockedDelete ? <p className="hint">{blockedDelete}</p> : null}
         </div>
       ) : null}
-      {section ? <p className="hint">Selected check: {section}. Its controls are shown above.</p> : null}
       {operation ? (
         <Confirm
           open={makingPublic}
           title="Make this endpoint public?"
-          confirmLabel="Make public"
+          confirmLabel="Make Public"
           onCancel={() => setMakingPublic(false)}
           onConfirm={() => {
             const next = copy(policy)
@@ -483,15 +522,30 @@ export function ObjectForm({
 
 export function Permits(props: FormProps) {
   const operations = props.policy.operations.filter((operation) => operation.auth !== 'none')
+  const apis = [...new Set(operations.map((operation) => operation.api))]
+  const short = (operation: Operation) => (operation.id.startsWith(`${operation.api}.`) ? operation.id.slice(operation.api.length + 1) : operation.id)
   return (
-    <TableScroll label="Permissions matrix">
+    <TableScroll label="Permissions Matrix">
       <table className="matrix-table">
         <thead>
           <tr>
-            <th scope="col">Role</th>
+            <th scope="col" rowSpan={2} className="matrix-corner">
+              Role
+            </th>
+            {apis.map((api) => (
+              <th scope="colgroup" key={api} colSpan={operations.filter((operation) => operation.api === api).length} className="matrix-api">
+                {api}
+              </th>
+            ))}
+          </tr>
+          <tr>
             {operations.map((operation) => (
-              <th scope="col" key={operation.id}>
-                <code>{operation.id}</code>
+              <th scope="col" key={operation.id} className="matrix-endpoint">
+                <span className="visually-hidden">{operation.id}, </span>
+                <span aria-hidden="true">{short(operation)}</span>
+                <code className="matrix-route">
+                  <span className="method">{operation.method}</span> {operation.target}
+                </code>
               </th>
             ))}
           </tr>
@@ -499,8 +553,11 @@ export function Permits(props: FormProps) {
         <tbody>
           {props.policy.roles.map((role) => (
             <tr key={role.id}>
-              <th scope="row">
+              <th scope="row" className="matrix-role">
                 <code>{role.id}</code>
+                <span className="matrix-role-count">
+                  {props.policy.permits.filter((permit) => permit.role === role.id).length} of {operations.length}
+                </span>
               </th>
               {operations.map((operation) => (
                 <td key={operation.id}>
@@ -530,63 +587,181 @@ export function Permits(props: FormProps) {
   )
 }
 
-const formSections = [
-  ['role', 'Roles'],
-  ['operation', 'Endpoints'],
-  ['api', 'APIs'],
-  ['upstream', 'Service addresses'],
-  ['permits', 'Permissions'],
-] as const
+// The Form list names its groups as headings, in title case.
+const groupTitles: Record<BoxKind, string> = { role: 'Roles', operation: 'Endpoints', api: 'APIs', upstream: 'Service Addresses' }
 
-export function FormView(props: FormProps & { onAdd: (kind: BoxKind) => void }) {
+// listed is a group's boxes in list order. Endpoints are grouped by their
+// API, as on the canvas; api is set on the first endpoint of each API.
+function listed(policy: Policy, kind: BoxKind): { item: Policy[(typeof sections)[BoxKind]][number]; index: number; api?: string }[] {
+  const items = policy[sections[kind]].map((item, index) => ({ item, index }))
+  if (kind !== 'operation') return items
+  const order = (api: string) => {
+    const position = policy.apis.findIndex((entry) => entry.id === api)
+    return position < 0 ? policy.apis.length : position
+  }
+  const sorted = [...items].sort((a, b) => order((a.item as Operation).api) - order((b.item as Operation).api) || a.index - b.index)
+  return sorted.map((entry, position) => {
+    const api = (entry.item as Operation).api
+    const first = position === 0 || (sorted[position - 1].item as Operation).api !== api
+    return { ...entry, api: first ? (policy.apis.some((known) => known.id === api) ? api : '') : undefined }
+  })
+}
+
+// FormView lists every box by kind beside one editor, so a policy of any
+// size is a short list to scan instead of one long page of forms.
+export function FormView(props: FormProps & { actions: (kind: BoxKind) => GroupAction[] }) {
+  const kinds: BoxKind[] = ['role', 'operation', 'api', 'upstream']
+  const first = kinds.flatMap((kind) => props.policy[sections[kind]].map((item) => `${kind}:${item.id}` as BoxKey))[0]
+  const [picked, setPicked] = useState<BoxKey | 'permits' | undefined>(first)
+  const added = useRef<BoxKind | null>(null)
+  useEffect(() => {
+    const kind = added.current
+    if (kind) {
+      added.current = null
+      const items = props.policy[sections[kind]]
+      if (items.length) setPicked(`${kind}:${items[items.length - 1].id}`)
+      return
+    }
+    if (picked === 'permits' || (picked && exists(props.policy, picked))) return
+    setPicked(first ?? 'permits')
+  }, [props.policy])
+  const shown = picked === 'permits' || (picked && exists(props.policy, picked)) ? picked : first
+  // Groups start closed, except the one holding the box being edited.
+  const [open, setOpen] = useState<Set<BoxKind>>(() => new Set(first ? [splitKey(first)[0]] : []))
+  const openKind = shown && shown !== 'permits' ? splitKey(shown)[0] : undefined
+  useEffect(() => {
+    if (openKind && !open.has(openKind)) setOpen((previous) => new Set(previous).add(openKind))
+  }, [openKind])
   return (
-    <div className="designer-form">
-      <nav className="designer-form-nav" aria-label="Form sections">
-        {formSections.map(([key, label]) => (
-          <button
-            className="btn btn-small"
-            type="button"
-            key={key}
-            onClick={() => document.getElementById(`designer-form-${key}`)?.focus()}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
-      {(['role', 'operation', 'api', 'upstream'] as BoxKind[]).map((kind) => (
-        <section className="section" key={kind} id={`designer-form-${kind}`} tabIndex={-1}>
-          <div className="section-head">
-            <h2>{capital(kindNames[kind].many)}</h2>
-            {props.editable ? (
-              <button
-                className="btn btn-small"
-                type="button"
-                disabled={(kind === 'operation' && !props.policy.apis.length) || (kind === 'api' && !props.policy.upstreams.length)}
-                onClick={() => props.onAdd(kind)}
-              >
-                Add {kindNames[kind].one}
-              </button>
-            ) : null}
-          </div>
-          {props.policy[sections[kind]].map((item, index) => (
-            <div className="panel" key={`${kind}:${index}`}>
-              <ObjectForm {...props} selection={`${kind}:${item.id}`} />
+    <div className="designer-form designer-form-split">
+      <nav className="designer-form-list" aria-label="Policy objects">
+        {kinds.map((kind) => (
+          <section key={kind} className={`designer-form-group designer-kind-${kind}`} aria-label={groupTitles[kind]}>
+            <div className="designer-form-group-head">
+              <h2>
+                <button
+                  type="button"
+                  className="designer-form-group-toggle"
+                  aria-label={`${groupTitles[kind]}, ${props.policy[sections[kind]].length}`}
+                  aria-expanded={open.has(kind)}
+                  aria-controls={`designer-form-list-${kind}`}
+                  onClick={() =>
+                    setOpen((previous) => {
+                      const next = new Set(previous)
+                      if (next.has(kind)) next.delete(kind)
+                      else next.add(kind)
+                      return next
+                    })
+                  }
+                >
+                  {open.has(kind) ? <CaretDown size={14} aria-hidden="true" /> : <CaretRight size={14} aria-hidden="true" />}
+                  <span className="designer-form-group-title">{groupTitles[kind]}</span>
+                  <span className="designer-card-count">{props.policy[sections[kind]].length}</span>
+                </button>
+              </h2>
+              {props.editable ? (
+                <ActionMenu
+                  className="designer-form-add"
+                  label={`Add to ${groupTitles[kind]}`}
+                  tip={`Add to ${groupTitles[kind]}`}
+                  text={open.has(kind) ? 'Add' : undefined}
+                  items={props.actions(kind).map((action) => ({
+                    ...action,
+                    run: () => {
+                      if (action.adds) added.current = action.adds
+                      action.run()
+                    },
+                  }))}
+                />
+              ) : null}
             </div>
-          ))}
-          {!props.policy[sections[kind]].length ? (
-            <p className="hint">
-              No {kindNames[kind].many}.{' '}
-              {props.editable ? `Use Add ${kindNames[kind].one} to create one.` : 'Inspect another view or policy mode.'}
-            </p>
-          ) : null}
-          {kind === 'operation' && !props.policy.apis.length ? <p className="hint">Add an API before adding an endpoint.</p> : null}
-          {kind === 'api' && !props.policy.upstreams.length ? <p className="hint">Add a service address before adding an API.</p> : null}
-        </section>
-      ))}
-      <section className="section" id="designer-form-permits" tabIndex={-1}>
-        <h2>Permissions</h2>
-        <Permits {...props} />
-      </section>
+            <ul id={`designer-form-list-${kind}`} hidden={!open.has(kind)}>
+              {listed(props.policy, kind).map(({ item, index, api }) => {
+                const key: BoxKey = `${kind}:${item.id}`
+                const operation = kind === 'operation' ? (item as Operation) : undefined
+                return (
+                  <li key={`${kind}:${index}`}>
+                    {api !== undefined ? <p className="designer-form-subhead">{api ? `${capital(api)} API` : 'No API'}</p> : null}
+                    <button
+                      type="button"
+                      className="designer-form-item"
+                      aria-current={shown === key ? 'true' : undefined}
+                      aria-label={`${capital(kindNames[kind].one)} ${item.id || '(empty ID)'}`}
+                      onClick={() => setPicked(key)}
+                    >
+                      {operation ? (
+                        <code>
+                          <span className="method">{operation.method}</span> {operation.target}
+                        </code>
+                      ) : (
+                        <span>{item.id || '(empty ID)'}</span>
+                      )}
+                      {operation ? <span className="designer-form-item-id">{operation.id}</span> : null}
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+            {kind === 'operation' && !props.policy.apis.length ? <p className="hint">Add an API first.</p> : null}
+            {kind === 'api' && !props.policy.upstreams.length ? <p className="hint">Add a service address first.</p> : null}
+          </section>
+        ))}
+        <button type="button" className="designer-form-item designer-form-matrix" aria-current={shown === 'permits' ? 'true' : undefined} onClick={() => setPicked('permits')}>
+          Permissions Matrix
+        </button>
+      </nav>
+      <div className="designer-form-detail">
+        {shown === 'permits' ? (
+          <section aria-labelledby="designer-form-permits">
+            <h2 id="designer-form-permits">Permissions Matrix</h2>
+            <p className="hint">Tick where a role may call an endpoint. Public endpoints need no role and are not listed.</p>
+            <Permits {...props} />
+          </section>
+        ) : shown ? (
+          <ObjectForm
+            {...props}
+            selection={shown}
+            onRename={(before, after, policy) => {
+              setPicked(after)
+              props.onRename(before, after, policy)
+            }}
+          />
+        ) : (
+          <p className="hint">This draft is empty. Add a service address, an API, an endpoint and a role.</p>
+        )}
+      </div>
     </div>
   )
+}
+
+function exists(policy: Policy, key: BoxKey): boolean {
+  const [kind, id] = splitKey(key)
+  return policy[sections[kind]].some((item) => item.id === id)
+}
+
+// checks lists what the gateway checks on an endpoint, in its fixed order.
+export function checks(policy: Policy, operation: Operation): { name: string; value: string; tone: 'neutral' | 'refused' | 'pending' | null }[] {
+  const api = policy.apis.find((item) => item.id === operation.api)
+  return [
+    { name: 'Route', value: `${operation.method} ${operation.target}`, tone: 'neutral' },
+    { name: 'Access', value: operation.access, tone: operation.access === 'deny' ? 'refused' : 'neutral' },
+    { name: 'Sign-In', value: operation.auth === 'none' ? 'public' : 'required', tone: operation.auth === 'none' ? 'pending' : 'neutral' },
+    {
+      name: 'Role',
+      value: operation.auth === 'none' ? 'n/a' : String(policy.permits.filter((permit) => permit.operation === operation.id).length),
+      tone: 'neutral',
+    },
+    {
+      name: 'Rate',
+      value: operation.rate ? `${operation.rate.count}/${operation.rate.window_seconds}s` : 'none',
+      tone: operation.rate ? 'neutral' : null,
+    },
+    {
+      name: 'Body',
+      value: operation.body ? `≤ ${operation.body.max_bytes} B${operation.headers ? ' + headers' : ''}` : operation.headers ? 'headers' : 'none',
+      tone: operation.body || operation.headers ? 'neutral' : null,
+    },
+    { name: 'Record', value: 'always', tone: 'neutral' },
+    { name: 'Forward', value: `${operation.api} → ${api?.upstream ?? 'missing service address'}`, tone: 'neutral' },
+  ]
 }

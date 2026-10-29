@@ -24,6 +24,7 @@ export const pageRoutes = [
   '/food',
   '/mart',
   '/store/MER-001',
+  '/store/warung-nasi-lemak',
   '/item/ITM-001',
   '/cart',
   '/checkout',

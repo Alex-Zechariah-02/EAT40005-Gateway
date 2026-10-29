@@ -88,106 +88,106 @@ test.describe.serial('Fetch roles on the real services', () => {
   })
 
   test('a customer browses, sorts, filters and searches, and checks out with cash and with the wallet; each order reaches Orders once', async ({ browser }) => {
-    const priya = await person(browser, 'priya@fetch.test')
-    await expect(priya.getByRole('heading', { level: 1, name: 'What can we fetch for you?' })).toBeVisible()
-    await expect(priya.getByRole('link', { name: /Warung Kak Ros/ })).toBeVisible()
-    await priya.goto(siteURL + '/?q=nasi', { waitUntil: 'networkidle' })
-    await expect(priya.getByText('Nasi Lemak Ayam Goreng').first()).toBeVisible()
+    const customer3 = await person(browser, 'customer3@fetch.test')
+    await expect(customer3.getByRole('heading', { level: 1, name: 'What can we fetch for you?' })).toBeVisible()
+    await expect(customer3.getByRole('link', { name: /Warung Nasi Lemak/ })).toBeVisible()
+    await customer3.goto(siteURL + '/?q=nasi', { waitUntil: 'networkidle' })
+    await expect(customer3.getByText('Nasi Lemak Ayam Goreng').first()).toBeVisible()
     // Results sort by price, and the choice stays in the address.
-    const prices = async () => (await priya.locator('a[href^="/item/"]').allTextContents()).map((text) => Number(/RM\s*([\d.]+)/.exec(text)?.[1]))
-    await priya.getByLabel('Sort by').selectOption({ label: 'Price, high to low' })
-    await expect(priya).toHaveURL(/\/\?q=nasi&sort=price-desc$/)
+    const prices = async () => (await customer3.locator('a[href*="?item="]').allTextContents()).map((text) => Number(/RM\s*([\d.]+)/.exec(text)?.[1]))
+    await customer3.getByLabel('Sort by').selectOption({ label: 'Price, high to low' })
+    await expect(customer3).toHaveURL(/\/\?q=nasi&sort=price-desc$/)
     const highToLow = await prices()
     expect(highToLow.length).toBeGreaterThan(1)
     expect(highToLow).toEqual([...highToLow].sort((a, b) => b - a))
     // The results name each shop they come from, and each opens the shop.
-    const shops = priya.getByRole('navigation', { name: 'Shops in these results' })
+    const shops = customer3.getByRole('navigation', { name: 'Shops in these results' })
     await expect(shops.getByRole('link')).toHaveCount(1)
-    await shops.getByRole('link', { name: 'Warung Kak Ros' }).click()
-    await expect(priya).toHaveURL(/\/store\/MER-001$/)
+    await shops.getByRole('link', { name: 'Warung Nasi Lemak' }).click()
+    await expect(customer3).toHaveURL(/\/store\/warung-nasi-lemak$/)
 
     // Fetch Food sorts by delivery fee and can show only open shops; both
     // choices survive a reload.
-    await priya.goto(siteURL + '/food', { waitUntil: 'networkidle' })
-    await priya.getByLabel('Sort by').selectOption({ label: 'Lowest delivery fee' })
-    await expect(priya).toHaveURL(/\/food\?sort=fee$/)
-    const fees = (await priya.locator('a[href^="/store/"]').filter({ hasText: 'Delivery fee' }).allTextContents()).map((text) => Number(/Delivery fee\s*RM\s*([\d.]+)/.exec(text)?.[1]))
+    await customer3.goto(siteURL + '/food', { waitUntil: 'networkidle' })
+    await customer3.getByLabel('Sort by').selectOption({ label: 'Lowest delivery fee' })
+    await expect(customer3).toHaveURL(/\/food\?sort=fee$/)
+    const fees = (await customer3.locator('a[href^="/store/"]').filter({ hasText: 'Delivery fee' }).allTextContents()).map((text) => Number(/Delivery fee\s*RM\s*([\d.]+)/.exec(text)?.[1]))
     expect(fees.length).toBeGreaterThan(1)
     expect(fees).toEqual([...fees].sort((a, b) => a - b))
-    await priya.getByLabel('Open now').check()
-    await expect(priya).toHaveURL(/\/food\?sort=fee&open=1$/)
-    await expect(priya.getByRole('status').filter({ hasText: /open now/ })).toBeVisible()
-    await expect(priya.getByText('Closed now')).toHaveCount(0)
-    await priya.reload({ waitUntil: 'networkidle' })
-    await expect(priya.getByLabel('Sort by')).toHaveValue('fee')
-    await expect(priya.getByLabel('Open now')).toBeChecked()
-    await shot(priya, 'flows-00-food-sorted')
+    await customer3.getByLabel('Open now').check()
+    await expect(customer3).toHaveURL(/\/food\?sort=fee&open=1$/)
+    await expect(customer3.getByRole('status').filter({ hasText: /open now/ })).toBeVisible()
+    await expect(customer3.getByText('Closed now')).toHaveCount(0)
+    await customer3.reload({ waitUntil: 'networkidle' })
+    await expect(customer3.getByLabel('Sort by')).toHaveValue('fee')
+    await expect(customer3.getByLabel('Open now')).toBeChecked()
+    await shot(customer3, 'flows-00-food-sorted')
 
     const before = (await demo.receipts('orders')).length
-    await addToBasket(priya, siteURL, 'MER-001', 'Nasi Lemak Ayam Goreng')
-    const cash = await placeOrder(priya, siteURL, 'Cash on delivery')
-    await expect(priya.getByRole('heading', { level: 1 })).toHaveText('Placed')
+    await addToBasket(customer3, siteURL, 'MER-001', 'Nasi Lemak Ayam Goreng')
+    const cash = await placeOrder(customer3, siteURL, 'Cash on delivery')
+    await expect(customer3.getByRole('heading', { level: 1 })).toHaveText('Placed')
     const created = (await since('orders', before)).filter((r) => r.method === 'POST' && r.target === '/orders')
     expect(created).toHaveLength(1)
     expect(created[0]).toMatchObject({ status: 201, subject: 'cust-003' })
 
-    // Priya's first Fetch Mart order has free delivery, from Orders' own rule.
-    await addToBasket(priya, siteURL, 'MER-005', 'Full Cream Milk 1 L')
-    await priya.goto(siteURL + '/checkout', { waitUntil: 'networkidle' })
-    await expect(priya.getByText('Free because this is your first Fetch Mart order.')).toBeVisible()
-    await expect(priya.getByText('Balance RM 100.00. Charged when you place the order.')).toBeVisible()
-    await shot(priya, 'flows-01-checkout')
-    const wallet = await placeOrder(priya, siteURL, 'Fetch wallet')
-    await priya.goto(siteURL + '/my-orders', { waitUntil: 'networkidle' })
-    for (const id of [cash, wallet]) await expect(priya.getByRole('link', { name: new RegExp(id) })).toBeVisible()
-    await priya.goto(siteURL + '/checkout', { waitUntil: 'networkidle' })
-    await expect(priya.getByText('Nothing to check out yet')).toBeVisible()
+    // Customer 3's first Fetch Mart order has free delivery, from Orders' own rule.
+    await addToBasket(customer3, siteURL, 'MER-005', 'Full Cream Milk 1 L')
+    await customer3.goto(siteURL + '/checkout', { waitUntil: 'networkidle' })
+    await expect(customer3.getByText('Free because this is your first Fetch Mart order.')).toBeVisible()
+    await expect(customer3.getByText('Balance RM 100.00. Charged when you place the order.')).toBeVisible()
+    await shot(customer3, 'flows-01-checkout')
+    const wallet = await placeOrder(customer3, siteURL, 'Fetch wallet')
+    await customer3.goto(siteURL + '/my-orders', { waitUntil: 'networkidle' })
+    for (const id of [cash, wallet]) await expect(customer3.getByRole('link', { name: new RegExp(`#${id.replace(/^ORD-/, '')}(?!\\d)`) })).toBeVisible()
+    await customer3.goto(siteURL + '/checkout', { waitUntil: 'networkidle' })
+    await expect(customer3.getByText('Nothing to check out yet')).toBeVisible()
     record('customer-checkout', { cash, wallet, receipt: created[0] })
   })
 
   test('the merchant, a rider and the customer move an order through every status, each seeing it change', async ({ browser }) => {
-    const aisyah = await person(browser, 'aisyah@fetch.test')
-    await addToBasket(aisyah, siteURL, 'MER-001', 'Teh Tarik')
-    const order = await placeOrder(aisyah, siteURL, 'Cash on delivery')
+    const customer1 = await person(browser, 'customer1@fetch.test')
+    await addToBasket(customer1, siteURL, 'MER-001', 'Teh Tarik')
+    const order = await placeOrder(customer1, siteURL, 'Cash on delivery')
 
-    const ros = await person(browser, 'ros@fetch.test')
-    await ros.goto(siteURL + '/merchant', { waitUntil: 'networkidle' })
-    await orderCard(ros, order).getByRole('button', { name: 'Accept order' }).click()
-    await expect(orderCard(ros, order).getByRole('button', { name: 'Mark ready for pickup' })).toBeVisible()
+    const merchant1 = await person(browser, 'merchant1@fetch.test')
+    await merchant1.goto(siteURL + '/merchant', { waitUntil: 'networkidle' })
+    await orderCard(merchant1, order).getByRole('button', { name: 'Accept order' }).click()
+    await expect(orderCard(merchant1, order).getByRole('button', { name: 'Mark ready for pickup' })).toBeVisible()
     // Her open order page follows the change by itself and says so; a status
     // read when the page opens is not announced.
-    await expect(aisyah.getByRole('status').filter({ hasText: /^Update: Being prepared at .+\.$/ })).toBeVisible({ timeout: 15_000 })
-    await expect(aisyah.getByRole('heading', { level: 1 })).toHaveText('Being prepared')
-    await aisyah.reload({ waitUntil: 'networkidle' })
-    await expect(aisyah.getByRole('heading', { level: 1 })).toHaveText('Being prepared')
-    await expect(aisyah.getByText(/^Update:/)).toHaveCount(0)
-    await orderCard(ros, order).getByRole('button', { name: 'Mark ready for pickup' }).click()
-    await expect(orderCard(ros, order).getByRole('button')).toHaveCount(0)
+    await expect(customer1.getByRole('status').filter({ hasText: /^Update: Being prepared at .+\.$/ })).toBeVisible({ timeout: 15_000 })
+    await expect(customer1.getByRole('heading', { level: 1 })).toHaveText('Being prepared')
+    await customer1.reload({ waitUntil: 'networkidle' })
+    await expect(customer1.getByRole('heading', { level: 1 })).toHaveText('Being prepared')
+    await expect(customer1.getByText(/^Update:/)).toHaveCount(0)
+    await orderCard(merchant1, order).getByRole('button', { name: 'Mark ready for pickup' }).click()
+    await expect(orderCard(merchant1, order).getByRole('button')).toHaveCount(0)
 
-    const amir = await person(browser, 'amir@fetch.test')
-    await amir.goto(siteURL + '/rider', { waitUntil: 'networkidle' })
-    await expect(orderCard(amir, order)).toContainText(/Collect RM [\d.]+ in cash/)
-    await orderCard(amir, order).getByRole('button', { name: 'Take this job' }).click()
-    await aisyah.reload({ waitUntil: 'networkidle' })
-    await expect(aisyah.getByRole('heading', { level: 1 })).toHaveText('On the way')
-    await orderCard(amir, order).getByRole('button', { name: 'Mark delivered' }).click()
-    await expect(orderCard(amir, order)).toHaveCount(0)
-    await aisyah.reload({ waitUntil: 'networkidle' })
-    await expect(aisyah.getByRole('heading', { level: 1 })).toHaveText('Delivered')
+    const rider1 = await person(browser, 'rider1@fetch.test')
+    await rider1.goto(siteURL + '/rider', { waitUntil: 'networkidle' })
+    await expect(orderCard(rider1, order)).toContainText(/Collect RM [\d.]+ in cash/)
+    await orderCard(rider1, order).getByRole('button', { name: 'Take this job' }).click()
+    await customer1.reload({ waitUntil: 'networkidle' })
+    await expect(customer1.getByRole('heading', { level: 1 })).toHaveText('On the way')
+    await orderCard(rider1, order).getByRole('button', { name: 'Mark delivered' }).click()
+    await expect(orderCard(rider1, order)).toHaveCount(0)
+    await customer1.reload({ waitUntil: 'networkidle' })
+    await expect(customer1.getByRole('heading', { level: 1 })).toHaveText('Delivered')
 
     // The receipt prints without the site's header, footer or buttons.
-    const header = aisyah.locator('header').first()
-    const print = aisyah.locator('button', { hasText: 'Print receipt' })
+    const header = customer1.locator('header').first()
+    const print = customer1.locator('button', { hasText: 'Print receipt' })
     await expect(header).toBeVisible()
     await expect(print).toBeVisible()
-    await aisyah.emulateMedia({ media: 'print' })
-    await expect(aisyah.getByText(`Receipt · ${order} · placed `)).toBeVisible()
+    await customer1.emulateMedia({ media: 'print' })
+    await expect(customer1.getByText(`Receipt · Order #${order.replace(/^ORD-/, '')} · placed `)).toBeVisible()
     await expect(header).toBeHidden()
-    await expect(aisyah.locator('footer').first()).toBeHidden()
+    await expect(customer1.locator('footer').first()).toBeHidden()
     await expect(print).toBeHidden()
-    await expect(aisyah.getByText(/^Order placed\./)).toBeHidden()
-    await shot(aisyah, 'flows-02-receipt-print')
-    await aisyah.emulateMedia({ media: null })
+    await expect(customer1.getByText(/^Order placed\./)).toBeHidden()
+    await shot(customer1, 'flows-02-receipt-print')
+    await customer1.emulateMedia({ media: null })
 
     // Orders recorded exactly one change per step.
     const statuses = (await demo.receipts('orders'))
@@ -198,10 +198,10 @@ test.describe.serial('Fetch roles on the real services', () => {
   })
 
   test('a merchant changes a price, availability and stock, and customers see it at once', async ({ browser }) => {
-    const hafiz = await person(browser, 'mart@fetch.test')
-    await hafiz.goto(siteURL + '/merchant?view=menu', { waitUntil: 'networkidle' })
+    const merchant5 = await person(browser, 'merchant5@fetch.test')
+    await merchant5.goto(siteURL + '/merchant?view=menu', { waitUntil: 'networkidle' })
     const before = (await demo.receipts('inventory')).length
-    const bread = hafiz.getByRole('listitem').filter({ hasText: 'Wholemeal Bread' })
+    const bread = merchant5.getByRole('listitem').filter({ hasText: 'Wholemeal Bread' })
     await bread.getByLabel('Price in ringgit').fill('4.80')
     await bread.getByRole('button', { name: 'Save' }).click()
     await expect(bread.getByText('New price saved.')).toBeVisible()
@@ -220,77 +220,77 @@ test.describe.serial('Fetch roles on the real services', () => {
       '/inventory/items/ITM-505 200 merchant-005',
     ])
 
-    const daniel = await person(browser, 'daniel@fetch.test')
-    await daniel.goto(siteURL + '/item/ITM-505', { waitUntil: 'networkidle' })
-    await expect(daniel.getByText('RM 4.80').first()).toBeVisible()
-    await expect(daniel.getByRole('button', { name: /Add to basket/ })).toHaveCount(0)
+    const customer2 = await person(browser, 'customer2@fetch.test')
+    await customer2.goto(siteURL + '/item/ITM-505', { waitUntil: 'networkidle' })
+    await expect(customer2.getByText('RM 4.80').first()).toBeVisible()
+    await expect(customer2.getByRole('button', { name: /Add to basket/ })).toHaveCount(0)
     await bread.getByText('Unavailable', { exact: true }).click()
     await expect(bread.getByText('Now available to order.')).toBeVisible()
     record('merchant-menu', { item: 'ITM-505' })
   })
 
   test('a cancel after the shop accepted is refused as already moved on, with Orders named and the Ref; a placed order cancels', async ({ browser }) => {
-    const daniel = await person(browser, 'daniel@fetch.test')
-    await addToBasket(daniel, siteURL, 'MER-002', 'Roti Canai')
-    const accepted = await placeOrder(daniel, siteURL, 'Cash on delivery')
-    const bala = await person(browser, 'bintang@fetch.test')
+    const customer2 = await person(browser, 'customer2@fetch.test')
+    await addToBasket(customer2, siteURL, 'MER-002', 'Roti Canai')
+    const accepted = await placeOrder(customer2, siteURL, 'Cash on delivery')
+    const bala = await person(browser, 'merchant2@fetch.test')
     await bala.goto(siteURL + '/merchant', { waitUntil: 'networkidle' })
     await orderCard(bala, accepted).getByRole('button', { name: 'Accept order' }).click()
     await expect(orderCard(bala, accepted).getByRole('button', { name: 'Mark ready for pickup' })).toBeVisible()
 
-    // Daniel's page still shows the order as placed; his cancel reaches Orders,
+    // Customer 2's page still shows the order as placed; his cancel reaches Orders,
     // which refuses it.
-    await daniel.getByRole('button', { name: 'Cancel order' }).click()
-    await daniel.getByRole('dialog').getByRole('button', { name: 'Cancel order' }).click()
-    const refusal = daniel.getByRole('alert').filter({ hasText: 'This has already moved on.' })
+    await customer2.getByRole('button', { name: 'Cancel order' }).click()
+    await customer2.getByRole('dialog').getByRole('button', { name: 'Cancel order' }).click()
+    const refusal = customer2.getByRole('alert').filter({ hasText: 'This has already moved on.' })
     await expect(refusal).toContainText('Answered by Orders · 409')
-    const shown = await ref(daniel)
+    const shown = await ref(customer2)
     expect((await demo.receipts('orders')).find((r) => r.request_id === shown)).toMatchObject({ status: 409 })
-    await shot(daniel, 'flows-02-cancel-refused')
+    await shot(customer2, 'flows-02-cancel-refused')
 
-    await addToBasket(daniel, siteURL, 'MER-002', 'Milo Ais')
-    const placed = await placeOrder(daniel, siteURL, 'Cash on delivery')
-    await daniel.getByRole('button', { name: 'Cancel order' }).click()
-    await daniel.getByRole('dialog').getByRole('button', { name: 'Cancel order' }).click()
-    await expect(daniel.getByRole('heading', { level: 1 })).toHaveText('Order cancelled')
+    await addToBasket(customer2, siteURL, 'MER-002', 'Milo Ais')
+    const placed = await placeOrder(customer2, siteURL, 'Cash on delivery')
+    await customer2.getByRole('button', { name: 'Cancel order' }).click()
+    await customer2.getByRole('dialog').getByRole('button', { name: 'Cancel order' }).click()
+    await expect(customer2.getByRole('heading', { level: 1 })).toHaveText('Order cancelled')
     record('cancel', { accepted, refusedRef: shown, cancelled: placed })
   })
 
   test('support answers and resolves a help request; markup in a request is shown as text and never runs', async ({ browser }) => {
-    const aisyah = await person(browser, 'aisyah@fetch.test')
-    await aisyah.goto(siteURL + '/help', { waitUntil: 'networkidle' })
+    const customer1 = await person(browser, 'customer1@fetch.test')
+    await customer1.goto(siteURL + '/help', { waitUntil: 'networkidle' })
     const markup = '<img src=x onerror=alert(1)> missing'
-    await aisyah.getByLabel('What is it about?').fill(markup)
-    await aisyah.getByLabel('What happened?').fill('The sambal was missing.')
+    await customer1.getByLabel('What is it about?').fill(markup)
+    await customer1.getByLabel('What happened?').fill('The sambal was missing.')
     // ORD-1001 is a cash order that was never delivered: nothing was paid.
-    await aisyah.getByRole('combobox', { name: /^Order\b/ }).selectOption('ORD-1001')
-    await aisyah.getByRole('button', { name: 'Send to Fetch support' }).click()
-    await aisyah.waitForURL(/\/help\/TKT-\d+$/)
-    const ticket = new URL(aisyah.url()).pathname.split('/').pop()!
+    await customer1.getByRole('combobox', { name: /^Order\b/ }).selectOption('ORD-1001')
+    await customer1.getByRole('button', { name: 'Send to Fetch support' }).click()
+    await customer1.waitForURL(/\/help\/TKT-\d+$/)
+    const ticket = new URL(customer1.url()).pathname.split('/').pop()!
 
-    const nurul = await person(browser, 'nurul@fetch.test')
-    await nurul.goto(`${siteURL}/support?ticket=${ticket}`, { waitUntil: 'networkidle' })
-    const panel = nurul.getByRole('region', { name: 'Ticket', exact: true })
+    const support1 = await person(browser, 'support1@fetch.test')
+    await support1.goto(`${siteURL}/support?ticket=${ticket}`, { waitUntil: 'networkidle' })
+    const panel = support1.getByRole('region', { name: 'Ticket', exact: true })
     await expect(panel.getByRole('heading', { name: markup })).toBeVisible()
-    expect(await nurul.locator('img[src="x"]').count()).toBe(0)
+    expect(await support1.locator('img[src="x"]').count()).toBe(0)
     const linked = panel.getByRole('heading', { name: 'Linked order' }).locator('..')
-    await expect(linked).toContainText('ORD-1001')
+    await expect(linked).toContainText('#1001')
     await expect(linked).toContainText('cash on delivery')
     await expect(linked).not.toContainText('Paid')
     await panel.getByLabel('Reply to the customer').fill('Sorry about that; we have refunded it.')
     await panel.getByRole('button', { name: 'Send reply' }).click()
     await expect(panel.getByRole('list', { name: 'Conversation' })).toContainText('we have refunded it')
     await expect(panel.getByRole('list', { name: 'Conversation' }).getByText('You · Fetch support', { exact: true })).toHaveCount(1)
-    // Another agent sees the reply as Nurul's, never as their own.
-    const farah = await person(browser, 'farah@fetch.test')
-    await farah.goto(`${siteURL}/support?ticket=${ticket}`, { waitUntil: 'networkidle' })
-    const seenByFarah = farah.getByRole('region', { name: 'Ticket', exact: true }).getByRole('list', { name: 'Conversation' })
+    // Another agent sees the reply as Support 1's, never as their own.
+    const admin2 = await person(browser, 'admin2@fetch.test')
+    await admin2.goto(`${siteURL}/support?ticket=${ticket}`, { waitUntil: 'networkidle' })
+    const seenByFarah = admin2.getByRole('region', { name: 'Ticket', exact: true }).getByRole('list', { name: 'Conversation' })
     await expect(seenByFarah.getByText('support-01 · Fetch support', { exact: true })).toBeVisible()
     await expect(seenByFarah.getByText(/^You\b/)).toHaveCount(0)
     await panel.getByRole('button', { name: 'Mark resolved' }).click()
     await expect(panel).toContainText('This request is resolved.')
-    await aisyah.reload({ waitUntil: 'networkidle' })
-    const seenByAisyah = aisyah.getByRole('list', { name: 'Conversation' })
+    await customer1.reload({ waitUntil: 'networkidle' })
+    const seenByAisyah = customer1.getByRole('list', { name: 'Conversation' })
     await expect(seenByAisyah).toContainText('we have refunded it')
     await expect(seenByAisyah.getByText('You', { exact: true })).toBeVisible()
     await expect(seenByAisyah.getByText('Fetch support', { exact: true })).toBeVisible()
@@ -299,100 +299,100 @@ test.describe.serial('Fetch roles on the real services', () => {
   })
 
   test('another customer’s order is refused by Orders with one steady Ref, which the report form takes as given', async ({ browser }) => {
-    const aisyah = await person(browser, 'aisyah@fetch.test')
+    const customer1 = await person(browser, 'customer1@fetch.test')
     const before = (await demo.receipts('orders')).length
-    await aisyah.goto(siteURL + '/my-orders/ORD-1004', { waitUntil: 'networkidle' })
-    await expect(aisyah.getByRole('heading', { name: 'We couldn’t find this order' })).toBeVisible()
-    await expect(aisyah.getByText('Answered by Orders · 404')).toBeVisible()
-    const shown = await ref(aisyah)
+    await customer1.goto(siteURL + '/my-orders/ORD-1004', { waitUntil: 'networkidle' })
+    await expect(customer1.getByRole('heading', { name: 'We couldn’t find this order' })).toBeVisible()
+    await expect(customer1.getByText('Answered by Orders · 404')).toBeVisible()
+    const shown = await ref(customer1)
     // A missing order is not asked for again, so the Ref stays the one shown.
-    await aisyah.waitForTimeout(6000)
+    await customer1.waitForTimeout(6000)
     const asked = (await since('orders', before)).filter((r) => r.target === '/orders/detail/ORD-1004')
     expect(asked.map((r) => `${r.request_id} ${r.status} ${r.subject}`)).toEqual([`${shown} 404 cust-001`])
-    await shot(aisyah, 'flows-08-not-yours')
-    await aisyah.getByRole('link', { name: 'Report this problem' }).click()
-    await expect(aisyah.getByLabel('Reference from an error message')).toHaveValue(shown)
+    await shot(customer1, 'flows-08-not-yours')
+    await customer1.getByRole('link', { name: 'Report this problem' }).click()
+    await expect(customer1.getByLabel('Reference from an error message')).toHaveValue(shown)
   })
 
   test('operations reads platform reports and every order', async ({ browser }) => {
-    const jason = await person(browser, 'jason@fetch.test')
-    await jason.goto(siteURL + '/ops', { waitUntil: 'networkidle' })
-    await expect(jason.getByRole('heading', { level: 1, name: 'Platform reports' })).toBeVisible()
-    await expect(jason.getByText(/^RM [\d,]+\.\d\d$/).first()).toBeVisible()
+    const admin1 = await person(browser, 'admin1@fetch.test')
+    await admin1.goto(siteURL + '/ops', { waitUntil: 'networkidle' })
+    await expect(admin1.getByRole('heading', { level: 1, name: 'Platform reports' })).toBeVisible()
+    await expect(admin1.getByText(/^RM [\d,]+\.\d\d$/).first()).toBeVisible()
     const before = (await demo.receipts('reports')).length
-    await jason.reload({ waitUntil: 'networkidle' })
+    await admin1.reload({ waitUntil: 'networkidle' })
     expect((await since('reports', before)).map((r) => `${r.target.split('?')[0]} ${r.status} ${r.subject}`).sort()).toEqual(
       ['/reports/sales 200 ops-01', '/reports/summary 200 ops-01', '/reports/top-items 200 ops-01'],
     )
     const ordersBefore = (await demo.receipts('orders')).length
-    await jason.goto(siteURL + '/ops?view=orders', { waitUntil: 'networkidle' })
-    await expect(jason.getByRole('row').filter({ hasText: 'ORD-1001' })).toBeVisible()
+    await admin1.goto(siteURL + '/ops?view=orders', { waitUntil: 'networkidle' })
+    await expect(admin1.getByRole('row').filter({ hasText: '#1001' })).toBeVisible()
     expect((await since('orders', ordersBefore)).map((r) => `${r.method} ${r.target} ${r.status} ${r.subject}`)).toContain('GET /orders 200 ops-01')
   })
 
   test('a checkout whose answer is lost says it may or may not have been placed, is never resent by itself, and the explicit resend places it once', async ({ browser }) => {
-    const priya = await person(browser, 'priya@fetch.test')
-    await priya.goto(siteURL + '/my-orders', { waitUntil: 'networkidle' })
-    const kopitiam = priya.getByRole('link').filter({ hasText: 'Kopitiam Lama' })
+    const customer3 = await person(browser, 'customer3@fetch.test')
+    await customer3.goto(siteURL + '/my-orders', { waitUntil: 'networkidle' })
+    const kopitiam = customer3.getByRole('link').filter({ hasText: 'Kopitiam Lama' })
     const earlier = await kopitiam.count()
-    await addToBasket(priya, siteURL, 'MER-003', 'Kopi O Peng')
+    await addToBasket(customer3, siteURL, 'MER-003', 'Kopi O Peng')
     const before = (await demo.receipts('orders')).length
     let releaseResponse!: () => void
     let received!: () => void
     const pendingResponse = new Promise<void>((done) => { releaseResponse = done })
     const reached = new Promise<void>((done) => { received = done })
-    await priya.route('**/orders', async (route) => {
+    await customer3.route('**/orders', async (route) => {
       if (route.request().method() !== 'POST') return route.continue()
       await route.fetch()
       received()
       await pendingResponse
       await route.abort('connectionreset')
     })
-    await priya.goto(siteURL + '/checkout', { waitUntil: 'networkidle' })
-    await priya.getByLabel('Street address').fill('12 Jalan Telawi 3')
-    await priya.getByLabel('Postcode').fill('59100')
+    await customer3.goto(siteURL + '/checkout', { waitUntil: 'networkidle' })
+    await customer3.getByLabel('Street address').fill('12 Jalan Telawi 3')
+    await customer3.getByLabel('Postcode').fill('59100')
     try {
-      await priya.getByRole('button', { name: /^Place order · RM / }).click()
+      await customer3.getByRole('button', { name: /^Place order · RM / }).click()
       await reached
-      await expect(priya.getByRole('button', { name: 'Placing your order…' })).toBeDisabled()
+      await expect(customer3.getByRole('button', { name: 'Placing your order…' })).toBeDisabled()
     } finally {
       releaseResponse()
     }
-    const unknown = priya.getByRole('alert').filter({ hasText: 'No answer about your order.' })
+    const unknown = customer3.getByRole('alert').filter({ hasText: 'No answer about your order.' })
     await expect(unknown).toContainText('It may or may not have been placed.')
-    await priya.waitForTimeout(5000)
+    await customer3.waitForTimeout(5000)
     const sent = (await since('orders', before)).filter((r) => r.method === 'POST' && r.target === '/orders')
     expect(sent).toHaveLength(1)
-    await shot(priya, 'flows-03-unknown-outcome')
+    await shot(customer3, 'flows-03-unknown-outcome')
 
-    await priya.unroute('**/orders')
-    await priya.getByRole('button', { name: 'Send the same order again' }).click()
-    await priya.waitForURL(/\/my-orders\/ORD-\d+\?placed=1$/)
+    await customer3.unroute('**/orders')
+    await customer3.getByRole('button', { name: 'Send the same order again' }).click()
+    await customer3.waitForURL(/\/my-orders\/ORD-\d+\?placed=1$/)
     const both = (await since('orders', before)).filter((r) => r.method === 'POST' && r.target === '/orders')
     expect(both).toHaveLength(2)
     expect(both.map((r) => r.status)).toEqual([201, 201])
-    const placed = new URL(priya.url()).pathname.split('/').pop()!
-    await priya.goto(siteURL + '/my-orders', { waitUntil: 'networkidle' })
+    const placed = new URL(customer3.url()).pathname.split('/').pop()!
+    await customer3.goto(siteURL + '/my-orders', { waitUntil: 'networkidle' })
     await expect(kopitiam).toHaveCount(earlier + 1)
     record('unknown-outcome', { placed, receipts: both.map((r) => r.request_id) })
   })
 
   test('an item that runs out before checkout is refused by Orders with its line named; nothing is charged or reserved', async ({ browser }) => {
-    const aisyah = await person(browser, 'aisyah@fetch.test')
-    await addToBasket(aisyah, siteURL, 'MER-005', 'Cooking Oil 1 kg')
-    const hafiz = await person(browser, 'mart@fetch.test')
-    await hafiz.goto(siteURL + '/merchant?view=menu', { waitUntil: 'networkidle' })
-    const oil = hafiz.getByRole('listitem').filter({ hasText: 'Cooking Oil 1 kg' })
+    const customer1 = await person(browser, 'customer1@fetch.test')
+    await addToBasket(customer1, siteURL, 'MER-005', 'Cooking Oil 1 kg')
+    const merchant5 = await person(browser, 'merchant5@fetch.test')
+    await merchant5.goto(siteURL + '/merchant?view=menu', { waitUntil: 'networkidle' })
+    const oil = merchant5.getByRole('listitem').filter({ hasText: 'Cooking Oil 1 kg' })
     await oil.getByLabel('Change stock by').fill('-12')
     await oil.getByRole('button', { name: 'Adjust' }).click()
     await expect(oil.getByText('Stock updated.')).toBeVisible()
 
     const before = (await demo.receipts('orders')).length
-    await aisyah.goto(siteURL + '/checkout', { waitUntil: 'networkidle' })
-    await aisyah.getByLabel('Street address').fill('12 Jalan Telawi 3')
-    await aisyah.getByLabel('Postcode').fill('59100')
-    await aisyah.getByRole('button', { name: /^Place order · RM / }).click()
-    const refusal = aisyah.getByRole('alert').filter({ hasText: 'Something in your basket has run out.' })
+    await customer1.goto(siteURL + '/checkout', { waitUntil: 'networkidle' })
+    await customer1.getByLabel('Street address').fill('12 Jalan Telawi 3')
+    await customer1.getByLabel('Postcode').fill('59100')
+    await customer1.getByRole('button', { name: /^Place order · RM / }).click()
+    const refusal = customer1.getByRole('alert').filter({ hasText: 'Something in your basket has run out.' })
     await expect(refusal).toContainText('Answered by Orders · 409')
     expect((await since('orders', before)).filter((r) => r.method === 'POST').map((r) => r.status)).toEqual([409])
     await oil.getByLabel('Change stock by').fill('12')
@@ -401,29 +401,29 @@ test.describe.serial('Fetch roles on the real services', () => {
   })
 
   test('a blocked customer is refused by the gateway at once, before any service, with its Ref; unblocking restores them', async ({ browser }) => {
-    const daniel = await person(browser, 'daniel@fetch.test')
+    const customer2 = await person(browser, 'customer2@fetch.test')
     const before = await demo.counts()
     await api.block('cust-002', 'Chargeback under review')
-    await daniel.goto(siteURL + '/my-orders', { waitUntil: 'networkidle' })
-    const refusal = daniel.getByRole('alert').filter({ hasText: 'This account is blocked.' })
+    await customer2.goto(siteURL + '/my-orders', { waitUntil: 'networkidle' })
+    const refusal = customer2.getByRole('alert').filter({ hasText: 'This account is blocked.' })
     await expect(refusal).toContainText('Answered by the Fetch gateway · 403')
     expect(await demo.counts()).toEqual(before)
-    await shot(daniel, 'flows-04-blocked')
+    await shot(customer2, 'flows-04-blocked')
     await api.unblock('cust-002')
-    await daniel.reload({ waitUntil: 'networkidle' })
-    await expect(daniel.getByRole('heading', { level: 1, name: 'My orders' })).toBeVisible()
+    await customer2.reload({ waitUntil: 'networkidle' })
+    await expect(customer2.getByRole('heading', { level: 1, name: 'My orders' })).toBeVisible()
   })
 
   test('the security lab: every attack is answered as expected, refusals reach no service, and forged identity headers change nothing', async ({ browser }) => {
-    const daniel = await person(browser, 'daniel@fetch.test')
-    await daniel.goto(siteURL + '/lab', { waitUntil: 'networkidle' })
+    const customer2 = await person(browser, 'customer2@fetch.test')
+    await customer2.goto(siteURL + '/lab', { waitUntil: 'networkidle' })
     const before = await demo.receipts('orders')
-    for (const send of await daniel.getByRole('button', { name: 'Send', exact: true }).all()) {
+    for (const send of await customer2.getByRole('button', { name: 'Send', exact: true }).all()) {
       await send.click()
       await expect(send).toBeEnabled()
     }
-    await expect(daniel.getByRole('status').filter({ hasText: /^15 of 15 as expected\./ })).toBeVisible()
-    await shot(daniel, 'flows-05-lab')
+    await expect(customer2.getByRole('status').filter({ hasText: /^15 of 15 as expected\./ })).toBeVisible()
+    await shot(customer2, 'flows-05-lab')
     // Only the forged-header read reached Orders, as the gateway's identity.
     const reached = (await demo.receipts('orders')).slice(before.length)
     expect(reached.map((r) => `${r.method} ${r.target} ${r.subject} ${r.roles}`)).toEqual(['GET /orders/mine cust-002 CUSTOMER'])
@@ -431,9 +431,9 @@ test.describe.serial('Fetch roles on the real services', () => {
   })
 
   test('a policy change takes effect in the app at once: a trial grants customers exact stock, its rollback removes it', async ({ browser }) => {
-    const aisyah = await person(browser, 'aisyah@fetch.test')
-    await aisyah.goto(siteURL + '/lab', { waitUntil: 'networkidle' })
-    const card = aisyah.getByRole('listitem').filter({ hasText: 'Read exact stock' })
+    const customer1 = await person(browser, 'customer1@fetch.test')
+    await customer1.goto(siteURL + '/lab', { waitUntil: 'networkidle' })
+    const card = customer1.getByRole('listitem').filter({ hasText: 'Read exact stock' })
     await card.getByRole('button', { name: 'Send', exact: true }).click()
     await expect(card).toContainText('Answered by the gateway · 403')
     const baseline = JSON.parse(demo.file('baseline.json'))
@@ -454,61 +454,61 @@ test.describe.serial('Fetch roles on the real services', () => {
   })
 
   test('a board whose refresh is refused keeps its last list but says so, with who refused and the Ref, until it reads again', async ({ browser }) => {
-    const amir = await person(browser, 'amir@fetch.test')
-    await amir.goto(siteURL + '/rider', { waitUntil: 'networkidle' })
-    const board = amir.getByRole('region', { name: 'Ready for pickup' })
+    const rider1 = await person(browser, 'rider1@fetch.test')
+    await rider1.goto(siteURL + '/rider', { waitUntil: 'networkidle' })
+    const board = rider1.getByRole('region', { name: 'Ready for pickup' })
     await expect(board).toBeVisible()
     const baseline = JSON.parse(demo.file('baseline.json'))
     baseline.permits = baseline.permits.filter((permit: { role: string; operation: string }) => !(permit.role === 'RIDER' && permit.operation === 'orders.jobs'))
     await api.activate(await api.stage(JSON.stringify(baseline)), 300)
-    const stale = amir.getByRole('alert').filter({ hasText: 'What’s shown below is from the last successful check.' })
+    const stale = rider1.getByRole('alert').filter({ hasText: 'What’s shown below is from the last successful check.' })
     await expect(stale).toContainText('Your account can’t do this right now.')
     await expect(stale).toContainText('Answered by the Fetch gateway · 403')
     await expect(stale.getByTitle(/^Full reference [0-9a-f]{32}$/)).toBeVisible()
     await expect(board).toBeVisible()
-    await shot(amir, 'flows-07-refresh-refused')
+    await shot(rider1, 'flows-07-refresh-refused')
     await api.resolve('rollback')
     await expect(stale).toHaveCount(0)
   })
 
   test('the session lives in this tab only: a new tab is signed out, nothing but the theme is in localStorage, signing out clears the person', async ({ browser }) => {
-    const priya = await person(browser, 'priya@fetch.test')
-    await addToBasket(priya, siteURL, 'MER-001', 'Teh Tarik')
+    const customer3 = await person(browser, 'customer3@fetch.test')
+    await addToBasket(customer3, siteURL, 'MER-001', 'Teh Tarik')
     // Establish this test's saved-address precondition even in an isolated run.
-    const addAddress = priya.getByRole('button', { name: 'Add a delivery address' })
+    const addAddress = customer3.getByRole('button', { name: 'Add a delivery address' })
     if (await addAddress.isVisible()) {
       await addAddress.click()
-      await priya.getByLabel('Street address').fill('12 Jalan Telawi 3')
-      await priya.getByLabel('Postcode').fill('59100')
-      await priya.getByRole('button', { name: 'Save address' }).click()
+      await customer3.getByLabel('Street address').fill('12 Jalan Telawi 3')
+      await customer3.getByLabel('Postcode').fill('59100')
+      await customer3.getByRole('button', { name: 'Save address' }).click()
     }
-    await priya.getByRole('button', { name: /^Account: Priya/ }).click()
-    await priya.getByRole('menuitemradio', { name: 'Dark' }).click()
-    await priya.keyboard.press('Escape')
-    const kept = await storage(priya)
+    await customer3.getByRole('button', { name: /^Account: Customer 3/ }).click()
+    await customer3.getByRole('menuitemradio', { name: 'Dark' }).click()
+    await customer3.keyboard.press('Escape')
+    const kept = await storage(customer3)
     expect(kept.session).toEqual(['fetch.address', 'fetch.basket', 'fetch.session'])
     expect(kept.local).toEqual([['fetch.theme', 'dark']])
     expect(kept.cookie).toBe('')
-    expect(await priya.context().cookies(siteURL)).toEqual([])
+    expect(await customer3.context().cookies(siteURL)).toEqual([])
     // The token never appears in the page's text or address.
-    const token = await priya.evaluate(() => JSON.parse(sessionStorage.getItem('fetch.session') ?? '{}').token as string)
+    const token = await customer3.evaluate(() => JSON.parse(sessionStorage.getItem('fetch.session') ?? '{}').token as string)
     expect(token.split('.')).toHaveLength(3)
-    expect(await priya.content()).not.toContain(token)
-    expect(priya.url()).not.toContain(token)
+    expect(await customer3.content()).not.toContain(token)
+    expect(customer3.url()).not.toContain(token)
 
-    const other = await priya.context().newPage()
+    const other = await customer3.context().newPage()
     await other.goto(siteURL + '/', { waitUntil: 'networkidle' })
     await expect(other.getByRole('link', { name: 'Sign in' })).toBeVisible()
     await other.close()
 
     // Changing person cancels what is pending: a slow read is aborted when
-    // Priya signs out, and nothing of hers stays in the tab.
+    // Customer 3 signs out, and nothing of hers stays in the tab.
     const diagnostics: { event: string; at: number; error?: string }[] = []
     const startedAt = Date.now()
     let releaseRead: () => void = () => {}
     const held = new Promise<void>((resolve) => { releaseRead = resolve })
-    const pending = priya.waitForRequest((request) => new URL(request.url()).pathname === '/orders/mine')
-    await priya.route('**/orders/mine*', async (route) => {
+    const pending = customer3.waitForRequest((request) => new URL(request.url()).pathname === '/orders/mine')
+    await customer3.route('**/orders/mine*', async (route) => {
       diagnostics.push({ event: 'read held', at: Date.now() - startedAt })
       await held
       await route.continue().catch((error: unknown) => {
@@ -516,11 +516,11 @@ test.describe.serial('Fetch roles on the real services', () => {
       })
     })
     try {
-      await priya.goto(siteURL + '/my-orders')
+      await customer3.goto(siteURL + '/my-orders')
       await pending
-      const aborted = priya.waitForEvent('requestfailed', (request) => new URL(request.url()).pathname === '/orders/mine')
-      await priya.getByRole('button', { name: /^Account: Priya/ }).click()
-      await priya.getByRole('menuitem', { name: 'Sign out' }).click()
+      const aborted = customer3.waitForEvent('requestfailed', (request) => new URL(request.url()).pathname === '/orders/mine')
+      await customer3.getByRole('button', { name: /^Account: Customer 3/ }).click()
+      await customer3.getByRole('menuitem', { name: 'Sign out' }).click()
       diagnostics.push({ event: 'signed out', at: Date.now() - startedAt })
       releaseRead()
       const failure = (await aborted).failure()?.errorText
@@ -529,21 +529,21 @@ test.describe.serial('Fetch roles on the real services', () => {
     } finally {
       releaseRead()
       record('sign-out-abort-diagnostics', { diagnostics })
-      await priya.unroute('**/orders/mine*')
+      await customer3.unroute('**/orders/mine*')
     }
-    await expect(priya.getByRole('link', { name: 'Sign in' })).toBeVisible()
-    expect((await storage(priya)).session).toEqual([])
-    await expect(priya.getByText('Priya')).toHaveCount(0)
-    await leave('priya@fetch.test')
+    await expect(customer3.getByRole('link', { name: 'Sign in' })).toBeVisible()
+    expect((await storage(customer3)).session).toEqual([])
+    await expect(customer3.getByText('Customer 3')).toHaveCount(0)
+    await leave('customer3@fetch.test')
   })
 
   test('signed-in pages pass the accessibility rules at desktop and phone widths', async ({ browser }) => {
     for (const [email, routes] of [
-      ['aisyah@fetch.test', ['/', '/store/MER-001', '/my-orders', '/my-orders/ORD-1001', '/help', '/lab']],
-      ['ros@fetch.test', ['/merchant', '/merchant?view=menu', '/merchant?view=sales']],
-      ['amir@fetch.test', ['/rider']],
-      ['nurul@fetch.test', ['/support']],
-      ['jason@fetch.test', ['/ops', '/ops?view=orders']],
+      ['customer1@fetch.test', ['/', '/store/warung-nasi-lemak', '/my-orders', '/my-orders/ORD-1001', '/help', '/lab']],
+      ['merchant1@fetch.test', ['/merchant', '/merchant?view=menu', '/merchant?view=sales']],
+      ['rider1@fetch.test', ['/rider']],
+      ['support1@fetch.test', ['/support']],
+      ['admin1@fetch.test', ['/ops', '/ops?view=orders']],
     ] as const) {
       const page = await person(browser, email)
       for (const width of [1440, 375]) {
@@ -558,40 +558,40 @@ test.describe.serial('Fetch roles on the real services', () => {
   })
 
   test('a cancellation with Inventory unavailable stays uncertain while a failed checkout is a definite refusal', async ({ browser }) => {
-    const daniel = await person(browser, 'daniel@fetch.test')
-    await addToBasket(daniel, siteURL, 'MER-005', 'Full Cream Milk 1 L')
-    const order = await placeOrder(daniel, siteURL, 'Fetch wallet')
+    const customer2 = await person(browser, 'customer2@fetch.test')
+    await addToBasket(customer2, siteURL, 'MER-005', 'Full Cream Milk 1 L')
+    const order = await placeOrder(customer2, siteURL, 'Fetch wallet')
     const before = (await demo.receipts('orders')).length
     const charged = (await demo.state('orders')).data as { wallets: Record<string, number> }
 
-    const priya = await person(browser, 'priya@fetch.test')
-    await addToBasket(priya, siteURL, 'MER-005', 'Full Cream Milk 1 L')
-    await priya.goto(siteURL + '/checkout', { waitUntil: 'networkidle' })
-    await priya.getByLabel('Street address').fill('12 Jalan Telawi 3')
-    await priya.getByLabel('Postcode').fill('59100')
+    const customer3 = await person(browser, 'customer3@fetch.test')
+    await addToBasket(customer3, siteURL, 'MER-005', 'Full Cream Milk 1 L')
+    await customer3.goto(siteURL + '/checkout', { waitUntil: 'networkidle' })
+    await customer3.getByLabel('Street address').fill('12 Jalan Telawi 3')
+    await customer3.getByLabel('Postcode').fill('59100')
 
     // Stop only this test's Inventory process. Orders and its independent
     // control surface remain live; no response or application is patched.
     process.kill(demo.pids['inventory'])
     try {
-      await daniel.getByRole('button', { name: 'Cancel order' }).click()
-      await daniel.getByRole('dialog').getByRole('button', { name: 'Cancel order' }).click()
-      await expect(daniel.getByRole('heading', { level: 1 })).toHaveText('Order cancelled')
+      await customer2.getByRole('button', { name: 'Cancel order' }).click()
+      await customer2.getByRole('dialog').getByRole('button', { name: 'Cancel order' }).click()
+      await expect(customer2.getByRole('heading', { level: 1 })).toHaveText('Order cancelled')
       const state = (await demo.state('orders')).data as { orders: { id: string; status: string; total_sen: number }[]; wallets: Record<string, number> }
       const cancelled = state.orders.find((entry) => entry.id === order)!
       expect(cancelled.status).toBe('cancelled')
       expect(state.wallets['cust-002']).toBe(charged.wallets['cust-002'] + cancelled.total_sen)
-      const unknown = daniel.getByRole('alert').filter({ hasText: 'Fetch couldn’t confirm cancelling this order.' })
+      const unknown = customer2.getByRole('alert').filter({ hasText: 'Fetch couldn’t confirm cancelling this order.' })
       await expect(unknown).toContainText('It may or may not have been cancelled.')
       await expect(unknown).toContainText('Answered by Orders · 503')
-      await daniel.waitForTimeout(3000)
+      await customer2.waitForTimeout(3000)
       const sent = (await since('orders', before)).filter((r) => r.method === 'POST' && r.target === `/orders/cancel/${order}`)
       expect(sent).toHaveLength(1)
       expect(sent[0].status).toBe(503)
 
-      await priya.getByRole('button', { name: /^Place order · RM / }).click()
-      await expect(priya.getByRole('alert').filter({ hasText: 'Inventory could not confirm this request.' })).toContainText('Answered by Orders · 503')
-      await expect(priya.getByRole('button', { name: 'Send the same order again' })).toHaveCount(0)
+      await customer3.getByRole('button', { name: /^Place order · RM / }).click()
+      await expect(customer3.getByRole('alert').filter({ hasText: 'Inventory could not confirm this request.' })).toContainText('Answered by Orders · 503')
+      await expect(customer3.getByRole('button', { name: 'Send the same order again' })).toHaveCount(0)
       record('inventory-unavailable-outcomes', { order, cancellationReceipt: sent[0].request_id })
     } finally {
       await demo.stop()
@@ -600,28 +600,28 @@ test.describe.serial('Fetch roles on the real services', () => {
   })
 
   test('a service that is down and a gateway that cannot record are reported truthfully, and nothing is resent', async ({ browser }) => {
-    const aisyah = await person(browser, 'aisyah@fetch.test')
+    const customer1 = await person(browser, 'customer1@fetch.test')
     let posts = 0
-    aisyah.on('request', (request) => {
+    customer1.on('request', (request) => {
       if (request.method() === 'POST' && new URL(request.url()).pathname === '/support/tickets') posts++
     })
     const ask = async () => {
-      await aisyah.getByLabel('What is it about?').fill('Where is my order')
-      await aisyah.getByLabel('What happened?').fill('It has been an hour.')
-      await aisyah.getByRole('button', { name: 'Send to Fetch support' }).click()
+      await customer1.getByLabel('What is it about?').fill('Where is my order')
+      await customer1.getByLabel('What happened?').fill('It has been an hour.')
+      await customer1.getByRole('button', { name: 'Send to Fetch support' }).click()
     }
 
     // Support stops: the gateway answers 502 for its reads and writes, and a
     // write is never described as not having reached it.
     process.kill(demo.pids['support'])
-    await aisyah.goto(siteURL + '/help', { waitUntil: 'networkidle' })
-    await expect(aisyah.getByRole('alert').filter({ hasText: 'That part of Fetch isn’t answering right now.' })).toContainText('Answered by the Fetch gateway · 502')
+    await customer1.goto(siteURL + '/help', { waitUntil: 'networkidle' })
+    await expect(customer1.getByRole('alert').filter({ hasText: 'That part of Fetch isn’t answering right now.' })).toContainText('Answered by the Fetch gateway · 502')
     await ask()
-    const lost = aisyah.getByRole('alert').filter({ hasText: 'Fetch couldn’t confirm your request.' })
+    const lost = customer1.getByRole('alert').filter({ hasText: 'Fetch couldn’t confirm your request.' })
     await expect(lost).toContainText('It may or may not have been sent.')
-    await aisyah.waitForTimeout(3000)
+    await customer1.waitForTimeout(3000)
     expect(posts).toBe(1)
-    await shot(aisyah, 'flows-06-service-down')
+    await shot(customer1, 'flows-06-service-down')
 
     // The gateway restarts unable to write its security record: protected
     // requests are refused 503 and reach no service; the write still says it
@@ -629,11 +629,11 @@ test.describe.serial('Fetch roles on the real services', () => {
     await demo.stop()
     await demo.start({ fault: 'audit-partial' })
     const before = await demo.counts()
-    await aisyah.reload({ waitUntil: 'networkidle' })
-    await expect(aisyah.getByRole('alert').filter({ hasText: 'Fetch can’t take requests right now.' })).toContainText('Answered by the Fetch gateway · 503')
+    await customer1.reload({ waitUntil: 'networkidle' })
+    await expect(customer1.getByRole('alert').filter({ hasText: 'Fetch can’t take requests right now.' })).toContainText('Answered by the Fetch gateway · 503')
     await ask()
-    await expect(aisyah.getByRole('alert').filter({ hasText: 'Fetch couldn’t confirm your request.' })).toContainText('Answered by the Fetch gateway · 503')
-    await aisyah.waitForTimeout(3000)
+    await expect(customer1.getByRole('alert').filter({ hasText: 'Fetch couldn’t confirm your request.' })).toContainText('Answered by the Fetch gateway · 503')
+    await customer1.waitForTimeout(3000)
     expect(posts).toBe(2)
     expect(await demo.counts()).toEqual(before)
     await demo.stop()

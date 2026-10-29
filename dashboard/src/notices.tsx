@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { Status } from './api'
 import { Glyph, time } from './ui'
 import type { View } from './views'
@@ -16,6 +16,8 @@ interface Shown extends Notice {
   view: View
 }
 
+const noticeMs = 8000
+
 const words: Record<NoticeTone, string> = { ok: 'Done', pending: 'In progress', neutral: 'Ended', refused: 'Problem' }
 
 // statusNotices names what changed between two status reads: a trial that
@@ -30,13 +32,13 @@ export function statusNotices(before: Status, after: Status): Notice[] {
   if (before.provisional !== undefined && after.provisional === undefined && after.confirmed !== undefined) {
     notices.push(
       after.confirmed === before.provisional
-        ? { tone: 'ok', text: `Version ${before.provisional} was kept: it is the policy in force.` }
-        : { tone: 'neutral', text: `The trial of version ${before.provisional} ended: version ${after.confirmed} is in force again.` },
+        ? { tone: 'ok', text: `Version ${before.provisional} was kept: it is the active policy.` }
+        : { tone: 'neutral', text: `The trial of version ${before.provisional} ended: version ${after.confirmed} is active again.` },
     )
   }
   const earlier = before.overrides ?? []
   const later = after.overrides ?? []
-  for (const id of later) if (!earlier.includes(id)) notices.push({ tone: 'pending', text: `Temporary rule ${id} is in force.` })
+  for (const id of later) if (!earlier.includes(id)) notices.push({ tone: 'pending', text: `Temporary rule ${id} is active.` })
   for (const id of earlier) if (!later.includes(id)) notices.push({ tone: 'neutral', text: `Temporary rule ${id} ended.` })
   if (before.jwt_key_sha256 && after.jwt_key_sha256 && before.jwt_key_sha256 !== after.jwt_key_sha256) {
     notices.push({ tone: 'neutral', text: 'The signing keys were reloaded.' })
@@ -47,11 +49,11 @@ export function statusNotices(before: Status, after: Status): Notice[] {
   return notices
 }
 
-// Notifications is the bar of recent events at the top of every page,
+// Notifications is the stack of recent events floating over every page,
 // announced without moving focus. It reads nothing itself: it compares the
-// status reads the Dashboard already makes. A notice stays until it is
-// dismissed or another page opens, so nothing moves on a timer while it is
-// read; a problem stays on every page until it is dismissed.
+// status reads the Dashboard already makes. A notice leaves by itself after
+// noticeMs (the countdown pauses while pointed at or focused) or when
+// another page opens; a problem stays on every page until it is dismissed.
 export function Notifications(props: { status: Status | undefined; view: View }) {
   const [shown, setShown] = useState<Shown[]>([])
   const next = useRef(0)
@@ -75,13 +77,16 @@ export function Notifications(props: { status: Status | undefined; view: View })
   return (
     <div className="notices" role="status" aria-live="polite">
       {visible.map((notice) => (
-        <p key={notice.id} className={`notice notice-bar tone-${notice.tone}`}>
+        <p key={notice.id} className={`notice notice-bar tone-${notice.tone}`} style={{ '--toast-ms': `${noticeMs}ms` } as CSSProperties}>
           <Glyph name={notice.tone} />
           <span className="visually-hidden">{words[notice.tone]}: </span>
           <span>{notice.text}</span>
           <button type="button" className="btn btn-small" aria-label={`Dismiss: ${notice.text}`} onClick={() => setShown((list) => list.filter((item) => item.id !== notice.id))}>
             Dismiss
           </button>
+          {notice.tone === 'refused' ? null : (
+            <span className="notice-timer" aria-hidden="true" onAnimationEnd={() => setShown((list) => list.filter((item) => item.id !== notice.id))} />
+          )}
         </p>
       ))}
     </div>

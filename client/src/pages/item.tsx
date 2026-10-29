@@ -12,6 +12,7 @@ import { AnswerLine, Empty, Loading, ProblemNotice, Skeleton } from '../ui/notic
 import { Photo } from '../ui/photo'
 import { QuantityStepper } from '../ui/stepper'
 import { unavailableReason, useAdd } from './parts'
+import { storeLink } from '../lib/links'
 
 export function ItemPage({ id }: { id: string }) {
   const page = useQuery<ItemAnswer>(`/inventory/items/${encodeURIComponent(id)}`)
@@ -44,7 +45,7 @@ function ItemView({ data }: { data: ItemAnswer }) {
         <ol className="flex items-center gap-1.5 text-[13px] font-medium text-ink-3">
           <li><Link to="/" className="hover:text-ink">Home</Link></li>
           <li aria-hidden="true"><CaretRight size={12} /></li>
-          <li><Link to={`/store/${merchant.id}`} className="hover:text-ink">{merchant.name}</Link></li>
+          <li><Link to={storeLink(merchant.name)} className="hover:text-ink">{merchant.name}</Link></li>
           <li aria-hidden="true"><CaretRight size={12} /></li>
           <li aria-current="page" className="text-ink-2">{item.name}</li>
         </ol>
@@ -62,7 +63,7 @@ function ItemView({ data }: { data: ItemAnswer }) {
           {reason ? (
             <p className="mt-6 rounded-2xl bg-sunken p-4 text-sm text-ink-2">
               {reason === 'Out of stock' ? 'This has run out at the moment. ' : reason === 'Shop closed' ? `${merchant.name} is closed right now. ` : `${merchant.name} isn’t offering this today. `}
-              <Link to={`/store/${merchant.id}`} className="font-bold text-brand hover:underline">See the rest of the menu</Link>
+              <Link to={storeLink(merchant.name)} className="font-bold text-brand hover:underline">See the rest of the menu</Link>
             </p>
           ) : (
             <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -73,7 +74,7 @@ function ItemView({ data }: { data: ItemAnswer }) {
               <span className="sr-only" role="status">{added === item.id ? `${item.name} added to your basket` : ''}</span>
             </div>
           )}
-          <Link to={`/store/${merchant.id}`} className="mt-10 flex items-center gap-4 rounded-2xl bg-surface p-4 shadow-card hover:shadow-raised">
+          <Link to={storeLink(merchant.name)} className="mt-10 flex items-center gap-4 rounded-2xl bg-surface p-4 shadow-card hover:shadow-raised">
             <Photo id={merchant.id} section={merchant.section} className="size-14 shrink-0 rounded-xl" />
             <span className="min-w-0 flex-1">
               <span className="flex items-center gap-1.5 font-bold"><Storefront size={16} aria-hidden="true" />{merchant.name}</span>

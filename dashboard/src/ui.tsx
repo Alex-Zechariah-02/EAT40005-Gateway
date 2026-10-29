@@ -1,8 +1,10 @@
-import { Check, Clock, X, QuestionMark, Minus, Plus, ArrowRight, ArrowsClockwise, Info, MagnifyingGlass } from '@phosphor-icons/react'
-import { Fragment, useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { Check, Clock, X, QuestionMark, Minus, Plus, ArrowRight, ArrowsClockwise, MagnifyingGlass } from '@phosphor-icons/react'
+import { Fragment, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { committedAnyway, committedMessage, message, type Outcome, type Reply } from './api'
 import { plainChange, type Change } from './diff'
 import { Navigate, ViewMemory, type Mutation } from './hooks'
+import { focusParam, to, type View } from './views'
 
 // Tone is the meaning of a status: in force or done, provisional or
 // time-bound, refused or blocking, unknown outcome, or inactive. Every badge
@@ -60,35 +62,21 @@ export function Arrowed({ text }: { text: string }) {
   )
 }
 
-// PageHeader is the bar at the top of every view: its one short title (h1),
-// the explanation behind an info button rather than a subtitle, the view's
-// actions, and the search for a request by its Ref.
+// PageHeader is the bar at the top of every view: its one short title (h1)
+// with a one-line description of what the page is for beneath it, the
+// view's actions, and the search.
 export function PageHeader(props: { title: string; lede?: ReactNode; search?: boolean; children?: ReactNode }) {
-  const [about, setAbout] = useState(false)
-  const aboutId = useId()
   return (
-    <>
-      <header className="page-head">
-        <div className="page-title">
-          <h1 id="page-title" tabIndex={-1}>
-            {props.title}
-          </h1>
-          {props.lede ? (
-            <button type="button" className="icon-button" aria-expanded={about} aria-controls={aboutId} onClick={() => setAbout((open) => !open)}>
-              <Info size={18} aria-hidden="true" />
-              <span className="visually-hidden">About this page</span>
-            </button>
-          ) : null}
-        </div>
-        {props.children ? <div className="page-actions">{props.children}</div> : null}
-        {props.search === false ? null : <GlobalSearch />}
-      </header>
-      {props.lede ? (
-        <p id={aboutId} className="page-about" hidden={!about}>
-          {props.lede}
-        </p>
-      ) : null}
-    </>
+    <header className="page-head">
+      <div className="page-title">
+        <h1 id="page-title" tabIndex={-1}>
+          {props.title}
+        </h1>
+        {props.lede ? <p className="page-lede">{props.lede}</p> : null}
+      </div>
+      {props.children ? <div className="page-actions">{props.children}</div> : null}
+      {props.search === false ? null : <GlobalSearch />}
+    </header>
   )
 }
 
@@ -237,7 +225,7 @@ export function MoreDetails(props: { facts: [string, string | undefined][] }) {
   if (facts.length === 0) return null
   return (
     <details className="more-details">
-      <summary>More details</summary>
+      <summary>More Details</summary>
       <dl className="facts facts-compact">
         {facts.map(([label, value]) => (
           <div key={label} className="fact">
@@ -304,7 +292,7 @@ export function ShowMore(props: { list: { next?: string; paging: boolean; pagePr
       {list.pageProblem ? <Problem reply={list.pageProblem} /> : null}
       {list.next ? (
         <button type="button" className="btn show-more" onClick={list.more} disabled={list.paging}>
-          {list.paging ? 'Reading…' : 'Show more'}
+          {list.paging ? 'Reading…' : 'Show More'}
         </button>
       ) : null}
     </>
@@ -321,17 +309,17 @@ export function ReplyView<T>(props: { reply: Reply<T> | null; children: (body: T
 
 const receiptFields: [keyof Outcome, string][] = [
   ['outcome', 'Outcome'],
-  ['disposition', 'Result (kept or undone)'],
-  ['reason', 'Reason code'],
+  ['disposition', 'Result (Kept or Undone)'],
+  ['reason', 'Reason Code'],
   ['field', 'Field'],
   ['transition_id', 'Transition'],
-  ['revision', 'Version now in force'],
-  ['generation', 'Generation in force'],
-  ['candidate', 'Draft change'],
-  ['provisional', 'Version on trial'],
+  ['revision', 'Active Version Now'],
+  ['generation', 'Active Generation'],
+  ['candidate', 'Draft Change'],
+  ['provisional', 'Version on Trial'],
   ['rollback_target', 'Version restored if undone'],
-  ['deadline', 'Trial deadline'],
-  ['override', 'Temporary rule'],
+  ['deadline', 'Trial Deadline'],
+  ['override', 'Temporary Rule'],
   ['target', 'Target'],
   ['expires_at', 'Expires'],
 ]
@@ -389,11 +377,11 @@ export function MutationResult<T>(props: {
               ) : null}
               <div className="actions">
                 <button type="button" className="btn" onClick={props.onRefresh}>
-                  Refresh state
+                  Refresh State
                 </button>
                 {phase.request.key !== undefined ? (
                   <button type="button" className="btn" onClick={() => run(phase.request)}>
-                    Send the identical request again
+                    Send the Identical Request Again
                   </button>
                 ) : null}
               </div>
@@ -724,12 +712,25 @@ export interface WizardStep {
 // a review of its effect. Finishing only hands back to the caller, which makes
 // the usual draft edit or asks the usual confirmation. Each new step's heading
 // takes focus, so a screen reader hears where it is.
-export function Wizard(props: { title: string; steps: WizardStep[]; finishLabel: string; onFinish: () => void; onClose: () => void }) {
+// A caller that jumps between steps itself, as a quick choice that fills every
+// step does, passes step and onStep.
+export function Wizard(props: {
+  title: string
+  steps: WizardStep[]
+  finishLabel: string
+  finishDisabled?: boolean
+  onFinish: () => void
+  onClose: () => void
+  step?: number
+  onStep?: (step: number) => void
+}) {
   const ref = useRef<HTMLDialogElement>(null)
   const heading = useRef<HTMLHeadingElement>(null)
   const titleId = useId()
   const problemId = useId()
-  const [index, setIndex] = useState(0)
+  const [ownIndex, setOwnIndex] = useState(0)
+  const index = props.step ?? ownIndex
+  const setIndex = props.onStep ?? setOwnIndex
   const moved = useRef(false)
   useEffect(() => {
     const dialog = ref.current
@@ -737,12 +738,11 @@ export function Wizard(props: { title: string; steps: WizardStep[]; finishLabel:
     return () => dialog?.close()
   }, [])
   useEffect(() => {
+    // The first step keeps the dialog's own focus; each later one moves it.
     if (moved.current) heading.current?.focus()
-  }, [index])
-  const go = (next: number) => {
     moved.current = true
-    setIndex(next)
-  }
+  }, [index])
+  const go = (next: number) => setIndex(next)
   const step = props.steps[index]
   const last = index === props.steps.length - 1
   return (
@@ -786,7 +786,7 @@ export function Wizard(props: { title: string; steps: WizardStep[]; finishLabel:
         <button
           type="button"
           className="btn btn-primary"
-          disabled={Boolean(step.problem)}
+          disabled={Boolean(step.problem) || (last && props.finishDisabled)}
           aria-describedby={step.problem ? problemId : undefined}
           onClick={last ? props.onFinish : () => go(index + 1)}
         >
@@ -815,5 +815,268 @@ export function CodeBlock(props: { label: string; className?: string; children: 
     <pre className={props.className} role="region" aria-label={props.label} tabIndex={0}>
       {props.children}
     </pre>
+  )
+}
+
+// TooltipLayer draws the tip of every control marked with data-tip in one
+// layer above the page. A tip drawn inside a scrolling list would be clipped
+// by it and would widen it, giving the list a sideways scrollbar.
+export function TooltipLayer() {
+  const [tip, setTip] = useState<{ text: string; box: DOMRect; side: 'top' | 'right' } | null>(null)
+  const drawn = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    let current: HTMLElement | null = null
+    const show = (target: EventTarget | null, keyboard: boolean) => {
+      const element = target instanceof Element ? target.closest<HTMLElement>('[data-tip]') : null
+      if (element === current) return
+      current = element
+      // A labelled link in the wide sidebar already shows its words.
+      const labelled = !!element?.closest('.shell:not(.is-rail)') && element.matches('.nav-group a, .sidebar-toggle')
+      if (!element?.dataset.tip || labelled || (keyboard && !element.matches(':focus-visible'))) {
+        setTip(null)
+        return
+      }
+      setTip({ text: element.dataset.tip, box: element.getBoundingClientRect(), side: element.closest('.sidebar') ? 'right' : 'top' })
+    }
+    const hide = () => {
+      current = null
+      setTip(null)
+    }
+    const over = (event: PointerEvent) => show(event.target, false)
+    const focus = (event: FocusEvent) => show(event.target, true)
+    document.addEventListener('pointerover', over)
+    document.addEventListener('focusin', focus)
+    document.addEventListener('focusout', hide)
+    document.addEventListener('pointerdown', hide)
+    window.addEventListener('scroll', hide, true)
+    return () => {
+      document.removeEventListener('pointerover', over)
+      document.removeEventListener('focusin', focus)
+      document.removeEventListener('focusout', hide)
+      document.removeEventListener('pointerdown', hide)
+      window.removeEventListener('scroll', hide, true)
+    }
+  }, [])
+  // Keep the whole tip on screen near the window's edges.
+  useLayoutEffect(() => {
+    const element = drawn.current
+    if (!element || !tip) return
+    const width = element.offsetWidth
+    const left = tip.side === 'right' ? tip.box.right + 10 : tip.box.left + tip.box.width / 2 - width / 2
+    element.style.left = `${Math.max(8, Math.min(left, window.innerWidth - width - 8))}px`
+    element.style.top = tip.side === 'right' ? `${tip.box.top + tip.box.height / 2 - element.offsetHeight / 2}px` : `${tip.box.top - element.offsetHeight - 6}px`
+  }, [tip])
+  // Drawn for sight only: each control's label or aria-label already names it.
+  return tip
+    ? createPortal(
+        <div ref={drawn} className="tooltip" aria-hidden="true">
+          {tip.text}
+        </div>,
+        document.body,
+      )
+    : null
+}
+
+// usePageScrollbar shows the window's scrollbar only while the page scrolls
+// or the pointer is near it, as scrolling lists show theirs on hover.
+export function usePageScrollbar() {
+  useEffect(() => {
+    const root = document.documentElement
+    let timer = 0
+    const reveal = () => {
+      root.classList.add('is-scrolling')
+      clearTimeout(timer)
+      timer = window.setTimeout(() => root.classList.remove('is-scrolling'), 900)
+    }
+    const near = (event: PointerEvent) => {
+      if (event.clientX >= root.clientWidth - 16) reveal()
+    }
+    window.addEventListener('scroll', reveal, { passive: true })
+    window.addEventListener('pointermove', near, { passive: true })
+    return () => {
+      clearTimeout(timer)
+      window.removeEventListener('scroll', reveal)
+      window.removeEventListener('pointermove', near)
+    }
+  }, [])
+}
+
+export interface MenuAction {
+  label: string
+  run: () => void
+  // unavailable says why the action cannot be taken yet.
+  unavailable?: string
+}
+
+// ActionMenu is a + button that opens a short list of actions. The list is
+// drawn above the page, so a card or a scrolling list never clips it; arrow
+// keys move through it and Escape closes it, returning focus to the button.
+export function ActionMenu(props: { label: string; tip?: string; items: MenuAction[]; className?: string; text?: string }) {
+  const [open, setOpen] = useState(false)
+  const [at, setAt] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
+  const trigger = useRef<HTMLButtonElement>(null)
+  const list = useRef<HTMLDivElement>(null)
+  const id = useId()
+  function close(refocus: boolean) {
+    setOpen(false)
+    if (refocus) trigger.current?.focus()
+  }
+  useLayoutEffect(() => {
+    if (!open || !trigger.current || !list.current) return
+    const box = trigger.current.getBoundingClientRect()
+    const width = list.current.offsetWidth
+    const height = list.current.offsetHeight
+    const below = box.bottom + 6 + height <= window.innerHeight - 8
+    setAt({
+      top: below ? box.bottom + 6 : Math.max(8, box.top - 6 - height),
+      left: Math.max(8, Math.min(box.right - width, window.innerWidth - width - 8)),
+    })
+    // Focus moves into the menu without scrolling the page, which would close it.
+    list.current.querySelector<HTMLButtonElement>('[role="menuitem"]:not([aria-disabled="true"])')?.focus({ preventScroll: true })
+  }, [open])
+  useEffect(() => {
+    if (!open) return
+    const away = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (!list.current?.contains(target) && !trigger.current?.contains(target)) close(false)
+    }
+    // The menu closes only when its button has moved, so it would no longer
+    // sit beside it; a scroll elsewhere on the page leaves it open.
+    const start = trigger.current?.getBoundingClientRect()
+    const moved = () => {
+      const now = trigger.current?.getBoundingClientRect()
+      if (!start || !now || Math.abs(now.top - start.top) > 1 || Math.abs(now.left - start.left) > 1) close(false)
+    }
+    document.addEventListener('pointerdown', away)
+    window.addEventListener('scroll', moved, true)
+    window.addEventListener('resize', moved)
+    return () => {
+      document.removeEventListener('pointerdown', away)
+      window.removeEventListener('scroll', moved, true)
+      window.removeEventListener('resize', moved)
+    }
+  }, [open])
+  function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    const items = [...(list.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? [])]
+    const index = items.indexOf(document.activeElement as HTMLButtonElement)
+    let next = -1
+    if (event.key === 'ArrowDown') next = (index + 1) % items.length
+    if (event.key === 'ArrowUp') next = (index - 1 + items.length) % items.length
+    if (event.key === 'Home') next = 0
+    if (event.key === 'End') next = items.length - 1
+    if (next >= 0) {
+      event.preventDefault()
+      items[next].focus()
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      close(true)
+    }
+    if (event.key === 'Tab') close(false)
+  }
+  return (
+    <>
+      <button
+        ref={trigger}
+        type="button"
+        className={`${props.text ? 'btn btn-small' : 'icon-button is-icon'} action-menu-trigger${open ? ' is-open' : ''} ${props.className ?? ''}`}
+        aria-label={props.label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? id : undefined}
+        data-tip={open || props.text ? undefined : props.tip}
+        onClick={() => (open ? close(false) : setOpen(true))}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown' && !open) {
+            event.preventDefault()
+            setOpen(true)
+          }
+        }}
+      >
+        <Plus size={14} weight="bold" aria-hidden="true" />
+        {props.text}
+      </button>
+      {open
+        ? createPortal(
+            <div ref={list} id={id} className="action-menu" role="menu" aria-label={props.label} style={at} onKeyDown={onKeyDown}>
+              {props.items.map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  role="menuitem"
+                  className="action-menu-item"
+                  aria-disabled={item.unavailable ? true : undefined}
+                  onClick={() => {
+                    if (item.unavailable) return
+                    close(false)
+                    item.run()
+                  }}
+                >
+                  <span>{item.label}</span>
+                  {item.unavailable ? <span className="action-menu-why">{item.unavailable}</span> : null}
+                </button>
+              ))}
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
+  )
+}
+
+// XRef links an ID to the page where it lives, opened on that item, so an
+// administrator can follow it in one click, as in a cloud console.
+export function XRef(props: { view: View; focus?: Record<string, string | number>; label?: string; children: ReactNode }) {
+  return (
+    <a className="xref" href={to(props.view, props.focus)} aria-label={props.label}>
+      {props.children}
+    </a>
+  )
+}
+
+// useFocus is the item the current view was opened on, kept current as links
+// within the same view change it.
+export function useFocus(name: string): string | null {
+  const [value, setValue] = useState(() => focusParam(name))
+  useEffect(() => {
+    const read = () => setValue(focusParam(name))
+    window.addEventListener('hashchange', read)
+    return () => window.removeEventListener('hashchange', read)
+  }, [name])
+  return value
+}
+
+// useTarget scrolls the element marked as the focused item into view once it
+// is drawn, and lets its highlight fade, so the eye lands on what the link named.
+export function useTarget(ready: boolean, key: string | null) {
+  useEffect(() => {
+    if (!ready || !key) return
+    const timer = window.setTimeout(() => {
+      const element = document.querySelector('[data-target="true"]')
+      element?.scrollIntoView({ block: 'center', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
+    }, 60)
+    return () => window.clearTimeout(timer)
+  }, [ready, key])
+}
+
+// AccountLink opens Request Lookup on one account's requests. The account is
+// handed over through the page's memory, never the address, so like any
+// account searched for it stays out of the browser's history.
+export function AccountLink({ account, children }: { account: string; children: ReactNode }) {
+  const memory = useContext(ViewMemory)
+  return (
+    <a
+      className="xref"
+      href="#/lookup"
+      onClick={() =>
+        memory?.set('lookup', {
+          form: { ref: '', subject: account, operation: '', decision: '' },
+          query: `subject=${encodeURIComponent(account)}`,
+        })
+      }
+    >
+      {children}
+    </a>
   )
 }

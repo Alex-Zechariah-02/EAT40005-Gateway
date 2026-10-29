@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { ChatsCircle } from '@phosphor-icons/react'
 import { outcomeOfWrite } from '../lib/api'
-import { when } from '../lib/format'
+import { when, reference } from '../lib/format'
 import { describe, type Problem } from '../lib/messages'
 import { useQuery } from '../lib/query'
 import { Link } from '../lib/router'
@@ -60,7 +60,7 @@ export function Thread({ ticket, onChanged, viewer, actions }: { ticket: Ticket;
     <div className={cx(viewer === 'customer' && 'mx-auto mt-8 max-w-[760px]')}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          {viewer === 'customer' && <p className="text-sm font-semibold text-ink-3"><Link to="/help" className="hover:text-ink">Help</Link> · {ticket.id}</p>}
+          {viewer === 'customer' && <p className="text-sm font-semibold text-ink-3"><Link to="/help" className="hover:text-ink">Help</Link> · Request {reference(ticket.id)}</p>}
           {viewer === 'customer' ? (
             <h1 className="mt-1 text-[32px] leading-none font-extrabold tracking-[-0.03em]">{ticket.subject}</h1>
           ) : (

@@ -1,6 +1,5 @@
 import { describe } from '../lib/messages'
 import { useQuery } from '../lib/query'
-import { useSession } from '../lib/session'
 import type { Jobs } from '../lib/types'
 import { Button } from '../ui/button'
 import { Loading, ProblemNotice, RefreshProblem, Skeleton } from '../ui/notice'
@@ -10,14 +9,13 @@ import { Column, OrderCard, WorkspaceTitle, useAction } from './staff'
 // own deliveries. When two riders tap the same job, the Orders service lets
 // the first win and refuses the second (409 already_assigned).
 export function RiderPage() {
-  const { session } = useSession()
   const jobs = useQuery<Jobs>('/orders/jobs', { poll: 5_000 })
   const action = useAction(jobs.reload)
   const problem = jobs.answer && !jobs.data ? describe(jobs.answer) : null
   const cardProblem = (key: string) => (action.problem?.key === key ? action.problem.problem : null)
   return (
     <>
-      <WorkspaceTitle title="Jobs" subtitle={`Signed in as ${session!.user.name}. The board updates every few seconds.`} />
+      <WorkspaceTitle title="Jobs" subtitle="Updates automatically." />
       <div className="mt-6">
         <RefreshProblem query={jobs} className="mb-4" />
         {problem ? (
