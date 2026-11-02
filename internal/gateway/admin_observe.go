@@ -360,6 +360,48 @@ func (c *Controller) handleTraffic(w http.ResponseWriter, r *http.Request, who c
 	}{window, current.Total, current.Allowed, current.Refused, byAPI, refusalReasons, perSecond, byOperation, topRefused, earlier, latency})
 }
 
+// candidateGeneration compiles a stored draft with the active overrides,
+// as an activation would, beside the generation in force. It settles no
+// deadline and publishes nothing. On failure it has answered the request.
+func (c *Controller) candidateGeneration(w http.ResponseWriter, r *http.Request, id int64) (current, candidate *Generation, ok bool) {
+	stored, found, err := c.store.candidate(r.Context(), id)
+	if err != nil {
+		adminError(w, http.StatusServiceUnavailable, "gateway_unavailable", "")
+		return nil, nil, false
+	}
+	if !found {
+		adminError(w, http.StatusNotFound, "not_found", "")
+		return nil, nil, false
+	}
+	policy, err := DecodePolicy(stored.Document)
+	if err != nil {
+		adminError(w, http.StatusUnprocessableEntity, "candidate_invalid", "")
+		return nil, nil, false
+	}
+	// Capture authority and its active overrides together without settling a
+	// deadline or publishing anything. Both use the same complete-policy
+	// resolver as an activation, including independent temporary controls.
+	c.mu.Lock()
+	current = c.Current()
+	if current == nil || current.expired(trustedNow()) {
+		c.mu.Unlock()
+		adminError(w, 503, "gateway_unavailable", "")
+		return nil, nil, false
+	}
+	authority, err := c.store.load(r.Context())
+	c.mu.Unlock()
+	if err != nil {
+		adminError(w, 503, "gateway_unavailable", "")
+		return nil, nil, false
+	}
+	candidate, err = effectiveGeneration(policy, stored.Parent, time.Time{}, authority.overrides)
+	if err != nil {
+		adminError(w, http.StatusUnprocessableEntity, "candidate_invalid", "")
+		return nil, nil, false
+	}
+	return current, candidate, true
+}
+
 func (c *Controller) handleImpact(w http.ResponseWriter, r *http.Request, who caller) {
 	if !noRequestBody(w, r) {
 		return
@@ -368,39 +410,8 @@ func (c *Controller) handleImpact(w http.ResponseWriter, r *http.Request, who ca
 	if !ok {
 		return
 	}
-	candidate, found, err := c.store.candidate(r.Context(), id)
-	if err != nil {
-		adminError(w, http.StatusServiceUnavailable, "gateway_unavailable", "")
-		return
-	}
-	if !found {
-		adminError(w, http.StatusNotFound, "not_found", "")
-		return
-	}
-	policy, err := DecodePolicy(candidate.Document)
-	if err != nil {
-		adminError(w, http.StatusUnprocessableEntity, "candidate_invalid", "")
-		return
-	}
-	// Capture authority and its active overrides together without settling a
-	// deadline or publishing anything. Preview uses the same complete-policy
-	// resolver as an activation, including independent temporary controls.
-	c.mu.Lock()
-	before := c.Current()
-	if before == nil || before.expired(trustedNow()) {
-		c.mu.Unlock()
-		adminError(w, 503, "gateway_unavailable", "")
-		return
-	}
-	authority, err := c.store.load(r.Context())
-	c.mu.Unlock()
-	if err != nil {
-		adminError(w, 503, "gateway_unavailable", "")
-		return
-	}
-	after, err := effectiveGeneration(policy, candidate.Parent, time.Time{}, authority.overrides)
-	if err != nil {
-		adminError(w, http.StatusUnprocessableEntity, "candidate_invalid", "")
+	before, after, ok := c.candidateGeneration(w, r, id)
+	if !ok {
 		return
 	}
 	type flip struct {

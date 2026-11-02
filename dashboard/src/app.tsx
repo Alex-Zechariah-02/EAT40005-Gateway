@@ -15,6 +15,7 @@ import { Overrides } from './overrides'
 import { History } from './history'
 import { Account } from './account'
 import { AccountsView, ApisView, LiveTraffic, RequestLookup, TeamView } from './monitor'
+import { AccessCheckView, AdviceView, LimitsView, SecurityLogView } from './tools'
 import type { DesignerDraft } from './designer-model'
 import { setTheme, useTheme, type ThemeChoice } from './theme'
 import type { Handoff, View } from './views'
@@ -38,6 +39,7 @@ const navigation: { label: string; items: NavItem[] }[] = [
       { id: 'overview', label: 'Overview', icon: 'overview', needs: 'read' },
       { id: 'traffic', label: 'Live Traffic', icon: 'traffic', needs: 'read' },
       { id: 'lookup', label: 'Request Lookup', icon: 'lookup', needs: 'read' },
+      { id: 'security-log', label: 'Security Log', icon: 'log', needs: 'read_history' },
       { id: 'apis', label: 'APIs', icon: 'apis', needs: 'read' },
     ],
   },
@@ -46,6 +48,7 @@ const navigation: { label: string; items: NavItem[] }[] = [
     items: [
       { id: 'designer', label: 'Policy', icon: 'permit', needs: 'read' },
       { id: 'policy', label: 'Versions', icon: 'versions', needs: 'read' },
+      { id: 'advice', label: 'Advice', icon: 'advice', needs: 'read' },
     ],
   },
   {
@@ -57,13 +60,17 @@ const navigation: { label: string; items: NavItem[] }[] = [
   },
   {
     label: 'Access',
-    items: [{ id: 'accounts', label: 'Accounts', icon: 'accounts', needs: 'read' }],
+    items: [
+      { id: 'accounts', label: 'Accounts', icon: 'accounts', needs: 'read' },
+      { id: 'access', label: 'Access Checker', icon: 'access', needs: 'read' },
+    ],
   },
   {
     label: 'Administration',
     items: [
       { id: 'history', label: 'History', icon: 'history', needs: 'read_history' },
       { id: 'team', label: 'Team', icon: 'team', needs: 'read' },
+      { id: 'limits', label: 'Limits', icon: 'limits', needs: 'read' },
       { id: 'account', label: 'My Account', icon: 'account', needs: 'read' },
     ],
   },
@@ -73,6 +80,10 @@ const titles: Record<View, string> = {
   overview: 'Overview',
   traffic: 'Live Traffic',
   lookup: 'Request Lookup',
+  'security-log': 'Security Log',
+  access: 'Access Checker',
+  limits: 'Limits',
+  advice: 'Advice',
   apis: 'APIs',
   designer: 'Policy',
   policy: 'Versions',
@@ -498,6 +509,10 @@ function Shell(props: {
           {view === 'accounts' ? <AccountsView {...viewProps} /> : null}
           {view === 'history' ? <History {...viewProps} /> : null}
           {view === 'team' ? <TeamView {...viewProps} /> : null}
+          {view === 'security-log' ? <SecurityLogView {...viewProps} /> : null}
+          {view === 'access' ? <AccessCheckView {...viewProps} /> : null}
+          {view === 'limits' ? <LimitsView {...viewProps} /> : null}
+          {view === 'advice' ? <AdviceView {...viewProps} /> : null}
           {view === 'account' ? <Account
               admin={admin}
               session={session}

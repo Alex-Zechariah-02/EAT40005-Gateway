@@ -11,6 +11,10 @@ import {
   UsersThree,
   UserCircle,
   Stack,
+  Scroll,
+  Key,
+  Gauge,
+  Lightbulb,
 } from '@phosphor-icons/react'
 
 // The navigation's icons, one per view.
@@ -27,6 +31,10 @@ const icons = {
   account: UserCircle,
   permit: ShieldCheck,
   versions: Stack,
+  log: Scroll,
+  access: Key,
+  limits: Gauge,
+  advice: Lightbulb,
 }
 export type IconName = keyof typeof icons
 

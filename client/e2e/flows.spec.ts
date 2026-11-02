@@ -273,6 +273,8 @@ test.describe.serial('Fetch roles on the real services', () => {
     const panel = support1.getByRole('region', { name: 'Ticket', exact: true })
     await expect(panel.getByRole('heading', { name: markup })).toBeVisible()
     expect(await support1.locator('img[src="x"]').count()).toBe(0)
+    // Staff read the customer's name, not the account ID.
+    await expect(panel.getByRole('list', { name: 'Conversation' }).getByText('Customer 1', { exact: true })).toBeVisible()
     const linked = panel.getByRole('heading', { name: 'Linked order' }).locator('..')
     await expect(linked).toContainText('#1001')
     await expect(linked).toContainText('cash on delivery')
@@ -285,7 +287,7 @@ test.describe.serial('Fetch roles on the real services', () => {
     const admin2 = await person(browser, 'admin2@fetch.test')
     await admin2.goto(`${siteURL}/support?ticket=${ticket}`, { waitUntil: 'networkidle' })
     const seenByFarah = admin2.getByRole('region', { name: 'Ticket', exact: true }).getByRole('list', { name: 'Conversation' })
-    await expect(seenByFarah.getByText('support-01 · Fetch support', { exact: true })).toBeVisible()
+    await expect(seenByFarah.getByText('Support 1 · Fetch support', { exact: true })).toBeVisible()
     await expect(seenByFarah.getByText(/^You\b/)).toHaveCount(0)
     await panel.getByRole('button', { name: 'Mark resolved' }).click()
     await expect(panel).toContainText('This request is resolved.')
@@ -293,7 +295,7 @@ test.describe.serial('Fetch roles on the real services', () => {
     const seenByAisyah = customer1.getByRole('list', { name: 'Conversation' })
     await expect(seenByAisyah).toContainText('we have refunded it')
     await expect(seenByAisyah.getByText('You', { exact: true })).toBeVisible()
-    await expect(seenByAisyah.getByText('Fetch support', { exact: true })).toBeVisible()
+    await expect(seenByAisyah.getByText('Support agent from Fetch', { exact: true })).toBeVisible()
     expect(dialogs).toBe(0)
     record('support', { ticket })
   })
@@ -412,6 +414,38 @@ test.describe.serial('Fetch roles on the real services', () => {
     await api.unblock('cust-002')
     await customer2.reload({ waitUntil: 'networkidle' })
     await expect(customer2.getByRole('heading', { level: 1, name: 'My orders' })).toBeVisible()
+  })
+
+  test('the account page shows what Fetch Accounts returns, the wallet and this tab’s address, and signs out', async ({ browser }) => {
+    // A page of its own: this test signs out, which must not touch the
+    // shared Customer 3 page the other tests use.
+    const customer3 = await person(browser, null)
+    await signIn(customer3, siteURL, 'customer3@fetch.test')
+    await customer3.getByRole('button', { name: /^Account: Customer 3/ }).click()
+    await customer3.getByRole('menuitem', { name: 'Your account' }).click()
+    await expect(customer3).toHaveURL(/\/account$/)
+    const profile = customer3.getByRole('region', { name: 'Customer 3' })
+    await expect(profile).toContainText('customer3@fetch.test')
+    await expect(profile).toContainText('cust-003')
+    await expect(customer3.getByRole('region', { name: 'Fetch wallet' })).toContainText(/RM\s?\d/)
+    const address = customer3.getByRole('region', { name: 'Delivery address' })
+    await address.getByRole('button', { name: /^(Add an address|Change)$/ }).click()
+    await address.getByLabel('Street address').fill('12 Jalan Telawi 3')
+    await address.getByLabel('Postcode').fill('59100')
+    await address.getByRole('button', { name: 'Save address' }).click()
+    await expect(address).toContainText('12 Jalan Telawi 3')
+    await shot(customer3, 'flows-08-account')
+    await customer3.getByRole('button', { name: 'Sign out' }).click()
+    await expect(customer3).toHaveURL(siteURL + '/')
+    await customer3.goto(siteURL + '/account', { waitUntil: 'networkidle' })
+    await expect(customer3.getByRole('heading', { name: 'Sign in to continue' })).toBeVisible()
+
+    // Staff see their profile and their workspace, without a wallet.
+    const rider1 = await person(browser, 'rider1@fetch.test')
+    await rider1.goto(siteURL + '/account', { waitUntil: 'networkidle' })
+    await expect(rider1.getByRole('region', { name: 'Rider 1' })).toContainText('rider-01')
+    await expect(rider1.getByRole('region', { name: 'Fetch wallet' })).toHaveCount(0)
+    await expect(rider1.getByRole('link', { name: 'Go to your workspace' })).toHaveAttribute('href', '/rider')
   })
 
   test('the security lab: every attack matches the baseline, refusals reach no service, forged identity headers change nothing and a blocked account is named', async ({ browser }) => {

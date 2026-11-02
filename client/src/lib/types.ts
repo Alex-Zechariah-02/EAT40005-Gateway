@@ -63,11 +63,12 @@ export interface Jobs { available: Order[]; mine: Order[] }
 export interface Ticket {
   id: string
   customer: string
+  customer_name: string
   order: string | null
   request_ref: string | null
   subject: string
   status: 'open' | 'answered' | 'resolved'
-  messages: { from: 'customer' | 'agent'; author: string; body: string; at: string }[]
+  messages: { from: 'customer' | 'agent'; author: string; author_name: string; body: string; at: string }[]
   created_at: string
 }
 

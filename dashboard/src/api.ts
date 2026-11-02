@@ -324,6 +324,10 @@ const messages: Record<string, Message> = {
     title: 'The gateway could not finish this',
     action: 'For a change, this does not show whether it was applied. Check its outcome in History before sending anything else.',
   },
+  cursor_gone: {
+    title: 'The security log file this search stopped in has been archived',
+    action: 'Start the search again from the newest records.',
+  },
   candidate_invalid: {
     title: 'This draft change cannot be read as a complete policy',
     action: 'Its impact cannot be previewed. Save a new draft from the current policy.',

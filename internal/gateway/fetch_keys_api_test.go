@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestFetchKeyReload(t *testing.T) {
@@ -39,6 +40,10 @@ func TestFetchKeyReload(t *testing.T) {
 		code, body, _ := e.as(s, http.MethodPost, "/admin/keys/reload", "", "Idempotency-Key", key)
 		return code, body
 	}
+	// A token verified before the reload is still counted after it.
+	if code, body := e.get("/a/x", "Authorization", "Bearer "+issuer.tokenFor(t, "alice")); code != http.StatusOK {
+		t.Fatalf("before reload: %d %s", code, body)
+	}
 	code, reloaded := post("keys-reload-accept-01")
 	if code != http.StatusOK {
 		t.Fatalf("valid reload: %d %s", code, reloaded)
@@ -63,6 +68,28 @@ func TestFetchKeyReload(t *testing.T) {
 	}
 	if code, body := e.get("/a/x", "Authorization", "Bearer "+newToken); code != 200 {
 		t.Fatalf("failed reload lost the old set: %d %s", code, body)
+	}
+	// Each key counts the tokens it verified since the gateway started; a
+	// token refused at the signature check counts for no key.
+	if code, _ := e.get("/a/x", "Authorization", "Bearer "+oldToken[:len(oldToken)-4]+"AAAA"); code != http.StatusUnauthorized {
+		t.Fatalf("tampered token: %d", code)
+	}
+	code, body, _ = e.as(s, http.MethodGet, "/admin/keys", "")
+	var used struct {
+		Items []struct {
+			Kid            string     `json:"kid"`
+			Verified       uint64     `json:"verified"`
+			LastVerifiedAt *time.Time `json:"last_verified_at"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(body), &used); code != 200 || err != nil || len(used.Items) != 2 {
+		t.Fatalf("key use: %d %s (%v)", code, body, err)
+	}
+	for _, item := range used.Items {
+		want := map[string]uint64{"test-a": 2, "test-b": 2}[item.Kid]
+		if item.Verified != want || item.LastVerifiedAt == nil || time.Since(*item.LastVerifiedAt) > time.Minute {
+			t.Errorf("key %s: verified %d (want %d), last %v", item.Kid, item.Verified, want, item.LastVerifiedAt)
+		}
 	}
 	// Retiring a key is independent of policy rollback.
 	trust.Keys = []VerificationKey{{Kid: "test-b", PublicKeyFile: keyFile}}

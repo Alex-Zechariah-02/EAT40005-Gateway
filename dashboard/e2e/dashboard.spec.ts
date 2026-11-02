@@ -564,9 +564,10 @@ test.describe.serial('dashboard', () => {
     expect(changesIdle.length).toBeGreaterThanOrEqual(4)
     expect(changesIdle.length).toBeLessThanOrEqual(8)
     // The Overview also rereads its traffic figures and recent refusals each
-    // second, and nothing more.
+    // second and its alerts every 5 seconds, and nothing more.
     const idle = await idleReads('Overview')
-    expect(idle.filter((path) => path !== '/admin/traffic' && path !== '/admin/events' && path !== '/admin/status')).toEqual([])
+    expect(idle.filter((path) => path !== '/admin/traffic' && path !== '/admin/events' && path !== '/admin/status' && path !== '/admin/alerts')).toEqual([])
+    expect(idle.filter((path) => path === '/admin/alerts').length).toBeLessThanOrEqual(2)
     for (const path of ['/admin/traffic', '/admin/events', '/admin/status']) {
       expect(idle.filter((p) => p === path).length, path).toBeGreaterThanOrEqual(4)
       expect(idle.filter((p) => p === path).length, path).toBeLessThanOrEqual(8)
@@ -1975,6 +1976,74 @@ test.describe.serial('dashboard', () => {
     } finally {
       await page.close()
     }
+  })
+
+  test('the security log finds a request in the log files, the access checker answers with the gateway, limits show their use and keys show their use', async () => {
+    const refused = await raw('GET', siteURL + '/reports/summary', { Authorization: `Bearer ${token('cust-001')}` })
+    expect(refused.status).toBe(403)
+    const ref = String(refused.headers['x-request-id'])
+
+    await go(admin, 'Security Log')
+    await admin.getByLabel('Reference (Ref)').fill(ref)
+    // The log writer is asynchronous: search until the record is there.
+    await expect(async () => {
+      await admin.getByRole('button', { name: 'Search', exact: true }).click()
+      await expect(admin.getByRole('heading', { name: '1 request', exact: true })).toBeVisible({ timeout: 1000 })
+    }).toPass()
+    await expect(admin.getByText(/This is everything the gateway still holds\./)).toBeVisible()
+    await expect(admin.getByRole('link', { name: 'Export CSV' })).toHaveAttribute('href', new RegExp(`ref=${ref}.*format=csv`))
+    await shot(admin, '44-security-log')
+
+    await go(admin, 'Access Checker')
+    await admin.getByLabel('Role', { exact: true }).selectOption('CUSTOMER')
+    await admin.getByLabel('Endpoint', { exact: true }).selectOption('reports.summary')
+    await admin.getByRole('button', { name: 'Check Access' }).click()
+    const verdict = admin.getByRole('region', { name: /^Refused/ })
+    await expect(verdict).toContainText('None of these roles has permission for the endpoint.')
+    await admin.getByLabel('Role', { exact: true }).selectOption('OPERATIONS')
+    await admin.getByRole('button', { name: 'Check Access' }).click()
+    const allowed = admin.getByRole('region', { name: /^Allowed/ })
+    await expect(allowed).toContainText('These were not checked.')
+    await shot(admin, '45-access-checker')
+
+    await go(admin, 'Limits')
+    await expect(admin.getByRole('row', { name: /Administrator Sessions/ })).toContainText(/\d+ of 64/)
+    await expect(admin.getByRole('row', { name: /Security Log Files/ })).toContainText(/1 of \d+/)
+    await shot(admin, '46-limits')
+
+    await go(admin, 'Team')
+    await expect(admin.getByRole('region', { name: 'Signing Keys' }).getByText('In Use', { exact: true }).first()).toBeVisible()
+
+    // Advice is the gateway's fixed checks; unused permissions wait for
+    // enough traffic and say why.
+    await go(admin, 'Advice')
+    await expect(admin.getByRole('heading', { name: 'Settings to Review' })).toBeVisible()
+    await expect(admin.getByText(/Shown once the requests kept span 60 minutes/)).toBeVisible()
+    await expect(admin.getByText(/Checked with rule set checks-0\.1/)).toBeVisible()
+    await shot(admin, '47-advice')
+
+    // The Overview shows exactly the alerts the gateway reports. Whether a
+    // refusal spike is raised depends on this suite's earlier traffic, so the
+    // spike rule itself is tested in the gateway against exact traffic.
+    const reported = (await adminCall('GET', '/admin/alerts')).body as { alerts: { message: string }[] }
+    await go(admin, 'Overview')
+    const alerts = admin.getByRole('status').filter({ hasText: /^\d+ alerts?/ })
+    if (reported.alerts.length) await expect(alerts).toContainText(reported.alerts[0].message)
+    else await expect(alerts).toHaveCount(0)
+    // Rendering of a critical alert, from an answer in the gateway's shape.
+    await admin.route('**/admin/alerts', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ rules: 'checks-0.1', evaluated_at: new Date().toISOString(), alerts: [{ id: 'A2', severity: 'critical', object: 'security_log', message: 'The security log cannot be written, so the gateway refuses requests it cannot record.' }] }),
+      }),
+    )
+    await go(admin, 'Changes')
+    await go(admin, 'Overview')
+    await expect(alerts).toContainText('Critical')
+    await expect(alerts).toContainText('The security log cannot be written')
+    await shot(admin, '48-overview-alert')
+    await admin.unroute('**/admin/alerts')
   })
 
   test('request lookup keeps its search while moving between views without putting the account in the address, and a miss says what was searched', async () => {

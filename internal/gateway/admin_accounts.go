@@ -75,8 +75,28 @@ func (c *Controller) finishControl(ctx context.Context, t transitionRecord, resu
 	return body, status
 }
 
+// handleKeys lists the trusted keys with how many tokens each verified since
+// the gateway started and when it last did; counts only, no key material.
 func (c *Controller) handleKeys(w http.ResponseWriter, r *http.Request, who caller) {
-	writeJSON(w, http.StatusOK, list{Items: c.verifier.Load().info})
+	type keyReport struct {
+		keyInfo
+		Verified       uint64     `json:"verified"`
+		LastVerifiedAt *time.Time `json:"last_verified_at"`
+	}
+	v := c.verifier.Load()
+	items := make([]keyReport, 0, len(v.info))
+	for _, info := range v.info {
+		report := keyReport{keyInfo: info}
+		if use := v.uses[info.Kid]; use != nil {
+			report.Verified = use.verified.Load()
+			if last := use.lastNano.Load(); last != 0 {
+				at := time.Unix(0, last).UTC()
+				report.LastVerifiedAt = &at
+			}
+		}
+		items = append(items, report)
+	}
+	writeJSON(w, http.StatusOK, list{Items: items})
 }
 
 func noRequestBody(w http.ResponseWriter, r *http.Request) bool {
@@ -119,7 +139,10 @@ func (c *Controller) reloadKeys(ctx context.Context, t transitionRecord) (json.R
 	if err != nil {
 		return c.rejectControl(ctx, t, "KEYS_INVALID", now)
 	}
-	return c.finishControl(ctx, t, list{Items: loaded.info}, nil, func() { c.verifier.Store(loaded) }, now)
+	return c.finishControl(ctx, t, list{Items: loaded.info}, nil, func() {
+		loaded.adoptUses(c.verifier.Load())
+		c.verifier.Store(loaded)
+	}, now)
 }
 
 func (c *Controller) handleBlockedAccounts(w http.ResponseWriter, r *http.Request, who caller) {

@@ -1,5 +1,6 @@
 import type { Activation, OverridesView, Page, Revision, Status } from './api'
 import { useGatewayState, useRemembered, useResource } from './hooks'
+import { Alerts } from './tools'
 import { overrideChange } from './overrides'
 import { OverviewLive } from './monitor'
 import { TrialDecision } from './provisional'
@@ -22,6 +23,7 @@ export function Overview({ admin, can, open }: ViewProps) {
         <ReadStamp okAt={state.last?.at ?? null} failed={state.failed} loading={state.loading} onRefresh={state.refresh} />
       </PageHeader>
       {state.reply && state.reply.kind !== 'ok' ? <Problem reply={state.reply} /> : null}
+      <Alerts admin={admin} open={open} />
       {status && blocked ? <Admission status={status} /> : null}
       {status && (status.admission === 'bootstrap_locked' || status.admission === 'recovery_required') ? (
         <FirstBase recovery={status.admission === 'recovery_required'} manage={can('manage_policy')} goChanges={() => open('candidates')} />

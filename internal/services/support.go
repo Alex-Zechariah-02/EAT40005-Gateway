@@ -8,20 +8,24 @@ import (
 )
 
 type Message struct {
-	From   string    `json:"from"`
-	Author string    `json:"author"`
-	Body   string    `json:"body"`
-	At     time.Time `json:"at"`
+	From       string    `json:"from"`
+	Author     string    `json:"author"`
+	AuthorName string    `json:"author_name"`
+	Body       string    `json:"body"`
+	At         time.Time `json:"at"`
 }
 type Ticket struct {
-	ID         string    `json:"id"`
-	Customer   string    `json:"customer"`
-	Order      *string   `json:"order"`
-	RequestRef *string   `json:"request_ref"`
-	Subject    string    `json:"subject"`
-	Status     string    `json:"status"`
-	Messages   []Message `json:"messages"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID       string `json:"id"`
+	Customer string `json:"customer"`
+	// CustomerName is the customer's display name, so staff need not read
+	// account IDs.
+	CustomerName string    `json:"customer_name"`
+	Order        *string   `json:"order"`
+	RequestRef   *string   `json:"request_ref"`
+	Subject      string    `json:"subject"`
+	Status       string    `json:"status"`
+	Messages     []Message `json:"messages"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 type support struct {
 	tickets []Ticket
@@ -31,7 +35,11 @@ type support struct {
 func (d *support) reset() {
 	at := time.Date(2026, 10, 27, 3, 0, 0, 0, time.UTC)
 	order := "ORD-1002"
-	d.tickets = []Ticket{{"TKT-1001", "cust-002", &order, nil, "Missing item", "open", []Message{{"customer", "cust-002", "One item was missing from my delivery.", at}}, at}}
+	d.tickets = []Ticket{{
+		ID: "TKT-1001", Customer: "cust-002", CustomerName: displayName("cust-002"), Order: &order, Subject: "Missing item", Status: "open",
+		Messages:  []Message{newMessage("customer", "cust-002", "One item was missing from my delivery.", at)},
+		CreatedAt: at,
+	}}
 	d.next = 1002
 }
 func (d *support) snapshot() any {
@@ -73,7 +81,10 @@ func (d *support) handle(r *http.Request, body []byte) result {
 			return failure(400, "invalid_request", "Check the ticket subject, message and references.", "")
 		}
 		now := time.Now().UTC()
-		ticket := Ticket{fmt.Sprintf("TKT-%04d", d.next), subject, request.Order, request.RequestRef, request.Subject, "open", []Message{{"customer", subject, request.Message, now}}, now}
+		ticket := Ticket{
+			ID: fmt.Sprintf("TKT-%04d", d.next), Customer: subject, CustomerName: displayName(subject), Order: request.Order, RequestRef: request.RequestRef,
+			Subject: request.Subject, Status: "open", Messages: []Message{newMessage("customer", subject, request.Message, now)}, CreatedAt: now,
+		}
 		d.next++
 		d.tickets = append(d.tickets, ticket)
 		return result{status: 201, body: map[string]any{"ticket": ticket}, effect: "created " + ticket.ID}
@@ -139,7 +150,7 @@ func (d *support) handle(r *http.Request, body []byte) result {
 			from = "agent"
 			ticket.Status = "answered"
 		}
-		ticket.Messages = append(ticket.Messages, Message{from, subject, request.Message, time.Now().UTC()})
+		ticket.Messages = append(ticket.Messages, newMessage(from, subject, request.Message, time.Now().UTC()))
 		return result{status: 200, body: map[string]any{"ticket": *ticket}, effect: "replied " + id}
 	}
 	if id, ok := oneID(r.URL.Path, "/support/resolve/"); ok && r.Method == "POST" {
@@ -154,4 +165,17 @@ func (d *support) handle(r *http.Request, body []byte) result {
 		return result{status: 200, body: map[string]any{"ticket": *ticket}, effect: "resolved " + id}
 	}
 	return notFound()
+}
+
+func newMessage(from, author, body string, at time.Time) Message {
+	return Message{From: from, Author: author, AuthorName: displayName(author), Body: body, At: at}
+}
+
+// displayName is the seed user's name for an account ID. An unknown ID, which
+// a verified token cannot normally carry, is shown as the ID itself.
+func displayName(id string) string {
+	if user, ok := userByID(id); ok {
+		return user.Name
+	}
+	return id
 }

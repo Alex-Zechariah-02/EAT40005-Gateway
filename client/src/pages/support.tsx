@@ -52,7 +52,7 @@ export function SupportPage() {
                     <span className="min-w-0 flex-1">
                       <span className="flex flex-wrap items-center gap-2"><span className="font-bold">{t.subject}</span><Badge tone={ticketTone[t.status]}>{ticketStatus[t.status]}</Badge></span>
                       <span className="mt-1 block truncate text-sm text-ink-2">{t.messages.at(-1)?.body}</span>
-                      <span className="mt-1 block text-xs text-ink-3">{reference(t.id)} · {t.customer} · {when(t.created_at)}</span>
+                      <span className="mt-1 block text-xs text-ink-3">{reference(t.id)} · {t.customer_name} · {when(t.created_at)}</span>
                     </span>
                     <CaretRight size={16} className="text-ink-3" aria-hidden="true" />
                   </button>

@@ -36,7 +36,20 @@ func TestSupportContract(t *testing.T) {
 	}
 	w := serviceRequest(s, "GET", "/support/ticket/TKT-1002", "", "cust-001", "CUSTOMER", "")
 	var body map[string]map[string]json.RawMessage
-	if json.Unmarshal(w.Body.Bytes(), &body) != nil || len(body["ticket"]) != 8 {
+	if json.Unmarshal(w.Body.Bytes(), &body) != nil || len(body["ticket"]) != 9 {
 		t.Fatalf("ticket fields: %s", w.Body)
+	}
+	// Staff read names, not account IDs: the ticket and each message carry
+	// the seed user's display name.
+	var named struct {
+		Ticket struct {
+			CustomerName string `json:"customer_name"`
+			Messages     []struct {
+				AuthorName string `json:"author_name"`
+			} `json:"messages"`
+		} `json:"ticket"`
+	}
+	if json.Unmarshal(w.Body.Bytes(), &named) != nil || named.Ticket.CustomerName != "Customer 1" || len(named.Ticket.Messages) == 0 || named.Ticket.Messages[0].AuthorName != "Customer 1" {
+		t.Fatalf("ticket names: %s", w.Body)
 	}
 }

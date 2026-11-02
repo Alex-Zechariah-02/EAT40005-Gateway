@@ -25,6 +25,7 @@ const RiderPage = lazy(() => import('./pages/rider').then((m) => ({ default: m.R
 const SupportPage = lazy(() => import('./pages/support').then((m) => ({ default: m.SupportPage })))
 const OpsPage = lazy(() => import('./pages/ops').then((m) => ({ default: m.OpsPage })))
 const LabPage = lazy(() => import('./pages/lab').then((m) => ({ default: m.LabPage })))
+const AccountPage = lazy(() => import('./pages/account').then((m) => ({ default: m.AccountPage })))
 
 export function App() {
   const { path, params } = useLocation()
@@ -57,11 +58,13 @@ function Route({ path, item }: { path: string; item: string | null }) {
   // The security lab is open to anyone, signed in or not: it shows what the
   // gateway refuses, as whoever is signed in on this tab.
   if (path === '/lab') return <LabPage />
+  if (path === '/account') return <Gate><AccountPage /></Gate>
   return <NotFound />
 }
 
 // Gate only chooses what to show: the gateway still decides every request.
-function Gate({ role, children }: { role: Role; children: ReactNode }) {
+// Gate asks for sign-in, and for role when one is given.
+function Gate({ role, children }: { role?: Role; children: ReactNode }) {
   const { session } = useSession()
   const { path, params } = useLocation()
   const here = path + (params.size ? `?${params}` : '')
@@ -71,12 +74,12 @@ function Gate({ role, children }: { role: Role; children: ReactNode }) {
         className="mt-10"
         icon={<LockKey size={26} weight="bold" />}
         title="Sign in to continue"
-        body={`This page shows your own ${role === 'CUSTOMER' ? 'orders and details' : 'work'}, so Fetch needs to know who you are.`}
+        body={`This page shows your own ${!role ? 'account' : role === 'CUSTOMER' ? 'orders and details' : 'work'}, so Fetch needs to know who you are.`}
         action={<ButtonLink to={`/signin?next=${encodeURIComponent(here)}`}>Sign in</ButtonLink>}
       />
     )
   }
-  if (!hasRole(session.user, role)) {
+  if (role && !hasRole(session.user, role)) {
     return (
       <Empty
         className="mt-10"

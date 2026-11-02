@@ -15,6 +15,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
@@ -67,6 +68,28 @@ type verifier struct {
 	keys        map[string]*rsa.PublicKey
 	info        []keyInfo
 	fingerprint string // SHA-256 of the complete named key set
+	// uses counts verified tokens per key since the gateway started. The map
+	// is fixed when the verifier is built; a reload carries a kept key's
+	// counter over (adoptUses), so only the counters' atomics change.
+	uses map[string]*keyUse
+}
+
+// keyUse counts the tokens one key verified and when it last did. It is read
+// by the keys report and written by verify with atomics only, so counting
+// adds no lock to a request.
+type keyUse struct {
+	verified atomic.Uint64
+	lastNano atomic.Int64
+}
+
+// adoptUses gives v the counters of the keys it shares with previous, before
+// v is published, so a reload keeps their counts.
+func (v *verifier) adoptUses(previous *verifier) {
+	for kid := range v.uses {
+		if use := previous.uses[kid]; use != nil {
+			v.uses[kid] = use
+		}
+	}
 }
 
 // loadVerifier reads and validates the trust configuration. The key file must
@@ -79,7 +102,7 @@ func loadVerifier(c TrustConfig) (*verifier, error) {
 	if len(c.Keys) == 0 || len(c.Keys) > maxVerificationKeys {
 		return nil, fmt.Errorf("keys must contain 1 to %d named public keys", maxVerificationKeys)
 	}
-	v := &verifier{issuer: c.Issuer, audience: c.Audience, keys: map[string]*rsa.PublicKey{}, info: []keyInfo{}}
+	v := &verifier{issuer: c.Issuer, audience: c.Audience, keys: map[string]*rsa.PublicKey{}, info: []keyInfo{}, uses: map[string]*keyUse{}}
 	loaded := time.Now().UTC()
 	for _, entry := range c.Keys {
 		if checkID(entry.Kid, "kid") != nil || v.keys[entry.Kid] != nil {
@@ -90,6 +113,7 @@ func loadVerifier(c TrustConfig) (*verifier, error) {
 			return nil, err
 		}
 		v.keys[entry.Kid] = key
+		v.uses[entry.Kid] = &keyUse{}
 		v.info = append(v.info, keyInfo{Kid: entry.Kid, Fingerprint: "sha256:" + fingerprint, LoadedAt: loaded})
 	}
 	slices.SortFunc(v.info, func(a, b keyInfo) int { return strings.Compare(a.Kid, b.Kid) })
@@ -221,7 +245,13 @@ func (v *verifier) verify(token string, now time.Time) (verifiedToken, string) {
 	if err != nil {
 		return verifiedToken{}, "invalid_signature"
 	}
-	return v.checkClaims(payload, now)
+	verified, reason := v.checkClaims(payload, now)
+	if reason == "" {
+		use := v.uses[kid]
+		use.verified.Add(1)
+		use.lastNano.Store(now.UnixNano())
+	}
+	return verified, reason
 }
 
 // checkHeader allows only the members "alg" (exactly RS256), "typ" (JWT) and

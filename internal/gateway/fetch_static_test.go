@@ -28,7 +28,7 @@ func TestFetchWebsiteTargets(t *testing.T) {
 	pages := []string{
 		"/", "/food", "/mart", "/store/MER-001", "/item/ITM-001", "/cart", "/checkout",
 		"/my-orders", "/my-orders/ORD-1001", "/help", "/help/TKT-1001", "/signin",
-		"/merchant", "/rider", "/support", "/ops", "/lab",
+		"/merchant", "/rider", "/support", "/ops", "/lab", "/account",
 	}
 	for _, method := range []string{http.MethodGet, http.MethodHead} {
 		for _, target := range pages {

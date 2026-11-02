@@ -3680,10 +3680,11 @@ details[open] > summary::before {
     grid-template-columns: 68px minmax(0, 1fr);
   }
 
+  /* Tips are drawn by their own layer, so the strip can scroll like the
+     full sidebar when the window is shorter than its icons. */
   .is-rail .sidebar {
     align-items: center;
     padding: 16px 10px 12px;
-    overflow: visible;
   }
 
   .is-rail .sidebar-head {
@@ -3771,12 +3772,6 @@ details[open] > summary::before {
 @media (max-width: 960px) {
   .sidebar-toggle {
     display: none;
-  }
-}
-
-@media (max-height: 760px) and (min-width: 961px) {
-  .is-rail .sidebar {
-    overflow-y: auto;
   }
 }
 
@@ -4286,4 +4281,74 @@ dialog.wizard {
   grid-template-columns: repeat(auto-fit, minmax(min(26rem, 100%), 1fr));
   gap: 16px;
   align-items: start;
+}
+
+/* Security log search, access checker and limits */
+.log-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  align-items: end;
+  gap: 12px 14px;
+}
+
+.log-form .field {
+  margin-bottom: 0;
+}
+
+.log-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.log-form-hint {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.log-coverage {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding-block: 12px 16px;
+}
+
+.log-coverage .hint {
+  margin: 0;
+}
+
+.access-verdict {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-lg);
+}
+
+.limit-meter {
+  display: block;
+  width: 10rem;
+  height: 6px;
+  margin-top: 6px;
+}
+
+.log-form .field-wide {
+  grid-column: span 2;
+}
+
+@media (max-width: 640px) {
+  .log-form .field-wide {
+    grid-column: auto;
+  }
+}
+
+.alert-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
 }

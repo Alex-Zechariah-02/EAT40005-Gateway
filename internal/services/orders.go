@@ -187,7 +187,7 @@ func (d *orders) place(r *http.Request, body []byte, key string) result {
 	total := reserved.Subtotal + fee
 	if request.Payment == "wallet" && d.wallets[subject] < total {
 		d.release(r.Context(), reservationKey)
-		return failure(409, "insufficient_wallet", "There is not enough money in this demo wallet.", "payment")
+		return failure(409, "insufficient_wallet", "Your Fetch wallet balance is too low for this order.", "payment")
 	}
 	now := time.Now().UTC()
 	created := Order{ID: fmt.Sprintf("ORD-%04d", d.next), Customer: subject, Merchant: request.Merchant, MerchantName: reserved.Merchant.Name, Items: reserved.Items, Subtotal: reserved.Subtotal, DeliveryFee: fee, Total: total, Payment: request.Payment, Address: request.Address, Note: request.Note, Status: "placed", Timeline: []TimelineEntry{{"placed", now}}, CreatedAt: now}

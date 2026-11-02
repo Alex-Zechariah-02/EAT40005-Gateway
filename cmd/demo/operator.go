@@ -244,6 +244,9 @@ func keys(args []string) error {
 		return err
 	}
 	defer admin.signOut()
+	if args[0] == "retire" {
+		warnRecentKeyUse(admin, kid, time.Now())
+	}
 	selected, err := changeKeys(dir, admin, args[0], kid)
 	if err == nil {
 		fmt.Printf("keys %s complete; key %s\n", args[0], selected)
@@ -351,4 +354,47 @@ func changeKeys(dir string, admin *adminClient, action, kid string) (string, err
 		}
 	}
 	return kid, nil
+}
+
+// recentKeyUse is how recently a key must have verified a token for retiring
+// it to warrant a warning.
+const recentKeyUse = 15 * time.Minute
+
+// warnRecentKeyUse warns, without stopping the retirement, when the gateway
+// verified a token with the key recently: tokens it signed stop working once
+// it is retired. A failed read is reported, not treated as "unused".
+func warnRecentKeyUse(admin *adminClient, kid string, now time.Time) {
+	_, body, err := admin.send("GET", "/admin/keys", nil, nil, 200)
+	var keys struct {
+		Items []keyUse `json:"items"`
+	}
+	if err == nil {
+		err = json.Unmarshal(body, &keys)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not read when key %s was last used: %v\n", kid, err)
+		return
+	}
+	if message := keyUseWarning(keys.Items, kid, now); message != "" {
+		fmt.Fprintln(os.Stderr, message)
+	}
+}
+
+// keyUse is the part of a trusted key's report that the warning reads.
+type keyUse struct {
+	Kid            string     `json:"kid"`
+	LastVerifiedAt *time.Time `json:"last_verified_at"`
+}
+
+// keyUseWarning words the warning for kid, or returns "" when the key has not
+// verified a token within recentKeyUse.
+func keyUseWarning(items []keyUse, kid string, now time.Time) string {
+	for _, item := range items {
+		if item.Kid != kid || item.LastVerifiedAt == nil || now.Sub(*item.LastVerifiedAt) > recentKeyUse {
+			continue
+		}
+		ago := max(now.Sub(*item.LastVerifiedAt).Round(time.Second), 0)
+		return fmt.Sprintf("warning: key %s verified a token %s ago; tokens it signed will be refused once it is retired", kid, ago)
+	}
+	return ""
 }

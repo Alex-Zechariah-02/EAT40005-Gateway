@@ -181,7 +181,11 @@ type auditLog struct {
 	lost     atomic.Uint64 // events refused and not yet counted in the file
 	seq      atomic.Uint64
 	accepted atomic.Uint64 // events queued
-	written  atomic.Uint64 // queued events written and synced
+	// activeBytes and files copy size and rotated+1 for readers outside the
+	// writer (the limits read); only the writer stores them.
+	activeBytes atomic.Int64
+	files       atomic.Int64
+	written     atomic.Uint64 // queued events written and synced
 	// mu orders queueing against closing: enqueue holds it shared while it
 	// checks closing and queues, and close holds it exclusively while it sets
 	// closing and closes the queue. Neither blocks while holding it.
@@ -259,6 +263,7 @@ func (a *auditLog) open() (int64, error) {
 		}
 		a.size++
 	}
+	a.publishUsage()
 	return incomplete, nil
 }
 
@@ -332,6 +337,7 @@ func (a *auditLog) rotate() (string, error) {
 	a.file, a.size = file, 0
 	a.rotated++
 	a.next++
+	a.publishUsage()
 	return filepath.Base(rotated), nil
 }
 
@@ -470,7 +476,14 @@ func (a *auditLog) write(batch []auditEntry) error {
 		return errAuditFailed
 	}
 	a.size += int64(len(buffer))
+	a.publishUsage()
 	return nil
+}
+
+// publishUsage copies the writer's size and file count for other readers.
+func (a *auditLog) publishUsage() {
+	a.activeBytes.Store(a.size)
+	a.files.Store(int64(a.rotated) + 1)
 }
 
 func appendEvent(buffer []byte, e Event) []byte {

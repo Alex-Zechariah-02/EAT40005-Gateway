@@ -336,7 +336,7 @@ func websiteFile(r *http.Request) (name, contentType string, ok bool) {
 func isWebsitePage(target string) bool {
 	switch target {
 	case "/", "/food", "/mart", "/cart", "/checkout", "/my-orders", "/help", "/signin",
-		"/merchant", "/rider", "/support", "/ops", "/lab":
+		"/merchant", "/rider", "/support", "/ops", "/lab", "/account":
 		return true
 	}
 	if !isCanonical(target) {

@@ -73,7 +73,9 @@ func optionalString(value string) *string {
 	return &value
 }
 
-func (o *observations) record(event Event) {
+// requestView is the secret-free view of a request's final audit event, shared
+// by the live views and the security log search so both show the same fields.
+func requestView(event Event) requestEvent {
 	view := requestEvent{
 		RequestID: event.RequestID, Time: event.Time, Method: event.Method,
 		Path:      strings.Clone(event.Path[:min(len(event.Path), maxLoggedPath)]),
@@ -83,10 +85,6 @@ func (o *observations) record(event Event) {
 	}
 	if view.Roles == nil {
 		view.Roles = []string{}
-	}
-	var routingPath string
-	if event.Stages[stageCanonical] == stagePass {
-		routingPath = strings.Clone(event.Path[:min(len(event.Path), maxTargetLength+1)])
 	}
 	switch event.Decision {
 	case "forwarded":
@@ -116,6 +114,15 @@ func (o *observations) record(event Event) {
 		view.Stage = "record"
 	default:
 		view.Stage = "route"
+	}
+	return view
+}
+
+func (o *observations) record(event Event) {
+	view := requestView(event)
+	var routingPath string
+	if event.Stages[stageCanonical] == stagePass {
+		routingPath = strings.Clone(event.Path[:min(len(event.Path), maxTargetLength+1)])
 	}
 	o.mu.Lock()
 	defer o.mu.Unlock()

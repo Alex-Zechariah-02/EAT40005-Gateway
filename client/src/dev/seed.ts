@@ -114,8 +114,8 @@ orders.push({ ...order('ORD-0412', 'cust-001', 'MER-005', [['ITM-505', 1]], 'del
 
 export const tickets: Ticket[] = [
   {
-    id: 'TKT-1001', customer: 'cust-002', order: 'ORD-1002', request_ref: null, subject: 'Missing item', status: 'open',
-    messages: [{ from: 'customer', author: 'cust-002', body: 'My order arrived without the second bottle of milk.', at: at(600) }],
+    id: 'TKT-1001', customer: 'cust-002', customer_name: 'Customer 2', order: 'ORD-1002', request_ref: null, subject: 'Missing item', status: 'open',
+    messages: [{ from: 'customer', author: 'cust-002', author_name: 'Customer 2', body: 'My order arrived without the second bottle of milk.', at: at(600) }],
     created_at: at(600),
   },
 ]

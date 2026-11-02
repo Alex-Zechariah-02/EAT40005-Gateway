@@ -2,7 +2,7 @@ import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import { Menu } from '@base-ui/react/menu'
 import { Popover } from '@base-ui/react/popover'
 import {
-  CaretDown, Check, Info, Lifebuoy, MagnifyingGlass, MapPin, Moon, ShoppingBagOpen, SignOut, Sun, X,
+  CaretDown, Check, Info, Lifebuoy, MagnifyingGlass, MapPin, Moon, ShoppingBagOpen, SignOut, Sun, UserCircle, X,
 } from '@phosphor-icons/react'
 import { addressErrors, setAddress, useAddress } from './lib/address'
 import { basketCount, useBasket } from './lib/basket'
@@ -159,6 +159,7 @@ function AccountMenu({ user }: { user: User }) {
               </div>
             </div>
             <Menu.Separator className="mx-2 my-1 h-px bg-line" />
+            <Menu.Item className={menuItem} onClick={() => navigate('/account')}><UserCircle size={16} />Your account</Menu.Item>
             {hasRole(user, 'CUSTOMER') && (
               <>
                 <Menu.Item className={menuItem} onClick={() => navigate('/my-orders')}><ShoppingBagOpen size={16} />My orders</Menu.Item>

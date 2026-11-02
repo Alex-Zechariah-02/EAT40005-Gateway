@@ -93,6 +93,8 @@ interface SigningKey {
   kid: string
   fingerprint: string
   loaded_at: string
+  verified: number
+  last_verified_at: string | null
 }
 
 // The gateway's checks in the order it applies them; plain names first.
@@ -650,7 +652,7 @@ function TrafficCards(props: {
   )
 }
 
-function EventRows({ events, open, label }: { events: RequestEvent[]; open: (ref: string) => void; label: string }) {
+export function EventRows({ events, open, label }: { events: RequestEvent[]; open: (ref: string) => void; label: string }) {
   return (
     <TableScroll label={label}>
       <table className="events">
@@ -1190,7 +1192,7 @@ function RecentRefusals({ admin, pick }: { admin: Admin; pick: (ref: string) => 
   )
 }
 
-function EventDetail({ event }: { event: RequestEvent }) {
+export function EventDetail({ event }: { event: RequestEvent }) {
   return (
     <section className="section card card-pad event-detail" aria-labelledby="detail-title">
       <div className="card-head">
@@ -1838,6 +1840,7 @@ export function TeamView({ admin, can }: ViewProps) {
                       <th scope="col">Key ID</th>
                       <th scope="col">Fingerprint</th>
                       <th scope="col">Loaded</th>
+                      <th scope="col">Use Since the Gateway Started</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1852,6 +1855,15 @@ export function TeamView({ admin, can }: ViewProps) {
                         <td className="nowrap">
                           <Time value={x.loaded_at} />
                         </td>
+                        <td>
+                          {x.last_verified_at ? (
+                            <>
+                              <Badge tone="ok">In Use</Badge> <span className="num">{x.verified.toLocaleString()}</span> tokens, last <Time value={x.last_verified_at} />
+                            </>
+                          ) : (
+                            <span className="muted">Not used since the gateway started</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1865,7 +1877,7 @@ export function TeamView({ admin, can }: ViewProps) {
         </div>
       </section>
       <p className="hint section">
-        Signing keys are read from the gateway host, not the policy, so a policy rollback never restores a retired key.
+        Signing keys are read from the gateway host, not the policy, so a policy rollback never restores a retired key. Before retiring a key, check it is no longer in use: tokens it signed are refused once it is retired.
       </p>
     </>
   )

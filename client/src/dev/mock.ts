@@ -248,8 +248,8 @@ on('POST', /^\/support\/tickets$/, 'support.create', ['CUSTOMER'], 'support', ({
   const order = body?.order ? findOrder(String(body.order)) : null
   if (body?.order && (!order || order.customer !== user!.id)) return err(422, 'invalid_change', 'That order is not one of yours.', 'order')
   const ticket: Ticket = {
-    id: `TKT-${1001 + seed.tickets.length}`, customer: user!.id, order: order?.id ?? null, request_ref: body?.request_ref ? String(body.request_ref) : null,
-    subject: String(body!.subject), status: 'open', messages: [{ from: 'customer', author: user!.id, body: String(body!.message), at: now() }], created_at: now(),
+    id: `TKT-${1001 + seed.tickets.length}`, customer: user!.id, customer_name: user!.name, order: order?.id ?? null, request_ref: body?.request_ref ? String(body.request_ref) : null,
+    subject: String(body!.subject), status: 'open', messages: [{ from: 'customer', author: user!.id, author_name: user!.name, body: String(body!.message), at: now() }], created_at: now(),
   }
   seed.tickets.push(ticket)
   return [201, { ticket }]
@@ -268,7 +268,7 @@ on('POST', /^\/support\/reply\/([^/]+)$/, 'support.reply', ['CUSTOMER', 'SUPPORT
   if (!visibleTicket(user!, ticket)) return err(404, 'not_found', 'No such ticket.')
   if (ticket!.status === 'resolved') return err(409, 'invalid_transition', 'This ticket is resolved. Open a new one if you still need help.')
   const agent = user!.roles.includes('SUPPORT')
-  ticket!.messages.push({ from: agent ? 'agent' : 'customer', author: user!.id, body: String(body!.message), at: now() })
+  ticket!.messages.push({ from: agent ? 'agent' : 'customer', author: user!.id, author_name: user!.name, body: String(body!.message), at: now() })
   ticket!.status = agent ? 'answered' : 'open'
   return [200, { ticket }]
 })

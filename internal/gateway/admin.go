@@ -74,6 +74,10 @@ func (c *Controller) startAdmin() error {
 	c.route(mux, "GET /admin/events", permRead, c.handleEvents)
 	c.route(mux, "GET /admin/events/stream", permRead, c.handleEventStream)
 	c.route(mux, "GET /admin/traffic", permRead, c.handleTraffic)
+	c.route(mux, "GET /admin/limits", permRead, c.handleLimits)
+	c.route(mux, "POST /admin/access-check", permRead, c.handleAccessCheck)
+	c.route(mux, "GET /admin/advice", permRead, c.handleAdvice)
+	c.route(mux, "GET /admin/alerts", permRead, c.handleAlerts)
 	c.route(mux, "POST /admin/candidates/{id}/impact", permRead, c.handleImpact)
 	c.route(mux, "GET /admin/candidates", permRead, c.handleCandidates)
 	c.route(mux, "GET /admin/candidates/{id}", permRead, c.handleCandidate)
@@ -94,6 +98,7 @@ func (c *Controller) startAdmin() error {
 	c.route(mux, "DELETE /admin/overrides/{id}", permManagePolicy, c.handleRevokeOverride)
 	c.route(mux, "GET /admin/history", permReadHistory, c.handleHistory)
 	c.route(mux, "GET /admin/history/{id}", permReadHistory, c.handleHistoryEntry)
+	c.route(mux, "GET /admin/security-log", permReadHistory, c.handleSecurityLog)
 	if c.ui != nil {
 		// Only the page and its flat assets directory exist: no fallback page
 		// can answer an unknown path, so an API path never receives HTML.

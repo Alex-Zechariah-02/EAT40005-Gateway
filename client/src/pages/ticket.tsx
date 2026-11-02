@@ -77,8 +77,8 @@ export function Thread({ ticket, onChanged, viewer, actions }: { ticket: Ticket;
       <ol className="mt-6 flex flex-col gap-3" aria-label="Conversation">
         {ticket.messages.map((message, index) => {
           const mine = message.author === session?.user.id
-          let author = message.author
-          if (message.from === 'agent') author = mine ? 'You · Fetch support' : viewer === 'agent' ? `${message.author} · Fetch support` : 'Fetch support'
+          let author = message.author_name
+          if (message.from === 'agent') author = mine ? 'You · Fetch support' : viewer === 'agent' ? `${message.author_name} · Fetch support` : 'Support agent from Fetch'
           else if (mine) author = 'You'
           return (
             <li key={index} className={cx('max-w-[85%] rounded-2xl p-4', mine ? 'self-end bg-brand-soft' : 'self-start bg-surface shadow-card')}>

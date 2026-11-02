@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestOrderFloodUsesASeparateCustomerAccount(t *testing.T) {
@@ -191,5 +192,19 @@ func TestAdminDoesNotFollowWriteRedirect(t *testing.T) {
 	}
 	if writes.Load() != 1 {
 		t.Errorf("operator sent %d writes for one intent", writes.Load())
+	}
+}
+
+func TestKeyUseWarning(t *testing.T) {
+	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	recent, old := now.Add(-3*time.Minute), now.Add(-20*time.Minute)
+	items := []keyUse{{Kid: "a", LastVerifiedAt: &recent}, {Kid: "b", LastVerifiedAt: &old}, {Kid: "c"}}
+	if got := keyUseWarning(items, "a", now); !strings.Contains(got, "key a verified a token 3m0s ago") {
+		t.Errorf("recent use: %q", got)
+	}
+	for _, kid := range []string{"b", "c", "missing"} {
+		if got := keyUseWarning(items, kid, now); got != "" {
+			t.Errorf("%s: %q", kid, got)
+		}
 	}
 }
