@@ -383,7 +383,17 @@ interface AdviceAnswer {
   rules: string
   candidate: number | null
   warnings: Finding[]
-  unused_permits: { requests: number; since: string | null; dropped: boolean; withheld: string | null; items: Finding[]; min_minutes: number; min_requests: number }
+  unused_permits: {
+    requests: number
+    since: string | null
+    complete: boolean
+    files_searched: string[]
+    files_missing: string[]
+    withheld: string | null
+    items: Finding[]
+    min_minutes: number
+    min_requests: number
+  }
 }
 
 // AdviceView shows the gateway's fixed checks: settings worth a second look
@@ -427,16 +437,21 @@ export function AdviceView({ admin }: ViewProps) {
               <div className="card-head card-head-pad">
                 <h2 id="unused-title">Unused Permissions</h2>
                 <span className="muted">
-                  Based on {body.unused_permits.requests.toLocaleString()} requests kept in memory
-                  {body.unused_permits.since ? ` since ${new Date(body.unused_permits.since).toLocaleString()}` : ''}
-                  {body.unused_permits.dropped ? '; older requests were dropped' : ''}.
+                  Based on {body.unused_permits.requests.toLocaleString()} requests in the security log
+                  {body.unused_permits.since ? ` since ${new Date(body.unused_permits.since).toLocaleString()}` : ''}.
                 </span>
               </div>
               <div className="card-body">
+                {body.unused_permits.files_missing.length || !body.unused_permits.complete ? (
+                  <p className="hint card-pad-x">
+                    {body.unused_permits.files_missing.length ? `Not read, moved away from the gateway: ${body.unused_permits.files_missing.join(', ')}. ` : ''}
+                    {body.unused_permits.complete ? '' : 'Only the newest part of the log was read; older requests may have used these permissions.'}
+                  </p>
+                ) : null}
                 {body.unused_permits.withheld ? (
                   <p className="hint card-empty">
-                    {body.unused_permits.withheld} Shown once the requests kept span {body.unused_permits.min_minutes} minutes and number at least{' '}
-                    {body.unused_permits.min_requests.toLocaleString()}.
+                    {body.unused_permits.withheld} Shown once the security log covers {body.unused_permits.min_minutes} minutes and at least{' '}
+                    {body.unused_permits.min_requests.toLocaleString()} requests.
                   </p>
                 ) : body.unused_permits.items.length ? (
                   <FindingRows items={body.unused_permits.items} label="Unused Permissions" />

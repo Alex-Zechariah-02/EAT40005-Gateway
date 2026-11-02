@@ -3,21 +3,22 @@ package gateway
 import (
 	"cmp"
 	"net/http"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"time"
 )
 
-// The fixed checks, rule set version "checks-0.1": static
+// The fixed checks, rule set version "checks-0.2": static
 // configuration warnings, unused permissions from observed traffic, and
 // alerts. They advise only: nothing here blocks, changes or activates
 // anything, and nothing runs on the request path. Each answer names the
 // rule set version so findings can be traced to the rules that made them.
 const (
-	adviceRules = "checks-0.1"
+	adviceRules = "checks-0.2"
 
-	// Unused permissions are withheld until the observations span this long
-	// and hold this many requests.
+	// Unused permissions are withheld until the request records read from
+	// the security log span this long and number this many.
 	unusedMinSpan     = 60 * time.Minute
 	unusedMinRequests = 500
 
@@ -99,44 +100,47 @@ func configurationWarnings(g *Generation) []finding {
 }
 
 type unusedReport struct {
-	Requests  int       `json:"requests"`
-	Since     *string   `json:"since"`
-	Dropped   bool      `json:"dropped"`
-	Withheld  *string   `json:"withheld"`
-	Items     []finding `json:"items"`
-	MinMinute int       `json:"min_minutes"`
-	MinCount  int       `json:"min_requests"`
+	Requests      int       `json:"requests"`
+	Since         *string   `json:"since"`
+	Complete      bool      `json:"complete"`
+	FilesSearched []string  `json:"files_searched"`
+	FilesMissing  []string  `json:"files_missing"`
+	Withheld      *string   `json:"withheld"`
+	Items         []finding `json:"items"`
+	MinMinute     int       `json:"min_minutes"`
+	MinCount      int       `json:"min_requests"`
 }
 
-// unusedPermissions lists permits no allowed request used in the retained
-// observations, once they cover enough time and requests.
-func unusedPermissions(g *Generation, events []observedRequest, dropped bool, now time.Time) unusedReport {
-	report := unusedReport{Requests: len(events), Dropped: dropped, Items: []finding{}, MinMinute: int(unusedMinSpan / time.Minute), MinCount: unusedMinRequests}
-	if len(events) > 0 {
-		since := events[0].Time.UTC().Format(time.RFC3339)
+// unusedPermissions lists permits no allowed request in the security log
+// used, once the records read cover enough time and requests. missing names
+// log files moved away, which were not read.
+func unusedPermissions(g *Generation, use logUse, missing []string, now time.Time) unusedReport {
+	report := unusedReport{
+		Requests: use.requests, Complete: use.complete, FilesSearched: use.searched, FilesMissing: missing, Items: []finding{},
+		MinMinute: int(unusedMinSpan / time.Minute), MinCount: unusedMinRequests,
+	}
+	if report.FilesSearched == nil {
+		report.FilesSearched = []string{}
+	}
+	if report.FilesMissing == nil {
+		report.FilesMissing = []string{}
+	}
+	if use.requests > 0 {
+		since := use.oldest.UTC().Format(time.RFC3339)
 		report.Since = &since
 	}
-	if len(events) < unusedMinRequests || now.Sub(events[0].Time) < unusedMinSpan {
-		reason := "Not enough traffic has been observed yet."
+	if use.requests < unusedMinRequests || now.Sub(use.oldest) < unusedMinSpan {
+		reason := "Not enough traffic has been recorded yet."
 		report.Withheld = &reason
 		return report
-	}
-	used := map[[2]string]bool{}
-	for _, event := range events {
-		if event.Decision != "allowed" || event.Operation == nil {
-			continue
-		}
-		for _, role := range event.Roles {
-			used[[2]string{role, *event.Operation}] = true
-		}
 	}
 	for _, r := range g.rules() {
 		if r.public || !r.permitted {
 			continue
 		}
 		for role := range r.roles {
-			if !used[[2]string{role, r.operation}] {
-				report.Items = append(report.Items, finding{"U1", "low", role + " → " + r.operation, "No allowed request used this permission in the observed traffic. Review whether the role still needs it."})
+			if !use.used[[2]string{role, r.operation}] {
+				report.Items = append(report.Items, finding{"U1", "low", role + " → " + r.operation, "No allowed request in the security log used this permission. Review whether the role still needs it."})
 			}
 		}
 	}
@@ -165,13 +169,22 @@ func (c *Controller) handleAdvice(w http.ResponseWriter, r *http.Request, who ca
 		adminError(w, http.StatusServiceUnavailable, "gateway_unavailable", "")
 		return
 	}
-	_, dropped := c.observations.retainedSince()
+	files, missing, err := securityLogFiles(c.audit.path)
+	if err != nil {
+		adminError(w, http.StatusServiceUnavailable, "gateway_unavailable", "")
+		return
+	}
+	use, err := permitUse(filepath.Dir(c.audit.path), files, securityLogExportScan)
+	if err != nil {
+		adminError(w, http.StatusServiceUnavailable, "gateway_unavailable", "")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"rules":          adviceRules,
 		"generation":     g.ID,
 		"candidate":      candidate,
 		"warnings":       configurationWarnings(g),
-		"unused_permits": unusedPermissions(g, c.observations.snapshot(), dropped, time.Now()),
+		"unused_permits": unusedPermissions(g, use, missing, time.Now()),
 	})
 }
 

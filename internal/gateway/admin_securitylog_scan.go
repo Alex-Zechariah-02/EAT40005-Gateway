@@ -66,32 +66,53 @@ func searchSecurityLog(dir string, files []string, start *securityLogCursor, que
 	return result, nil
 }
 
-// scanSecurityLogFile reads one file backwards from end (-1: its current
-// size) in windows. It reports done when the search stops inside the file,
-// with result.next set where it stopped.
+// scanSecurityLogFile searches one file backwards from end (-1: its current
+// size). It reports done when the search stops inside the file, with
+// result.next set where it stopped.
 func scanSecurityLogFile(path, name, first string, end int64, query securityLogQuery, limit int, budget *int64, result *securityLogResult) (bool, error) {
-	file, err := os.Open(path)
+	stop, stopped, err := scanLinesBackward(path, end, budget, func(line []byte, _ int64) bool {
+		if view, ok := securityLogRecord(line, query, result); ok {
+			result.items = append(result.items, view)
+			return len(result.items) >= limit
+		}
+		return false
+	})
 	if err != nil {
 		return false, err
+	}
+	if stopped {
+		result.next = &securityLogCursor{File: name, First: first, Offset: stop}
+	}
+	return stopped, nil
+}
+
+// scanLinesBackward calls visit for each complete line of a file, newest
+// first, from end (-1: its current size), reading at most *budget bytes in
+// windows. visit returns true to stop. stop is where reading can resume:
+// lines before it are unread. A line still being written at the end of the
+// file is skipped.
+func scanLinesBackward(path string, end int64, budget *int64, visit func(line []byte, lineStart int64) bool) (stop int64, stopped bool, err error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return 0, false, err
 	}
 	defer file.Close()
 	if end < 0 {
 		info, err := file.Stat()
 		if err != nil {
-			return false, err
+			return 0, false, err
 		}
 		end = info.Size()
 	}
 	for end > 0 {
 		if *budget <= 0 {
-			result.next = &securityLogCursor{File: name, First: first, Offset: end}
-			return true, nil
+			return end, true, nil
 		}
 		size := min(end, securityLogWindow, *budget)
 		base := end - size
 		window := make([]byte, size)
 		if _, err := file.ReadAt(window, base); err != nil && !errors.Is(err, io.EOF) {
-			return false, err
+			return 0, false, err
 		}
 		*budget -= size
 		// Start at the first whole line; the part before it is read with
@@ -100,7 +121,7 @@ func scanSecurityLogFile(path, name, first string, end int64, query securityLogQ
 		if base > 0 {
 			cut := bytes.IndexByte(window, '\n')
 			if cut < 0 {
-				return false, errors.New("audit line longer than the read window")
+				return 0, false, errors.New("audit line longer than the read window")
 			}
 			window, base = window[cut+1:], base+int64(cut+1)
 		}
@@ -110,17 +131,68 @@ func scanSecurityLogFile(path, name, first string, end int64, query securityLogQ
 			cut := bytes.LastIndexByte(window[:len(window)-1], '\n')
 			line, lineStart := window[cut+1:len(window)-1], base+int64(cut+1)
 			window = window[:cut+1]
-			if view, ok := securityLogRecord(line, query, result); ok {
-				result.items = append(result.items, view)
-				if len(result.items) >= limit {
-					result.next = &securityLogCursor{File: name, First: first, Offset: lineStart}
-					return true, nil
-				}
+			if visit(line, lineStart) {
+				return lineStart, true, nil
 			}
 		}
 		end = base
 	}
-	return false, nil
+	return 0, false, nil
+}
+
+// logUse is what the security log shows about permission use: the role and
+// endpoint pairs of allowed requests, how many request records were read and
+// how far back they reach.
+type logUse struct {
+	used     map[[2]string]bool
+	requests int
+	oldest   time.Time
+	complete bool
+	searched []string
+}
+
+// permitUse reads the request records of the security log files newest
+// first, at most scan bytes.
+func permitUse(dir string, files []string, scan int64) (logUse, error) {
+	use := logUse{used: map[[2]string]bool{}, searched: []string{}, complete: true}
+	budget := scan
+	for _, name := range files {
+		if budget <= 0 {
+			use.complete = false
+			break
+		}
+		_, stopped, err := scanLinesBackward(filepath.Join(dir, name), -1, &budget, func(line []byte, _ int64) bool {
+			if !bytes.Contains(line, rejectedKind) && !bytes.Contains(line, forwardedKind) {
+				return false
+			}
+			var record auditRequestRecord
+			if json.Unmarshal(line, &record) != nil || record.RequestID == "" {
+				return false
+			}
+			use.requests++
+			if use.oldest.IsZero() || record.Time.Before(use.oldest) {
+				use.oldest = record.Time
+			}
+			if record.Decision == "forwarded" {
+				for _, role := range record.Roles {
+					use.used[[2]string{role, record.Operation}] = true
+				}
+			}
+			return false
+		})
+		if errors.Is(err, os.ErrNotExist) {
+			continue // archived since it was listed
+		}
+		if err != nil {
+			return use, err
+		}
+		use.searched = append(use.searched, name)
+		if stopped {
+			use.complete = false
+			break
+		}
+	}
+	return use, nil
 }
 
 var (

@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"slices"
 	"testing"
 	"time"
@@ -51,24 +52,48 @@ func observed(at time.Time, decision, operation string, roles ...string) observe
 	return observedRequest{requestEvent: requestEvent{Time: at, Decision: decision, Operation: &operation, Roles: roles}}
 }
 
-// Unused permissions are withheld until enough traffic is observed, then
-// list each permit no allowed request used.
+// Permission use is read from the security log files, newest first, within
+// a scan budget, and says how far back it reached.
+func TestPermitUseFromSecurityLog(t *testing.T) {
+	dir := t.TempDir()
+	active := filepath.Join(dir, "audit.log")
+	writeAuditFile(t, active+".1", 1, 4, "")
+	writeAuditFile(t, active, 5, 8, "")
+	files, _, _ := securityLogFiles(active)
+	use, err := permitUse(dir, files, securityLogExportScan)
+	// Odd records are forwarded (allowed) read-a requests carrying READER.
+	if err != nil || !use.used[[2]string{"READER", "read-a"}] || use.used[[2]string{"WRITER", "read-a"}] {
+		t.Fatalf("used: %v (%v)", use.used, err)
+	}
+	if use.requests != 8 || !use.complete || !slices.Equal(use.searched, []string{"audit.log", "audit.log.1"}) || !use.oldest.Equal(time.Date(2026, 11, 2, 9, 0, 1, 0, time.UTC)) {
+		t.Errorf("coverage: %+v", use)
+	}
+	short, err := permitUse(dir, files, 300)
+	if err != nil || short.complete || short.requests >= 8 {
+		t.Errorf("a small budget stops early and says so: %+v (%v)", short, err)
+	}
+}
+
+// Unused permissions are withheld until the log covers enough time and
+// requests, then list each permit no allowed request used.
 func TestUnusedPermissions(t *testing.T) {
 	g := adviceGeneration(t)
 	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
-	few := []observedRequest{observed(now.Add(-2*time.Hour), "refused", "read", "READER")}
-	if report := unusedPermissions(g, few, false, now); report.Withheld == nil || len(report.Items) != 0 {
-		t.Errorf("too little traffic: %+v", report)
+	few := logUse{used: map[[2]string]bool{}, requests: 10, oldest: now.Add(-2 * time.Hour), complete: true}
+	if report := unusedPermissions(g, few, nil, now); report.Withheld == nil || len(report.Items) != 0 {
+		t.Errorf("too few requests: %+v", report)
 	}
-	var events []observedRequest
-	for n := range unusedMinRequests {
-		events = append(events, observed(now.Add(-2*time.Hour+time.Duration(n)*time.Second), "refused", "read", "READER"))
+	recent := logUse{used: map[[2]string]bool{}, requests: unusedMinRequests, oldest: now.Add(-time.Minute), complete: true}
+	if report := unusedPermissions(g, recent, nil, now); report.Withheld == nil {
+		t.Errorf("too short a span: %+v", report)
 	}
-	if report := unusedPermissions(g, events, false, now); report.Withheld != nil || !slices.Equal(ids(report.Items), []string{"U1:READER → read"}) {
-		t.Errorf("refusals do not use a permit: %+v", report)
+	enough := logUse{used: map[[2]string]bool{}, requests: unusedMinRequests, oldest: now.Add(-2 * time.Hour), complete: false, searched: []string{"audit.log"}}
+	report := unusedPermissions(g, enough, []string{"audit.log.1"}, now)
+	if report.Withheld != nil || !slices.Equal(ids(report.Items), []string{"U1:READER → read"}) || report.Complete || !slices.Equal(report.FilesMissing, []string{"audit.log.1"}) {
+		t.Errorf("unused: %+v", report)
 	}
-	events = append(events, observed(now.Add(-time.Minute), "allowed", "read", "READER"))
-	if report := unusedPermissions(g, events, true, now); len(report.Items) != 0 || !report.Dropped || report.Requests != unusedMinRequests+1 {
+	enough.used[[2]string{"READER", "read"}] = true
+	if report := unusedPermissions(g, enough, nil, now); len(report.Items) != 0 {
 		t.Errorf("an allowed request uses it: %+v", report)
 	}
 }
