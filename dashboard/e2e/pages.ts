@@ -166,7 +166,7 @@ export async function createOverride(page: Page, o: OverrideInput): Promise<numb
   await expect(wizard.getByText('The gateway would accept it now. Nothing has been created.')).toBeVisible()
   await wizard.getByRole('button', { name: 'Add Rule', exact: true }).click()
   await expect(wizard).toHaveCount(0)
-  const done = page.getByText(/^Rule \d+ is active until/)
+  const done = page.getByText(/^Rule \d+ added\. It ends at /)
   await expect(done).toBeVisible()
   return Number((await done.textContent())!.match(/Rule (\d+)/)![1])
 }

@@ -606,7 +606,7 @@ export function Designer({
                 ) : null}
               </div>
             ) : null}
-            {tab === 'form' && formProps ? <FormView {...formProps} actions={addActions} /> : null}
+            {tab === 'form' && formProps ? <FormView {...formProps} actions={addActions} selection={selection} onSelect={select} /> : null}
             {tab === 'json' ? (
               <div className="designer-json">
                 <JsonTools

@@ -890,7 +890,7 @@ test.describe.serial('dashboard', () => {
     // The review is the confirmation: Add rule on it sends the rule.
     await wizard.getByRole('button', { name: 'Add Rule', exact: true }).click()
     await expect(wizard).toHaveCount(0)
-    const done = admin.getByText(/^Rule \d+ is active until/)
+    const done = admin.getByText(/^Rule \d+ added\. It ends at /)
     await expect(done).toBeVisible()
     const id = Number((await done.textContent())!.match(/Rule (\d+)/)![1])
     expect((await status()).overrides).toContain(id)
@@ -1934,6 +1934,10 @@ test.describe.serial('dashboard', () => {
   })
 
   test('background reads pause after ten minutes without input, resume at the next input, and go on while a temporary rule is active', async () => {
+    // The fake clock runs about 24 minutes of one-second reads against the
+    // real gateway, about 1,400 read rounds, which needs more than the
+    // default budget.
+    test.setTimeout(480_000)
     const page = await adminContext.newPage()
     try {
       await page.clock.install()

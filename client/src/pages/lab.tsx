@@ -266,11 +266,34 @@ function observedBy(answer: Answer<unknown>): By | null {
   return by === null ? null : by === 'gateway' ? 'gateway' : 'service'
 }
 
-// matches compares the last answer with the expectation: the same status
-// from the same party (the gateway, or a service).
-function matches(result: Result): boolean {
+// Verdict compares the last answer with the baseline policy's answer.
+// Expectations are written for the baseline because this page cannot read the
+// policy in force, so a difference is not by itself a fault: a change on
+// trial or a temporary rule may decide differently. A blocked account is
+// named by the gateway's own answer, so it is reported as that, not as a
+// difference.
+type Verdict = 'match' | 'blocked' | 'differs'
+
+function verdict(result: Result): Verdict | null {
   const last = result.answers[result.answers.length - 1]
-  return !!last && 'status' in last && last.status === result.expected.status && observedBy(last) === result.expected.by
+  if (!last || !('status' in last)) return null
+  if (last.status === result.expected.status && observedBy(last) === result.expected.by) return 'match'
+  if (last.kind === 'refused' && last.code === 'account_blocked' && observedBy(last) === 'gateway') return 'blocked'
+  return 'differs'
+}
+
+const verdicts: Record<Verdict, { label: string; tone: 'ok' | 'warn' | 'neutral'; note?: string }> = {
+  match: { label: 'Matches the baseline', tone: 'ok' },
+  blocked: {
+    label: 'Account blocked',
+    tone: 'neutral',
+    note: 'This account is on the blocked list, so the gateway refuses it right after checking the token, before any other check. Unblock it in the Dashboard or switch person to test the other checks.',
+  },
+  differs: {
+    label: 'Differs from the baseline',
+    tone: 'warn',
+    note: 'The policy in force may not be the baseline: a change on trial or a temporary rule can decide differently. Look up the Ref in the Dashboard to see which check decided.',
+  },
 }
 
 export function LabPage() {
@@ -318,13 +341,14 @@ export function LabPage() {
   }
 
   const ran = Object.values(results)
-  const matched = ran.filter(matches).length
+  const matched = ran.filter((result) => verdict(result) === 'match').length
+  const blocked = ran.filter((result) => verdict(result) === 'blocked').length
 
   return (
     <>
       <WorkspaceTitle
         title="Security lab"
-        subtitle="Each test sends one real request through the gateway and compares the expected result with the observed one."
+        subtitle="Each test sends one real request through the gateway and compares its answer with the baseline policy’s. A change on trial, a temporary rule or a blocked account can change the answer."
       >
         <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-surface px-4 py-3 shadow-card">
           <span className="flex size-9 items-center justify-center rounded-full bg-brand-soft text-brand" aria-hidden="true">
@@ -342,7 +366,7 @@ export function LabPage() {
 
       {ran.length > 0 && (
         <p className="mt-6 text-sm text-ink-2" role="status">
-          {matched} of {ran.length} as expected.{' '}
+          {matched} of {ran.length} match the baseline.{blocked > 0 && ` ${blocked} refused because this account is blocked.`}{' '}
           <button type="button" className="font-semibold text-brand hover:underline" onClick={() => setResults({})}>
             Clear results
           </button>
@@ -401,7 +425,7 @@ function AttackCard(props: { attack: Attack; user: User | null; result?: Result;
         </Button>
       </div>
       <dl className="mt-4 grid grid-cols-1 gap-x-3 gap-y-1 text-sm sm:grid-cols-[6.5rem_minmax(0,1fr)] sm:gap-y-2">
-        <dt className="text-ink-3">Expected</dt>
+        <dt className="text-ink-3">Baseline</dt>
         <dd className="text-ink-2">
           <span className="font-semibold text-ink">{expectedWords(expected)}</span> · {expected.why}
         </dd>
@@ -430,14 +454,14 @@ function Observed({ result, user: owner }: { result: Result; user: User | null }
   if (!last) return <span className="text-ink-3">Stopped: the person changed.</span>
   if (last.kind === 'no-answer') return <span className="text-warn">No answer ({last.reason === 'timeout' ? 'it took too long' : 'the connection failed'}). Nothing can be concluded.</span>
   if (last.kind === 'cancelled') return null
-  const ok = matches(result)
+  const outcome = verdicts[verdict(result) ?? 'differs']
   const by = observedBy(last)
   return (
     <div className="flex flex-col gap-2">
       <p className="flex flex-wrap items-center gap-2">
-        <Badge tone={ok ? 'ok' : 'bad'}>
-          {ok ? <CheckCircle size={14} weight="bold" /> : <WarningCircle size={14} weight="bold" />}
-          {ok ? 'As expected' : 'Differs'}
+        <Badge tone={outcome.tone}>
+          {outcome.tone === 'ok' ? <CheckCircle size={14} weight="bold" /> : <WarningCircle size={14} weight="bold" />}
+          {outcome.label}
         </Badge>
         <span className="font-semibold text-ink">
           {by === 'gateway' ? 'Answered by the gateway' : `Answered by ${answeredBy(last)}`} · {last.status}
@@ -447,6 +471,7 @@ function Observed({ result, user: owner }: { result: Result; user: User | null }
       {result.answers.length > 1 && <Tally answers={result.answers} />}
       {last.kind === 'ok' && owner && <OkDetail answer={last} user={owner} />}
       {'message' in last && last.message && <p className="text-ink-2">{last.message}</p>}
+      {outcome.note && <p className="text-ink-2">{outcome.note}</p>}
       {last.ref && (
         <p>
           <RefTag value={last.ref} />

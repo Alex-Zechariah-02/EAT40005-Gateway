@@ -414,7 +414,7 @@ test.describe.serial('Fetch roles on the real services', () => {
     await expect(customer2.getByRole('heading', { level: 1, name: 'My orders' })).toBeVisible()
   })
 
-  test('the security lab: every attack is answered as expected, refusals reach no service, and forged identity headers change nothing', async ({ browser }) => {
+  test('the security lab: every attack matches the baseline, refusals reach no service, forged identity headers change nothing and a blocked account is named', async ({ browser }) => {
     const customer2 = await person(browser, 'customer2@fetch.test')
     await customer2.goto(siteURL + '/lab', { waitUntil: 'networkidle' })
     const before = await demo.receipts('orders')
@@ -422,12 +422,31 @@ test.describe.serial('Fetch roles on the real services', () => {
       await send.click()
       await expect(send).toBeEnabled()
     }
-    await expect(customer2.getByRole('status').filter({ hasText: /^15 of 15 as expected\./ })).toBeVisible()
+    await expect(customer2.getByRole('status').filter({ hasText: /^15 of 15 match the baseline\./ })).toBeVisible()
     await shot(customer2, 'flows-05-lab')
     // Only the forged-header read reached Orders, as the gateway's identity.
     const reached = (await demo.receipts('orders')).slice(before.length)
     expect(reached.map((r) => `${r.method} ${r.target} ${r.subject} ${r.roles}`)).toEqual(['GET /orders/mine cust-002 CUSTOMER'])
     record('lab', { reached })
+
+    // A blocked account is refused before the role and body checks. The lab
+    // names that from the gateway's answer instead of reporting a difference,
+    // and the token checks before it still match the baseline.
+    await api.block('cust-002', 'Security lab check')
+    try {
+      const forged = customer2.getByRole('listitem').filter({ hasText: 'Forged identity headers' })
+      await forged.getByRole('button', { name: 'Send', exact: true }).click()
+      await expect(forged).toContainText('Account blocked')
+      await expect(forged).toContainText('Answered by the gateway · 403 account_blocked')
+      await expect(forged).not.toContainText('Differs')
+      const tampered = customer2.getByRole('listitem').filter({ hasText: 'Tampered token' })
+      await tampered.getByRole('button', { name: 'Send', exact: true }).click()
+      await expect(tampered).toContainText('Matches the baseline')
+      await expect(customer2.getByRole('status').filter({ hasText: /^14 of 15 match the baseline\. 1 refused because this account is blocked\./ })).toBeVisible()
+      await shot(customer2, 'flows-05b-lab-blocked')
+    } finally {
+      await api.unblock('cust-002')
+    }
   })
 
   test('a policy change takes effect in the app at once: a trial grants customers exact stock, its rollback removes it', async ({ browser }) => {
@@ -446,7 +465,8 @@ test.describe.serial('Fetch roles on the real services', () => {
     const before = (await demo.receipts('inventory')).length
     await card.getByRole('button', { name: 'Send', exact: true }).click()
     await expect(card).toContainText('Answered by Inventory · 200')
-    await expect(card).toContainText('Differs')
+    await expect(card).toContainText('Differs from the baseline')
+    await expect(card).toContainText('a change on trial or a temporary rule can decide differently')
     expect((await since('inventory', before)).map((r) => `${r.target} ${r.subject} ${r.generation} ${r.status}`)).toEqual([`/inventory/stock/ITM-502 cust-001 ${generation} 200`])
     await api.resolve('rollback')
     await card.getByRole('button', { name: 'Send', exact: true }).click()

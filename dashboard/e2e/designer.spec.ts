@@ -312,6 +312,8 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
     await page.getByRole('button', { name: 'Apply JSON', exact: true }).click()
     await capture('designer-json-applied')
     await page.getByRole('tab', { name: 'Canvas', exact: true }).click()
+    // The box edited in the Form is the one selected on the canvas.
+    await expect(selected()).toContainText('Endpoint reports.summary')
     await expandAll()
     await node('operation:reports.summary').click()
     await expect(selected().getByRole('button', { name: 'Rate 2/60s', exact: true })).toBeVisible()

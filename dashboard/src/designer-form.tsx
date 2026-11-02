@@ -609,17 +609,27 @@ function listed(policy: Policy, kind: BoxKind): { item: Policy[(typeof sections)
 
 // FormView lists every box by kind beside one editor, so a policy of any
 // size is a short list to scan instead of one long page of forms.
-export function FormView(props: FormProps & { actions: (kind: BoxKind) => GroupAction[] }) {
+// It shares the page's selection with the canvas, so the box edited here is
+// the one shown selected after switching view, and the other way round.
+export function FormView(
+  props: FormProps & { actions: (kind: BoxKind) => GroupAction[]; selection: BoxKey | null; onSelect: (key: BoxKey) => void },
+) {
   const kinds: BoxKind[] = ['role', 'operation', 'api', 'upstream']
   const first = kinds.flatMap((kind) => props.policy[sections[kind]].map((item) => `${kind}:${item.id}` as BoxKey))[0]
-  const [picked, setPicked] = useState<BoxKey | 'permits' | undefined>(first)
+  const [picked, setPicked] = useState<BoxKey | 'permits' | undefined>(() =>
+    props.selection && exists(props.policy, props.selection) ? props.selection : first,
+  )
+  function pick(key: BoxKey) {
+    setPicked(key)
+    props.onSelect(key)
+  }
   const added = useRef<BoxKind | null>(null)
   useEffect(() => {
     const kind = added.current
     if (kind) {
       added.current = null
       const items = props.policy[sections[kind]]
-      if (items.length) setPicked(`${kind}:${items[items.length - 1].id}`)
+      if (items.length) pick(`${kind}:${items[items.length - 1].id}`)
       return
     }
     if (picked === 'permits' || (picked && exists(props.policy, picked))) return
@@ -687,7 +697,7 @@ export function FormView(props: FormProps & { actions: (kind: BoxKind) => GroupA
                       className="designer-form-item"
                       aria-current={shown === key ? 'true' : undefined}
                       aria-label={`${capital(kindNames[kind].one)} ${item.id || '(empty ID)'}`}
-                      onClick={() => setPicked(key)}
+                      onClick={() => pick(key)}
                     >
                       {operation ? (
                         <code>

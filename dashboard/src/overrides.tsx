@@ -460,9 +460,9 @@ function AddRule(props: {
         success={(o) => (
           <>
             <p className="notice-title">
-              Rule {o.override} is active until {time(o.expires_at)}.
+              Rule {o.override} added. It ends at {time(o.expires_at)} unless revoked earlier.
             </p>
-            <p>The policy is unchanged; the rule ends by itself.</p>
+            <p>The policy is unchanged. Active Rules shows whether the rule still applies.</p>
             <Receipt outcome={o} />
           </>
         )}

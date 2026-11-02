@@ -466,6 +466,8 @@ function CanvasGraph(props: CanvasProps) {
 
   const area = useRef<HTMLDivElement>(null)
   const before = useRef<Viewport | null>(null)
+  // pendingFocus is the timer that will bring the selection into view.
+  const pendingFocus = useRef<ReturnType<typeof setTimeout>>(undefined)
   // fitTo shows the whole diagram in the window, clear of the toolbar and of
   // the side form when it is open.
   function fitTo(duration: number) {
@@ -551,6 +553,7 @@ function CanvasGraph(props: CanvasProps) {
     // A selection can open its group first, so the row is measured once the
     // cards have taken their new sizes.
     const timer = setTimeout(() => {
+      pendingFocus.current = undefined
       const canvas = area.current
       const row = canvas?.querySelector(`[data-box="${CSS.escape(key)}"]`) ?? canvas?.querySelector(`[data-box^="${CSS.escape(key.split(':')[0])}:"]`)
       const panel = canvas?.closest('.designer-workspace')?.querySelector('.designer-side-panel')
@@ -578,10 +581,15 @@ function CanvasGraph(props: CanvasProps) {
       const limit = canvasBox.left + room - rowBox.left
       void flow.setViewport({ ...viewport, x: viewport.x + Math.max(shift, Math.min(0, limit)) }, { duration: 250 })
     }, 120)
+    pendingFocus.current = timer
     return () => clearTimeout(timer)
   }, [props.panelOpen, props.selection, props.trace?.operation])
 
   function setAll(state: 'open' | 'closed') {
+    // The fit the person asked for wins over a selection still waiting to be
+    // brought into view.
+    clearTimeout(pendingFocus.current)
+    pendingFocus.current = undefined
     refit.current = { opened: false }
     setOpen(state === 'open' ? new Set(graph.cards.filter((card) => card.data.collapsible).map((card) => card.id)) : new Set())
   }
