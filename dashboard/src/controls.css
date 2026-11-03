@@ -1,0 +1,186 @@
+/* Controls: buttons, link buttons, action rows and the accent on primary actions. */
+
+/* Buttons: ink for the action a view exists for, outlined for the rest. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: var(--control-h);
+  padding: 5px 12px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  box-shadow: inset 0 0 0 1px var(--rule-strong);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.btn:hover {
+  background: var(--well);
+  box-shadow: inset 0 0 0 1px var(--control-line);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+.btn-primary {
+  background: var(--ink);
+  box-shadow: none;
+  color: var(--paper);
+}
+
+.btn-primary:hover {
+  background: var(--primary-hover);
+  box-shadow: none;
+  color: var(--paper);
+}
+
+.btn-primary:active {
+  background: var(--primary-active);
+}
+
+.btn-danger {
+  background: var(--refused);
+  box-shadow: none;
+  color: var(--on-refused);
+}
+
+.btn-danger:hover {
+  background: var(--refused-strong);
+  box-shadow: none;
+  color: var(--on-refused);
+}
+
+.btn-danger-quiet {
+  color: var(--refused);
+}
+
+.btn-danger-quiet:hover {
+  background: var(--refused-tint);
+  box-shadow: inset 0 0 0 1px var(--refused-line);
+  color: var(--refused);
+}
+
+/* After the variants, so a disabled button of any kind stays quiet under the
+   pointer. */
+.btn:disabled,
+.btn:disabled:hover {
+  background: var(--well);
+  box-shadow: inset 0 0 0 1px var(--rule);
+  color: var(--ink-3);
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-small {
+  min-height: 28px;
+  padding: 3px 10px;
+}
+
+.btn-wide {
+  width: 100%;
+}
+
+.icon-button {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.icon-button:hover,
+.icon-button[aria-expanded='true'] {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.link-button {
+  padding: 2px 4px;
+  margin: -2px -4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--link);
+  font: inherit;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  background: var(--hover);
+  color: var(--link-hover);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.btn-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--link);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.btn-link:hover {
+  color: var(--link-hover);
+}
+
+/* Cobalt accent: primary actions, the current page and selected controls
+   carry the brand blue; state colours keep their own meaning. */
+.btn-primary {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+  color: var(--on-accent);
+}
+
+.btn-primary:active {
+  background: var(--accent-active);
+}
+
+/* Every control eases its colour and outline changes, so hover, focus and
+   press read as one calm response instead of a flash. Zero specificity:
+   a component's own transition always wins. */
+:where(button, a, input, select, textarea, summary, label, [role='tab'], [tabindex]) {
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    outline-color var(--dur-fast) var(--ease-out),
+    text-decoration-color var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out);
+}

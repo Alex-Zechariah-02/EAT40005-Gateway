@@ -1,0 +1,218 @@
+/* The Designer's form and JSON views, the trace, panel motion and the colour of each kind. */
+
+.designer-form-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+@media (min-width: 960px) {
+  .designer-form-split {
+    grid-template-columns: 300px minmax(0, 1fr);
+  }
+  .designer-form-list {
+    position: sticky;
+    top: 96px;
+    max-height: calc(100vh - 200px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+.designer-form-list {
+  padding: 8px;
+  background: var(--paper);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--card-shadow);
+}
+.designer-form-group + .designer-form-group,
+.designer-form-matrix {
+  margin-block-start: 12px;
+}
+.designer-form-group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-md);
+}
+.designer-form-group-head:hover {
+  background: var(--hover);
+}
+.designer-form-group-head h2 {
+  flex: 1;
+  margin: 0;
+  font: 600 var(--text-sm)/1.5 var(--font-display);
+}
+.designer-form-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--lane-ink);
+  font: inherit;
+  cursor: pointer;
+}
+.designer-form-group ul {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.designer-form-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--ink);
+  font: var(--text-sm)/1.4 var(--font-ui);
+  text-align: start;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.designer-form-item:hover {
+  background: var(--hover);
+}
+.designer-form-item[aria-current] {
+  background: var(--accent-tint);
+  color: var(--accent-active);
+  font-weight: 600;
+}
+.designer-form-item code {
+  white-space: normal;
+}
+.designer-form-item-id {
+  color: var(--ink-3);
+  font: var(--text-xs)/1.4 var(--font-mono);
+}
+.designer-form-detail {
+  min-width: 0;
+  padding: 20px;
+  background: var(--paper);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--card-shadow);
+}
+.designer-form-detail > section > h2 {
+  margin-block: 0 16px;
+  font: 600 var(--text-lg)/1.5 var(--font-display);
+}
+.designer-json textarea {
+  min-height: 560px;
+  padding: 12px;
+  font: var(--text-sm)/1.5 var(--font-mono);
+  tab-size: 2;
+  background: var(--well);
+  border: 1px solid var(--control-line);
+}
+.designer-json .field {
+  margin-block-end: 12px;
+}
+.designer-trace .field + .field {
+  margin-block-start: 16px;
+}
+.designer-trace-steps {
+  margin-block: 24px;
+  padding-inline-start: 24px;
+}
+.designer-trace-steps li {
+  margin-block: 16px;
+  font-size: var(--text-sm);
+}
+.designer-trace-steps p {
+  margin-block: 4px 0;
+  overflow-wrap: anywhere;
+}
+.designer-trace-steps strong {
+  font-weight: 600;
+}
+.designer-side-panel .code-input {
+  min-height: 160px;
+}
+.matrix-table th code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.matrix-table .matrix-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+}
+@media (min-width: 768px) {
+  .designer-form .designer-object .form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 767px) {
+  .designer-canvas {
+    height: 420px;
+    min-height: 420px;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .designer-side-panel > .designer-object,
+  .designer-side-panel > .designer-trace {
+    animation: designer-panel var(--dur-base) var(--ease-out);
+  }
+}
+@keyframes designer-panel {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .designer-canvas *,
+  .designer-side-panel * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+.designer-kind-role,
+.designer-node-role {
+  --lane: var(--kind-role-tint);
+  --lane-ink: var(--kind-role);
+}
+
+.designer-kind-operation,
+.designer-node-operation {
+  --lane: var(--kind-operation-tint);
+  --lane-ink: var(--kind-operation);
+}
+
+.designer-kind-api,
+.designer-node-api {
+  --lane: var(--kind-api-tint);
+  --lane-ink: var(--kind-api);
+}
+
+.designer-kind-upstream,
+.designer-node-upstream {
+  --lane: var(--kind-upstream-tint);
+  --lane-ink: var(--kind-upstream);
+}
+.designer-canvas .react-flow__edge-path {
+  transition: opacity var(--dur-base) var(--ease-out), stroke-width var(--dur-base) var(--ease-out);
+}
+
+.designer-draft-state {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--neutral-tint);
+}
+.designer-draft-state.is-dirty {
+  background: var(--accent-tint);
+  color: var(--accent-active);
+  font-weight: 600;
+}

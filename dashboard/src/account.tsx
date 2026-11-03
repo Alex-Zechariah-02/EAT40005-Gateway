@@ -1,7 +1,11 @@
 import { useEffect, useId, useState, type FormEvent } from 'react'
-import type { Admin, SessionInfo } from './api'
+import type { Admin } from './http'
+import type { SessionInfo } from './api'
 import { useMutation } from './hooks'
-import { describedBy, Field, fieldError, MutationResult, PageHeader, Time } from './ui'
+import { describedBy, Field, fieldError } from './ui'
+import { MutationResult } from './replies'
+import { PageHeader } from './header'
+import { Time } from './time'
 
 // The administrator permissions in plain words; the exact names stay beside them.
 const permissionWords: Record<string, string> = {

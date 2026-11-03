@@ -1,0 +1,97 @@
+/* The brand mark and the sign-in page. */
+
+/* Brand */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.brand-mark {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.brand-name {
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.brand-host {
+  overflow: hidden;
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+}
+
+/* Sign-in */
+.entry {
+  display: grid;
+  justify-items: center;
+  min-height: 100vh;
+  padding: 12vh 16px 32px;
+}
+
+.entry-main {
+  width: min(26rem, 100%);
+}
+
+.entry-main > .brand {
+  margin-bottom: 16px;
+}
+
+.entry-intro {
+  margin: 0 0 20px;
+  color: var(--ink-2);
+}
+
+.entry-notice {
+  margin-bottom: 16px;
+}
+
+.entry-card {
+  padding: 28px;
+  border-radius: var(--radius-lg);
+  background: var(--paper);
+  box-shadow: var(--card-shadow);
+}
+
+.entry-card h1 {
+  margin-bottom: 6px;
+}
+
+.entry-card .segmented {
+  display: flex;
+  margin: 16px 0 20px;
+}
+
+.entry-card .segmented button {
+  flex: 1;
+  min-height: 30px;
+}
+
+.entry-state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 0;
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}

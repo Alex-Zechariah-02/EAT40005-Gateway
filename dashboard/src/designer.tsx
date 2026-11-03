@@ -1,18 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
-import {
-  newKey,
-  type Candidate,
-  type Outcome,
-  type OverridesView,
-  type Page,
-  type Policy,
-  type ProvisionalView,
-  type Revision,
-} from './api'
-import { differences } from './diff'
+import type { Candidate, OverridesView, Page, Policy, ProvisionalView, Revision } from './api'
 import { useGatewayState, useMutation, useResource } from './hooks'
-import { DesignerCanvas, type TracePath } from './designer-canvas'
-import { FormView, Issues, ObjectForm } from './designer-form'
+import { DesignerCanvas } from './designer-canvas'
+import type { TracePath } from './designer-graph'
+import { FormView, Issues } from './designer-form'
 import {
   add,
   canonical,
@@ -20,7 +11,6 @@ import {
   copy,
   fieldBox,
   localIssues,
-  remove,
   shapeIssue,
   splitKey,
   type BoxKey,
@@ -30,26 +20,18 @@ import {
 } from './designer-model'
 import { Templates } from './designer-templates'
 import { GuidedChange, type GuidedTask } from './designer-wizards'
-import { trace, traceExplanation } from './designer-trace'
-import { Badge, ChangeList, CodeBlock, Confirm, Empty, Field, MutationResult, PageHeader, Problem, ReadStamp, Remaining, TimeOfDay, useFocus } from './ui'
-import { controls } from './provisional'
+import { trace } from './designer-trace'
+import { Badge, Empty } from './ui'
+import { MutationResult, Problem } from './replies'
+import { PageHeader } from './header'
+import { ReadStamp, Remaining, TimeOfDay } from './time'
+import { useFocus } from './links'
 import type { ViewProps } from './views'
-import { stages, stepWords } from './checks'
-import { Explain } from './explain'
+import { DesignerBar, type Mode, SidePanel, type Staged, StaleNotice, type Tab } from './designer-views'
+import { JsonView } from './designer-json'
+import { DeleteDialog, DiscardDialog, SaveDialog } from './designer-dialogs'
 
-type Mode = 'draft' | 'confirmed' | 'provisional'
-type Tab = 'canvas' | 'form' | 'json'
-interface Staged {
-  receipt: Outcome
-  candidate: Candidate
-}
-
-// What each view of the policy is for, said once under the view tabs.
-const viewNotes: Record<Tab, string> = {
-  canvas: 'Map of roles, endpoints, APIs and service addresses. Select a role to see what it may call.',
-  form: 'Edit each role, endpoint, API and service address, or tick permissions in the matrix.',
-  json: 'The complete policy document, to copy, download or load from a file.',
-}
+// The Policy page's Designer: one draft policy shown as a canvas, a form or JSON.
 
 export function Designer({
   admin,
@@ -376,66 +358,24 @@ export function Designer({
           {/* One command row: the views on the left with what each is for, and
               which version is shown, the draft's state and its actions on the
               right, so the canvas below can take the rest of the window. */}
-          <div className="designer-bar">
-            <div className="designer-views">
-                <div className="section-tabs designer-view-tabs" role="tablist" aria-label="Policy views">
-                  {(['canvas', 'form', 'json'] as Tab[]).map((choice, index, tabs) => (
-                    <button
-                      id={`designer-tab-${choice}`}
-                      role="tab"
-                      type="button"
-                      key={choice}
-                      aria-selected={tab === choice}
-                      aria-controls="designer-view"
-                      tabIndex={tab === choice ? 0 : -1}
-                      onClick={() => changeTab(choice)}
-                      onKeyDown={(event) => {
-                        let next: Tab | undefined
-                        if (event.key === 'ArrowRight') next = tabs[(index + 1) % tabs.length]
-                        if (event.key === 'ArrowLeft') next = tabs[(index + tabs.length - 1) % tabs.length]
-                        if (event.key === 'Home') next = tabs[0]
-                        if (event.key === 'End') next = tabs[tabs.length - 1]
-                        if (next) {
-                          event.preventDefault()
-                          changeTab(next)
-                        }
-                      }}
-                    >
-                      {choice === 'json' ? 'JSON' : choice[0].toUpperCase() + choice.slice(1)}
-                    </button>
-                  ))}
-                </div>
-              <p className="designer-view-note">{viewNotes[tab]}</p>
-            </div>
-            <div className="designer-bar-actions">
-              <label className="designer-viewing">
-                <span>Viewing</span>
-                <select className="input" value={mode} onChange={(event) => changeMode(event.target.value as Mode)}>
-                  <option value="draft">Draft</option>
-                  <option value="confirmed">Active · Version {current.id}</option>
-                  {pendingId !== undefined ? <option value="provisional">On Trial · Version {pendingId}</option> : null}
-                </select>
-              </label>
-              <Badge tone={issues.length ? 'pending' : 'ok'}>{issues.length ? `${issues.length} ${issues.length === 1 ? 'Issue' : 'Issues'}` : 'No Issues'}</Badge>
-              {can('manage_policy') ? (
-                <>
-                  <p className={`designer-draft-state${dirty ? ' is-dirty' : ''}`} role="status">
-                    {mode !== 'draft'
-                      ? 'Edits go to the draft.'
-                      : dirty
-                        ? `${changed.length} unsaved ${changed.length === 1 ? 'change' : 'changes'}`
-                        : `No changes to version ${draft.baseRevision}`}
-                  </p>
-                  <button className="btn btn-danger-quiet" type="button" disabled={!canDiscard || mutation.pending} onClick={() => setDiscardConfirm(true)}>
-                    Discard
-                  </button>
-                  <button className="btn btn-primary" type="button" disabled={!canStage} onClick={() => setStageConfirm(true)}>
-                    Save Changes
-                  </button>
-                </>
-              ) : null}
-            </div>
-          </div>
+          <DesignerBar
+            can={can}
+            draft={draft}
+            pendingId={pendingId}
+            mode={mode}
+            tab={tab}
+            setStageConfirm={setStageConfirm}
+            setDiscardConfirm={setDiscardConfirm}
+            current={current}
+            dirty={dirty}
+            changed={changed}
+            issues={issues}
+            mutation={mutation}
+            changeTab={changeTab}
+            changeMode={changeMode}
+            canStage={canStage}
+            canDiscard={canDiscard}
+          />
           {wizard && editable && document ? (
             <GuidedChange
               policy={document}
@@ -463,29 +403,15 @@ export function Designer({
             <p className="hint">Apply the JSON to update the draft before saving.</p>
           ) : null}
           {stale ? (
-            <section className="notice tone-pending">
-              <p>
-                The active policy changed to version {current.id} since your draft was started from version {draft.baseRevision}. Your draft keeps
-                its own changes; saving it unchanged would be refused.
-              </p>
-              <div className="actions">
-                <button className="btn" type="button" aria-expanded={showChanges} onClick={() => setShowChanges((value) => !value)}>
-                  Show What Changed
-                </button>
-                <button
-                  className="btn"
-                  type="button"
-                  onClick={() => {
-                    setDraft({ ...draft, base: copy(confirmed!), baseRevision: current.id })
-                    mutation.clear()
-                    setShowChanges(false)
-                  }}
-                >
-                  Keep my draft and base it on r{current.id}
-                </button>
-              </div>
-              {showChanges ? <ChangeList changes={differences(draft.base, confirmed!)} /> : null}
-            </section>
+            <StaleNotice
+              draft={draft}
+              setDraft={setDraft}
+              showChanges={showChanges}
+              setShowChanges={setShowChanges}
+              current={current}
+              confirmed={confirmed}
+              mutation={mutation}
+            />
           ) : null}
           <MutationResult
             mutation={mutation}
@@ -581,154 +507,69 @@ export function Designer({
                   />
                 </div>
                 {showTrace || (selection && formProps) ? (
-                  <aside className="designer-side-panel" aria-label={showTrace ? 'Trace policy document' : 'Selected policy box'}>
-                    <button
-                      type="button"
-                      className="btn btn-small designer-panel-close"
-                      onClick={() => (showTrace ? setShowTrace(false) : setSelection(null))}
-                    >
-                      Close
-                    </button>
-                    {showTrace ? (
-                      <TracePanel
-                        policy={document}
-                        who={who}
-                        setWho={setWho}
-                        what={currentOperation?.id ?? ''}
-                        setWhat={(operation) => {
-                          setWhat(operation)
-                          setSelection(`operation:${operation}`)
-                        }}
-                        steps={steps}
-                      />
-                    ) : selection && formProps ? (
-                      <ObjectForm {...formProps} selection={selection} inPanel />
-                    ) : null}
-                  </aside>
+                  <SidePanel
+                    selection={selection}
+                    setSelection={setSelection}
+                    showTrace={showTrace}
+                    setShowTrace={setShowTrace}
+                    who={who}
+                    setWho={setWho}
+                    setWhat={setWhat}
+                    document={document}
+                    currentOperation={currentOperation}
+                    steps={steps}
+                    formProps={formProps}
+                  />
                 ) : null}
               </div>
             ) : null}
             {tab === 'form' && formProps ? <FormView {...formProps} actions={addActions} selection={selection} onSelect={select} /> : null}
             {tab === 'json' ? (
-              <div className="designer-json">
-                <JsonTools
-                  text={json}
-                  name={mode === 'draft' ? `gateway-policy-draft-r${draft.baseRevision}.json` : `gateway-policy-r${mode === 'confirmed' ? current.id : pendingId}.json`}
-                  editable={editable}
-                  onLoad={(text) => {
-                    setJson(text)
-                    setJsonError('')
-                  }}
-                />
-                <Field id="designer-json-document" label="Complete Policy Document (JSON)">
-                  <textarea
-                    id="designer-json-document"
-                    className="input code-input"
-                    value={json}
-                    readOnly={!editable}
-                    aria-invalid={!!jsonError}
-                    aria-describedby={jsonError ? 'designer-json-document-error' : undefined}
-                    spellCheck={false}
-                    onChange={(event) => {
-                      setJson(event.target.value)
-                      setJsonError('')
-                    }}
-                  />
-                </Field>
-                {jsonError ? (
-                  <p id="designer-json-document-error" role="alert" className="notice tone-refused">
-                    {jsonError}
-                  </p>
-                ) : null}
-                {editable ? (
-                  <button className="btn" type="button" onClick={applyJson}>
-                    Apply JSON
-                  </button>
-                ) : null}
-                <details className="api-requests">
-                  <summary>Save a Draft Change with the Admin API</summary>
-                  <p>
-                    Each request needs a signed-in session cookie and its CSRF token; saving a draft change (API: candidate) also needs the base
-                    version and a new idempotency key. The gateway validates the whole document on save.
-                  </p>
-                  <CodeBlock label="Admin API requests" className="code-block code-block-short">{`GET /admin/policy
-
-POST /admin/candidates
-Content-Type: application/json
-If-Match: "r<active version>"
-Idempotency-Key: <a new key: 16 to 64 letters, digits, _ or ->
-X-CSRF-Token: <the session's CSRF token>
-
-{"policy": <the complete policy document>}`}</CodeBlock>
-                </details>
-              </div>
+              <JsonView
+                draft={draft}
+                pendingId={pendingId}
+                mode={mode}
+                json={json}
+                setJson={setJson}
+                jsonError={jsonError}
+                setJsonError={setJsonError}
+                current={current}
+                editable={editable}
+                applyJson={applyJson}
+              />
             ) : null}
           </div>
-          <Confirm
-            open={stageConfirm}
-            title="Save this as a draft change?"
-            confirmLabel="Save Draft Change"
-            onCancel={() => setStageConfirm(false)}
-            onConfirm={() => {
-              setStageConfirm(false)
-              if (!canStage) return
-              submitted.current = copy(draft.document)
-              void mutation.run({
-                method: 'POST',
-                path: '/admin/candidates',
-                rawBody: '{"policy":' + JSON.stringify(draft.document) + '}',
-                ifMatch: `"r${draft.baseRevision}"`,
-                key: newKey(),
-              })
-            }}
-          >
-            <p>The gateway checks the whole document. Nothing is active until the draft change is put on trial and kept.</p>
-            <ul>
-              {changed.map((change) => (
-                <li key={`${change.control}:${change.target}`}>
-                  {controls[change.control] ?? change.control}: <code>{change.target}</code>
-                </li>
-              ))}
-            </ul>
-          </Confirm>
-          <Confirm
-            open={discardConfirm}
-            title="Discard your draft?"
-            confirmLabel="Discard Draft"
-            danger
-            onCancel={() => setDiscardConfirm(false)}
-            onConfirm={() => {
-              setDiscardConfirm(false)
-              setDraft({ document: copy(confirmed!), base: copy(confirmed!), baseRevision: current.id })
-              setJson(JSON.stringify(confirmed, null, 2))
-              setJsonError('')
-              setBuffers({})
-              mutation.clear()
-              setRefused(undefined)
-              setTemplateNote('')
-            }}
-          >
-            <p>Your changes are lost.</p>
-          </Confirm>
-          <Confirm
-            open={deleteKey !== null}
-            title={`Delete ${deleteKey ? splitKey(deleteKey).join(' ') : 'box'}?`}
-            confirmLabel="Delete Box"
-            danger
-            onCancel={() => setDeleteKey(null)}
-            onConfirm={() => {
-              if (deleteKey) {
-                update(remove(document, deleteKey))
-                setBuffers((previous) => Object.fromEntries(Object.entries(previous).filter(([key]) => !key.startsWith(`${deleteKey}.`))))
-                if (selection === deleteKey) setSelection(null)
-              }
-              setDeleteKey(null)
-            }}
-          >
-            <p>
-              Removes the box and its permissions from this draft. The gateway is unchanged until the draft is saved and put on trial.
-            </p>
-          </Confirm>
+          <SaveDialog
+            draft={draft}
+            stageConfirm={stageConfirm}
+            setStageConfirm={setStageConfirm}
+            submitted={submitted}
+            changed={changed}
+            mutation={mutation}
+            canStage={canStage}
+          />
+          <DiscardDialog
+            setDraft={setDraft}
+            setJson={setJson}
+            setJsonError={setJsonError}
+            setBuffers={setBuffers}
+            discardConfirm={discardConfirm}
+            setDiscardConfirm={setDiscardConfirm}
+            setRefused={setRefused}
+            setTemplateNote={setTemplateNote}
+            current={current}
+            confirmed={confirmed}
+            mutation={mutation}
+          />
+          <DeleteDialog
+            selection={selection}
+            setSelection={setSelection}
+            setBuffers={setBuffers}
+            deleteKey={deleteKey}
+            setDeleteKey={setDeleteKey}
+            document={document}
+            update={update}
+          />
         </>
       ) : null}
       {mode === 'provisional' && pendingId !== undefined && provisionalDocument.reply && provisionalDocument.reply.kind !== 'ok' ? (
@@ -741,137 +582,4 @@ X-CSRF-Token: <the session's CSRF token>
       ) : null}
     </>
   )
-}
-
-// JsonTools copies or downloads the document shown, or loads one from a
-// file into the editor; loading changes nothing until Apply JSON.
-function JsonTools(props: { text: string; name: string; editable: boolean; onLoad: (text: string) => void }) {
-  const [copied, setCopied] = useState(false)
-  const [href, setHref] = useState('')
-  const [fileProblem, setFileProblem] = useState('')
-  const file = useRef<HTMLInputElement>(null)
-  // The download link is a blob URL of the shown text, released when the
-  // text changes or the page closes.
-  useEffect(() => {
-    setCopied(false)
-    const url = URL.createObjectURL(new Blob([props.text], { type: 'application/json' }))
-    setHref(url)
-    return () => URL.revokeObjectURL(url)
-  }, [props.text])
-  return (
-    <div className="json-tools">
-      <button
-        type="button"
-        className="btn btn-small"
-        onClick={() =>
-          navigator.clipboard.writeText(props.text).then(
-            () => setCopied(true),
-            () => setCopied(false),
-          )
-        }
-      >
-        {copied ? 'Copied' : 'Copy'}
-      </button>
-      <a className="btn btn-small" href={href || undefined} download={props.name}>
-        Download JSON
-      </a>
-      {props.editable ? (
-        <>
-          <button type="button" className="btn btn-small" onClick={() => file.current?.click()}>
-            Load from a File
-          </button>
-          <input
-            ref={file}
-            type="file"
-            accept="application/json,.json"
-            hidden
-            onChange={(event) => {
-              const chosen = event.target.files?.[0]
-              event.target.value = ''
-              if (!chosen) return
-              chosen.text().then(
-                (text) => {
-                  setFileProblem('')
-                  props.onLoad(text)
-                },
-                () => setFileProblem('The file could not be read.'),
-              )
-            }}
-          />
-        </>
-      ) : null}
-      {fileProblem ? (
-        <p role="alert" className="field-error">
-          {fileProblem}
-        </p>
-      ) : null}
-    </div>
-  )
-}
-
-function TracePanel({
-  policy,
-  who,
-  setWho,
-  what,
-  setWhat,
-  steps,
-}: {
-  policy: Policy
-  who: string
-  setWho: (value: string) => void
-  what: string
-  setWhat: (value: string) => void
-  steps: ReturnType<typeof trace>
-}) {
-  return (
-    <section className="designer-trace">
-      <h2>Trace</h2>
-      <Field id="designer-trace-who" label="Who">
-        <select className="input" id="designer-trace-who" value={who} onChange={(event) => setWho(event.target.value)}>
-          <option value="none">no token</option>
-          {policy.roles.map((role) => (
-            <option value={`role:${role.id}`} key={`role:${role.id}`}>
-              a token with role {role.id}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <Field id="designer-trace-what" label="What">
-        <select className="input" id="designer-trace-what" value={what} onChange={(event) => setWhat(event.target.value)}>
-          {policy.operations.map((operation) => (
-            <option value={operation.id} key={operation.id}>
-              {operation.id}: {operation.method} {operation.target}
-            </option>
-          ))}
-        </select>
-      </Field>
-      {steps.length ? (
-        <ol className="designer-trace-steps">
-          {steps.map((step) => (
-            <li key={step.name}>
-              <strong>
-                <CheckName name={step.name} />
-              </strong>{' '}
-              {step.state === 'unreached' ? (
-                <span className="hint">{stepWords.unreached}</span>
-              ) : (
-                <Badge tone={step.state === 'passed' ? 'ok' : step.state === 'refused' ? 'refused' : 'neutral'}>{stepWords[step.state]}</Badge>
-              )}
-              {step.text ? <p>{step.text}</p> : null}
-            </li>
-          ))}
-        </ol>
-      ) : (
-        <p className="hint">Add an endpoint to trace a request.</p>
-      )}
-      <p className="notice tone-neutral">{traceExplanation}</p>
-    </section>
-  )
-}
-
-// CheckName names one of the gateway's checks with its explanation.
-function CheckName({ name }: { name: string }) {
-  const check = stages.find((item) => item.name === name)
-  return check ? <Explain term={check.name} plain={check.plain} technical={check.technical} /> : <>{name}</>
 }

@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { Status } from './api'
-import { Glyph, time } from './ui'
+import { Glyph } from './ui'
+import { time } from './time'
 import type { View } from './views'
+
+// Notifications: changes in the gateway's status since the last read, shown as notices.
 
 type NoticeTone = 'ok' | 'pending' | 'neutral' | 'refused'
 
-export interface Notice {
+interface Notice {
   tone: NoticeTone
   text: string
 }
@@ -24,7 +27,7 @@ const words: Record<NoticeTone, string> = { ok: 'Done', pending: 'In progress', 
 // started or ended, temporary rules added or ended, signing keys reloaded,
 // and a security log that stopped working. It only reports what the gateway
 // said; it decides nothing.
-export function statusNotices(before: Status, after: Status): Notice[] {
+function statusNotices(before: Status, after: Status): Notice[] {
   const notices: Notice[] = []
   if (before.provisional === undefined && after.provisional !== undefined) {
     notices.push({ tone: 'pending', text: `Version ${after.provisional} is on trial${after.deadline ? ` until ${time(after.deadline)}` : ''}.` })

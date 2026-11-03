@@ -1,0 +1,59 @@
+/* Dialogs: the modal layer, its body and its actions. */
+
+/* Dialog: the one raised layer. */
+dialog {
+  width: min(32rem, calc(100vw - 32px));
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: var(--shadow-overlay);
+}
+
+dialog[open] {
+  animation: dialog-in var(--dur-base) var(--ease-out);
+}
+
+dialog::backdrop {
+  background: var(--scrim);
+}
+
+dialog h2 {
+  padding: 20px 24px 0;
+  font-size: var(--text-lg);
+}
+
+.dialog-body {
+  padding: 10px 24px 0;
+  color: var(--ink-2);
+}
+
+.dialog-body > :last-child {
+  margin-bottom: 0;
+}
+
+.dialog-body .facts {
+  margin-bottom: 12px;
+}
+
+.dialog-actions {
+  justify-content: flex-end;
+  margin: 20px 0 0;
+  padding: 14px 24px;
+  border-top: 1px solid var(--rule);
+  background: var(--well);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.985);
+  }
+}
+
+/* A modal dialog stays centred in the window, whatever page holds it. */
+.page > dialog {
+  margin: auto;
+}

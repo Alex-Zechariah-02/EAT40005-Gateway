@@ -1,0 +1,176 @@
+/* Change sets, changes whose answer was lost, and the notice bar. */
+
+/* Changes whose answer was lost, listed at the top of every page. */
+.unresolved {
+  display: grid;
+  gap: 8px;
+}
+
+.unresolved-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--tone);
+  font-size: var(--text-sm);
+}
+
+.unresolved-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.unresolved-item p {
+  margin: 0 0 4px;
+}
+
+.unresolved-result {
+  color: var(--tone);
+  font-weight: 600;
+}
+
+.detail-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 16px;
+}
+
+.detail h3 {
+  margin: 24px 0 8px;
+}
+
+.detail-actions {
+  margin-top: 24px;
+  padding-top: 4px;
+  border-top: 1px solid var(--rule);
+}
+
+.impact {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--rule);
+}
+
+.impact-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.impact-head h3 {
+  margin: 0;
+}
+
+.impact .table-scroll {
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 0 0 1px var(--rule);
+}
+
+.changes {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.changes-columns {
+  grid-template-columns: repeat(auto-fill, minmax(min(21rem, 100%), 1fr));
+}
+
+.change {
+  position: relative;
+  padding: 5px 10px 5px 22px;
+  border-radius: var(--radius-md);
+  background: var(--well);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.change::before {
+  content: '';
+  position: absolute;
+  top: 0.95em;
+  left: 9px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink-3);
+}
+
+.change-head {
+  display: block;
+}
+
+.change-details {
+  margin: 2px 0;
+  padding: 0 0 0 14px;
+  color: var(--ink-2);
+}
+
+.change-control {
+  margin-right: 6px;
+  color: var(--ink-3);
+  font-family: var(--font-ui);
+  font-weight: 600;
+}
+
+.change-added::before {
+  background: var(--ok);
+}
+
+.change-changed::before {
+  background: var(--pending);
+}
+
+.change-removed::before {
+  background: var(--refused);
+}
+
+.document {
+  margin-top: 16px;
+}
+
+.change-set {
+  display: grid;
+  gap: 8px;
+  margin-block: 8px;
+}
+
+.change-set h3 {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.change-set ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+.notices {
+  display: grid;
+  gap: 8px;
+}
+
+.notices:not(:empty) {
+  margin-bottom: 16px;
+}
+
+.notice-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.notice-bar > span:last-of-type {
+  flex: 1;
+}

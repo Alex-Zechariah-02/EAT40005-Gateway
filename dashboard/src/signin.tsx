@@ -1,7 +1,9 @@
 import { useId, useState, type FormEvent } from 'react'
-import { request, type Reply, type SessionInfo } from './api'
+import { request } from './http'
+import type { Reply, SessionInfo } from './api'
 import { useResource } from './hooks'
-import { describedBy, Field, Problem } from './ui'
+import { describedBy, Field } from './ui'
+import { Problem } from './replies'
 
 // The gateway's state in plain words; the exact value stays beside it.
 const gatewayStates: Record<string, string> = {

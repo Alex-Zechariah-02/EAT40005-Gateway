@@ -1,0 +1,232 @@
+/* Layers above the page: notifications, tooltips, + menus, explanations and their reduced motion. */
+
+/* Floating notifications: they overlay the page instead of pushing it
+   down. Success and progress notes leave by themselves; problems stay. */
+.notices {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 40;
+  width: min(420px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.notices:not(:empty) {
+  margin-bottom: 0;
+}
+
+.notice-bar {
+  position: relative;
+  overflow: hidden;
+  padding: 12px 14px;
+  background: color-mix(in oklch, var(--tone-tint) 82%, transparent);
+  backdrop-filter: saturate(1.5) blur(14px);
+  -webkit-backdrop-filter: saturate(1.5) blur(14px);
+  box-shadow: inset 0 0 0 1px var(--tone-line), var(--shadow-overlay);
+  pointer-events: auto;
+  animation: toast-in 260ms var(--ease-out);
+}
+
+.notice-timer {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: 100%;
+  background: var(--tone);
+  opacity: 0.55;
+  transform-origin: left;
+  animation: toast-timer var(--toast-ms) linear forwards;
+}
+
+.notice-bar:hover .notice-timer,
+.notice-bar:focus-within .notice-timer {
+  animation-play-state: paused;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+}
+
+@keyframes toast-timer {
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notice-bar,
+  .events tbody tr:first-child,
+  .page-about:not([hidden]) {
+    animation: none;
+  }
+  .notice-timer {
+    animation-duration: var(--toast-ms);
+  }
+}
+
+/* Tooltips for icon-only controls, drawn in the console's own style by
+   TooltipLayer in one layer above the page, so no scrolling list clips them. */
+.tooltip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 100;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--ink);
+  color: var(--paper);
+  font: 500 var(--text-xs)/1.4 var(--font-ui);
+  white-space: nowrap;
+  pointer-events: none;
+  animation: tip-in var(--dur-fast) var(--ease-out);
+}
+
+@keyframes tip-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell,
+  input[type='checkbox'],
+  input[type='checkbox']::before,
+  input[type='radio'],
+  input[type='radio']::before,
+  details > summary::before,
+  .tooltip {
+    transition: none;
+    animation: none;
+  }
+}
+
+/* Menus opened by a + button: drawn above the page beside the button. */
+.action-menu {
+  position: fixed;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  min-width: 13rem;
+  max-width: 20rem;
+  padding: 4px;
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  box-shadow: var(--shadow-overlay);
+  animation: tip-in var(--dur-fast) var(--ease-out);
+}
+
+.action-menu-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink);
+  font: 500 var(--text-sm)/1.4 var(--font-ui);
+  text-align: start;
+  cursor: pointer;
+}
+
+.action-menu-item:hover,
+.action-menu-item:focus-visible {
+  background: var(--hover);
+  outline: none;
+}
+
+.action-menu-item:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--focus);
+}
+
+.action-menu-item[aria-disabled='true'] {
+  color: var(--ink-3);
+  cursor: not-allowed;
+}
+
+.action-menu-why {
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+  font-weight: 400;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .action-menu {
+    animation: none;
+  }
+}
+
+/* A term with an explanation: dotted underline, a button to keyboard users. */
+.explain-term {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  text-decoration: underline dotted;
+  text-decoration-color: var(--rule-strong);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  cursor: help;
+}
+.explain-term:hover,
+.explain-term[aria-describedby]:focus-visible {
+  text-decoration-color: var(--ink-3);
+}
+
+.explain-note {
+  position: fixed;
+  inset: auto;
+  width: min(340px, calc(100vw - 16px));
+  margin: 0;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  box-shadow: var(--shadow-overlay);
+  color: var(--ink);
+  font: 400 var(--text-sm)/1.45 var(--font-ui);
+  opacity: 0;
+  transform: translateY(-2px);
+  transition:
+    opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out),
+    overlay var(--dur-fast) allow-discrete,
+    display var(--dur-fast) allow-discrete;
+}
+.explain-note:popover-open {
+  opacity: 1;
+  transform: none;
+  transition-duration: var(--dur-base);
+}
+@starting-style {
+  .explain-note:popover-open {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+}
+.explain-note p {
+  margin: 4px 0 0;
+}
+.explain-title {
+  font-weight: 600;
+}
+.explain-note .explain-technical {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--rule);
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .explain-note,
+  .explain-note:popover-open {
+    transform: none;
+  }
+}

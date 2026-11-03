@@ -1,0 +1,169 @@
+/* Requests: the decision path, Request Lookup and Live Traffic. */
+
+/* The decision path: one short bar per check, in the gateway's order. */
+.decision-path {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.dp-steps {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.dp-step {
+  width: 14px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--rule);
+}
+
+.dp-passed {
+  background: var(--step-cleared);
+}
+
+.dp-refused {
+  background: var(--refused);
+}
+
+.dp-unknown {
+  background: var(--unknown);
+}
+
+.dp-label {
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+
+.dp-label-refused {
+  color: var(--refused);
+}
+
+.dp-label-failed {
+  color: var(--unknown);
+}
+
+.dp-label-allowed {
+  color: var(--ink-3);
+}
+
+/* Allowed requests stay quiet so refusals stand out in a long list. */
+.decision-path:has(.dp-label-allowed) .dp-step {
+  opacity: 0.45;
+}
+
+.events td {
+  vertical-align: middle;
+}
+
+/* Request lookup */
+.lookup-form {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 9rem auto;
+  align-items: end;
+  gap: 0 14px;
+}
+
+.lookup-form .field {
+  margin-bottom: 0;
+}
+
+.lookup-submit .btn {
+  min-height: 36px;
+}
+
+.event-detail .card-head h2 {
+  font-size: var(--text-xl);
+}
+
+.path-steps {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
+}
+
+.path-step {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  background: none;
+}
+
+.path-bar {
+  height: 6px;
+  margin-bottom: 4px;
+  border-radius: 3px;
+  background: var(--rule);
+}
+
+.path-step.dp-passed .path-bar {
+  background: var(--step-cleared);
+}
+
+.path-step.dp-refused .path-bar {
+  background: var(--refused);
+}
+
+.path-step.dp-unknown .path-bar {
+  background: var(--unknown);
+}
+
+.path-name {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.path-word {
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+}
+
+.path-step.dp-refused .path-word {
+  color: var(--refused);
+  font-weight: 600;
+}
+
+.path-step.dp-unreached .path-name {
+  color: var(--ink-3);
+  font-weight: 500;
+}
+
+/* Live traffic */
+.live-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+
+.live-state::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink-3);
+}
+
+.live-live {
+  color: var(--ok);
+}
+
+.live-live::before {
+  background: var(--ok);
+}
+
+.live-closed {
+  color: var(--refused);
+}
+
+.live-closed::before {
+  background: var(--refused);
+}

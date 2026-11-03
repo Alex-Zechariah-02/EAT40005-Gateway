@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import type { Policy } from './api'
-import { limitSignIn, readOnlyAccess, removeApiAccess, tightenRate, type TemplateResult } from './designer-model'
+import { limitSignIn, readOnlyAccess, removeApiAccess, tightenRate, type TemplateResult } from './designer-edits'
 
 // Templates offers ready-made starting points for common changes. Applying one
 // only edits the unsaved draft; the draft is then saved, checked by the

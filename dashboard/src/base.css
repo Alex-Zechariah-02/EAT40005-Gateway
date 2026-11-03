@@ -1,0 +1,262 @@
+/* Base: elements, links, glyphs, browser surfaces, focus and the motion base rules. */
+
+/* Base */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  color: var(--ink);
+  background: var(--ground);
+  font-family: var(--font-ui);
+  line-height: 1.5;
+  text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  margin: 0;
+  font-size: var(--text-md);
+}
+
+::selection {
+  background: oklch(51% 0.19 260 / 0.18);
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-weight: 600;
+  text-wrap: balance;
+}
+
+h1 {
+  font-size: var(--text-xl);
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+}
+
+h2 {
+  font-size: var(--text-lg);
+  line-height: 1.35;
+  letter-spacing: -0.005em;
+}
+
+h3 {
+  font-size: var(--text-md);
+  line-height: 1.4;
+}
+
+p {
+  margin: 0 0 8px;
+  text-wrap: pretty;
+}
+
+a {
+  color: var(--link);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--link-hover);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* A link inside a sentence is underlined, so colour is not its only mark
+   (WCAG 1.4.1); standalone links such as card actions are not. */
+p a {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+code,
+pre {
+  font-family: var(--font-mono);
+}
+
+code {
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+}
+
+strong {
+  font-weight: 600;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+[tabindex='-1']:focus {
+  outline: none;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.visually-hidden:focus {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 10;
+  width: auto;
+  height: auto;
+  padding: 8px 12px;
+  clip-path: none;
+  background: var(--paper);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-overlay);
+}
+
+.muted {
+  color: var(--ink-3);
+}
+
+.soft {
+  color: var(--ink-2);
+}
+
+.hint {
+  margin: 4px 0 0;
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.mono,
+input.mono {
+  font-family: var(--font-mono);
+}
+
+/* Phosphor regular: 17 to 20px navigation and 16px inline glyphs. */
+.icon {
+  flex: none;
+  width: 17px;
+  height: 17px;
+  fill: currentColor;
+  stroke: none;
+}
+
+.glyph {
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+  stroke: none;
+}
+
+/* The library arrow has a hidden text equivalent for copying and reading. */
+.becomes {
+  display: inline-block;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  margin: 0 0.2em;
+  vertical-align: -0.08em;
+  fill: currentColor;
+  stroke: none;
+}
+
+/* A status as a pill: glyph, word and tint together, so colour is never the
+   only signal. */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px 1px 6px;
+  border-radius: 999px;
+  background: var(--tone-tint);
+  color: var(--tone);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+  vertical-align: 1px;
+}
+
+/* Motion marks a change of state only: a new live row, an opened
+   explanation. Pages load straight into the task. */
+.card,
+.section.card {
+  transition: box-shadow var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+}
+
+.events tbody tr:first-child {
+  animation: row-in 600ms var(--ease-out);
+}
+
+.page-about:not([hidden]) {
+  animation: rise-in var(--dur-base) var(--ease-out);
+}
+
+/* Movement only, no fade: text keeps its full contrast from the first frame. */
+@keyframes rise-in {
+  from {
+    transform: translateY(8px);
+  }
+}
+
+@keyframes row-in {
+  from {
+    background: var(--accent-tint);
+  }
+}
+
+/* Browser surfaces in the console's own style: selection, caret, scrollbars
+   and form controls carry the palette instead of the browser's defaults. */
+::selection {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+:root {
+  caret-color: var(--accent);
+}
+
+/* Thin scrollbars in the palette's ink that stay out of sight until the
+   pointer is over the area they scroll; the window's own shows while the page
+   scrolls or the pointer nears it (usePageScrollbar). The standard properties
+   win over the older -webkit- ones in every current browser. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+*:hover,
+*:focus-visible {
+  scrollbar-color: color-mix(in oklch, var(--ink) 30%, transparent) transparent;
+}
+
+html:not(.is-scrolling),
+html:not(.is-scrolling):hover {
+  scrollbar-color: transparent transparent;
+}
+
+html.is-scrolling {
+  scrollbar-color: color-mix(in oklch, var(--ink) 30%, transparent) transparent;
+}

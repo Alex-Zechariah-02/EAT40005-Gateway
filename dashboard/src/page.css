@@ -1,0 +1,270 @@
+/* The page body: its content column, cards and side-by-side columns. */
+
+/* The policy canvas runs to the window's bottom edge, less a small margin. */
+.page:has(.designer-canvas) {
+  padding-bottom: 16px;
+}
+
+.page > * {
+  max-width: var(--content-w);
+  margin-inline: var(--gutter);
+}
+
+.page > .banner,
+.page > .page-head {
+  max-width: none;
+  margin-inline: 0;
+}
+
+.page-head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  min-height: 64px;
+  margin-bottom: 16px;
+  padding: 12px var(--gutter);
+  border-bottom: 1px solid var(--rule);
+  background: var(--ground);
+}
+
+.page-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-left: auto;
+}
+
+.page-actions + .ref-search {
+  margin-left: 0;
+}
+
+.page-about {
+  max-width: 72ch;
+  margin-top: 0;
+  margin-bottom: 24px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  background: var(--well);
+  box-shadow: inset 0 0 0 1px var(--rule);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+.ref-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(320px, 100%);
+  height: 36px;
+  margin-left: auto;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: var(--well);
+  box-shadow: inset 0 0 0 1px var(--rule);
+  color: var(--ink-3);
+}
+
+.ref-search:focus-within {
+  box-shadow: inset 0 0 0 1px var(--focus);
+  outline: 2px solid var(--focus);
+  outline-offset: 0;
+}
+
+.ref-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-md);
+  outline: none;
+}
+
+.ref-search input::placeholder {
+  color: var(--ink-3);
+}
+
+.read-stamp {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.read-stamp-failed {
+  color: var(--refused-strong);
+}
+
+.section {
+  margin-bottom: 24px;
+}
+
+.section > h2 {
+  margin-bottom: 12px;
+}
+
+.section-lede {
+  margin: -4px 0 14px;
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+  max-width: 80ch;
+}
+
+.section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 12px;
+}
+
+/* Cards: white surfaces on a faint ring. A card with a table has its head
+   padded and its table flush to the edges. */
+.card,
+.panel {
+  border-radius: var(--radius-lg);
+  background: var(--paper);
+  box-shadow: var(--card-shadow);
+}
+
+.panel,
+.card-pad {
+  padding: 20px;
+}
+
+.panel > h2,
+.card-pad > h2 {
+  margin-bottom: 14px;
+}
+
+.card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 16px;
+}
+
+.card-head h2 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.card-head .hint {
+  margin: 2px 0 0;
+}
+
+.card-head-pad {
+  margin: 0;
+  padding: 16px 20px 12px;
+}
+
+.card-head-pad + .card-body {
+  border-top: 1px solid var(--rule);
+}
+
+.card-body > .notice,
+.card-notice {
+  margin: 12px 20px;
+}
+
+.card-pad-x {
+  padding: 0 20px;
+}
+
+.card-pad-x:has(> .mutation-result:empty) {
+  display: none;
+}
+
+.card-empty {
+  margin: 0;
+  padding: 16px 20px 18px;
+}
+
+.card-link {
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.quiet-link {
+  color: var(--ink);
+}
+
+.card-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.grid-main-side {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 24px;
+}
+
+.grid-main-side > * {
+  min-width: 0;
+}
+
+.grid-top {
+  align-items: start;
+}
+
+/* A column of cards that stacks on its own, independent of the column
+   beside it. */
+.card-stack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+  align-content: start;
+}
+
+.card-stack:empty {
+  display: none;
+}
+
+/* Beside a long list the narrow column stays in view as the page scrolls. */
+@media (min-width: 1101px) {
+  .card-stack-sticky {
+    position: sticky;
+    top: 88px;
+  }
+}
+
+.card-sub {
+  margin: 20px 0 10px;
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+
+.card-head + .card-sub {
+  margin-top: 0;
+}
+
+.card-quiet {
+  margin: 0;
+}

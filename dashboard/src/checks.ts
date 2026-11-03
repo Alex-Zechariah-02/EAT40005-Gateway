@@ -3,7 +3,7 @@
 
 export type Stage = 'route' | 'access' | 'token' | 'blocked' | 'permit' | 'rate' | 'validation' | 'record' | 'forward'
 
-export interface Check {
+interface Check {
   id: Stage
   name: string
   // plain says what the check does, for an administrator new to policies.
@@ -82,6 +82,6 @@ export const stepWords: Record<StepState, string> = {
 }
 
 // The outcome of a whole request.
-export type Decision = 'allowed' | 'refused' | 'failed'
+type Decision = 'allowed' | 'refused' | 'failed'
 
 export const decisionWords: Record<Decision, string> = { allowed: 'Allowed', refused: 'Refused', failed: 'Outcome Unknown' }

@@ -1,16 +1,20 @@
 import { useId, useState, type ReactNode } from 'react'
 import type { Operation, Policy } from './api'
-import { addEndpoint, grantAccess, setRate } from './designer-model'
+import { grantAccess, setRate } from './designer-edits'
 import { differences } from './diff'
-import { ChangeSet, Wizard } from './ui'
+import { ChangeSet } from './review'
+import { Wizard } from './dialogs'
+import { EndpointWizard } from './designer-endpoint'
+
+// The Designer's guided tasks: give access and set a rate limit, step by step.
 
 export type GuidedTask = 'access' | 'rate' | 'endpoint'
 // api, when given, is the API whose group the wizard was opened from: a new
 // endpoint starts there, and a rate limit is chosen among its endpoints.
-type WizardProps = { policy: Policy; api?: string; apply: (document: Policy, summary: string) => void; close: () => void }
+export type WizardProps = { policy: Policy; api?: string; apply: (document: Policy, summary: string) => void; close: () => void }
 
-const methods = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
-const withBody = new Set(['POST', 'PUT', 'PATCH'])
+export const methods = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
+export const withBody = new Set(['POST', 'PUT', 'PATCH'])
 
 // GuidedChange runs one common edit as a short wizard, opened from a group's
 // + menu. Each ends on a review of what the draft gains or loses and only
@@ -22,7 +26,7 @@ export function GuidedChange(props: WizardProps & { task: GuidedTask }) {
   return <EndpointWizard {...props} />
 }
 
-function Review(props: { before: Policy; after: Policy; children?: ReactNode }) {
+export function Review(props: { before: Policy; after: Policy; children?: ReactNode }) {
   const changes = differences(props.before, props.after)
   return (
     <>
@@ -36,7 +40,7 @@ function Review(props: { before: Policy; after: Policy; children?: ReactNode }) 
   )
 }
 
-function Choice(props: { id: string; label: string; value: string; options: [string, string][]; onChange: (value: string) => void }) {
+export function Choice(props: { id: string; label: string; value: string; options: [string, string][]; onChange: (value: string) => void }) {
   return (
     <div className="field">
       <label htmlFor={props.id}>{props.label}</label>
@@ -51,7 +55,7 @@ function Choice(props: { id: string; label: string; value: string; options: [str
   )
 }
 
-function Whole(props: { id: string; label: string; value: string; onChange: (value: string) => void; hint?: string }) {
+export function Whole(props: { id: string; label: string; value: string; onChange: (value: string) => void; hint?: string }) {
   return (
     <div className="field">
       <label htmlFor={props.id}>{props.label}</label>
@@ -75,7 +79,7 @@ function Whole(props: { id: string; label: string; value: string; onChange: (val
   )
 }
 
-function wholeNumber(text: string): number | null {
+export function wholeNumber(text: string): number | null {
   const value = Number(text)
   return text.trim() !== '' && Number.isInteger(value) && value >= 1 ? value : null
 }
@@ -214,143 +218,6 @@ function RateWizard({ policy, api, apply, close }: WizardProps) {
           body: (
             <Review before={policy} after={next}>
               <p className="hint">A request over the limit is refused until enough of the window has passed.</p>
-            </Review>
-          ),
-        },
-      ]}
-    />
-  )
-}
-
-function EndpointWizard({ policy, api: start, apply, close }: WizardProps) {
-  const id = useId()
-  const [api, setApi] = useState(start && policy.apis.some((item) => item.id === start) ? start : (policy.apis[0]?.id ?? ''))
-  const [method, setMethod] = useState('GET')
-  const [target, setTarget] = useState('')
-  const [name, setName] = useState<string | null>(null)
-  const [open, setOpen] = useState(false)
-  const [roles, setRoles] = useState<string[]>([])
-  const [count, setCount] = useState('100')
-  const [seconds, setSeconds] = useState('60')
-  // Until an ID is typed, it follows the API and the path's last fixed part.
-  const segment =
-    target
-      .split('/')
-      .filter((part) => part && !part.startsWith('{'))
-      .pop() ?? ''
-  const endpointId = name ?? (segment ? `${api}.${segment}` : '')
-  const requests = wholeNumber(count)
-  const span = wholeNumber(seconds)
-  const where = !policy.apis.length
-    ? 'Add an API first.'
-    : !target.startsWith('/')
-      ? 'Enter a path starting with /.'
-      : !endpointId
-        ? 'Enter an endpoint ID.'
-        : policy.operations.some((operation) => operation.id === endpointId)
-          ? `Endpoint ${endpointId} already exists. Choose another ID.`
-          : undefined
-  const next =
-    !where && requests && span
-      ? addEndpoint(policy, { id: endpointId, api, method, target, open, roles, count: requests, windowSeconds: span })
-      : policy
-  return (
-    <Wizard
-      title="Add an Endpoint"
-      finishLabel="Apply to the Draft"
-      onClose={close}
-      onFinish={() => apply(next, `Endpoint ${endpointId} added (${method} ${target}).`)}
-      steps={[
-        {
-          title: 'Where It Is',
-          problem: where,
-          body: (
-            <div className="form-grid">
-              <Choice id={`${id}-api`} label="API" value={api} options={policy.apis.map((item) => [item.id, item.id])} onChange={setApi} />
-              <Choice id={`${id}-method`} label="Method" value={method} options={methods.map((item) => [item, item])} onChange={setMethod} />
-              <div className="field field-wide">
-                <label htmlFor={`${id}-target`}>Path</label>
-                <input
-                  id={`${id}-target`}
-                  className="input mono"
-                  value={target}
-                  placeholder="/reports/daily"
-                  spellCheck={false}
-                  autoComplete="off"
-                  onChange={(event) => setTarget(event.target.value)}
-                />
-              </div>
-              <div className="field field-wide">
-                <label htmlFor={`${id}-name`}>Endpoint ID</label>
-                <input
-                  id={`${id}-name`}
-                  className="input mono"
-                  value={endpointId}
-                  spellCheck={false}
-                  autoComplete="off"
-                  onChange={(event) => setName(event.target.value)}
-                />
-              </div>
-            </div>
-          ),
-        },
-        {
-          title: 'Who May Call It',
-          body: (
-            <>
-              <fieldset className="wizard-choices">
-                <legend>Sign-In</legend>
-                <label className="check">
-                  <input type="radio" name={`${id}-open`} checked={!open} onChange={() => setOpen(false)} />
-                  <span>Signed-In Accounts with a Permission</span>
-                </label>
-                <label className="check">
-                  <input type="radio" name={`${id}-open`} checked={open} onChange={() => setOpen(true)} />
-                  <span>Anyone, Without Signing In</span>
-                </label>
-              </fieldset>
-              {open ? null : (
-                <fieldset className="wizard-choices">
-                  <legend>Roles That May Call It</legend>
-                  {policy.roles.map((role) => (
-                    <label key={role.id} className="check">
-                      <input
-                        type="checkbox"
-                        checked={roles.includes(role.id)}
-                        onChange={(event) => setRoles(event.target.checked ? [...roles, role.id] : roles.filter((item) => item !== role.id))}
-                      />
-                      <span>{role.id}</span>
-                    </label>
-                  ))}
-                  {roles.length === 0 ? <p className="hint">With no role chosen, no account can call it yet.</p> : null}
-                </fieldset>
-              )}
-            </>
-          ),
-        },
-        {
-          title: 'Rate Limit',
-          problem: requests && span ? undefined : 'Enter whole numbers of at least 1.',
-          body: (
-            <div className="form-grid">
-              <Whole
-                id={`${id}-count`}
-                label="Requests"
-                value={count}
-                onChange={setCount}
-                hint={`Counted per ${open ? 'client address' : 'account'}.`}
-              />
-              <Whole id={`${id}-seconds`} label="Per How Many Seconds" value={seconds} onChange={setSeconds} />
-            </div>
-          ),
-        },
-        {
-          title: 'Review',
-          body: (
-            <Review before={policy} after={next}>
-              {withBody.has(method) ? (
-                <p className="hint">This endpoint has no request body rule yet. If it takes a body, select the endpoint on the canvas and add one.</p>
-              ) : null}
             </Review>
           ),
         },

@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
-import type { Admin, MutationRequest, Outcome, Reply, Status } from './api'
+import type { Admin } from './http'
+import type { MutationRequest, Outcome, Reply, Status } from './api'
 import type { Handoff, View } from './views'
 
 // useResource loads one server read when the view opens and on refresh. A

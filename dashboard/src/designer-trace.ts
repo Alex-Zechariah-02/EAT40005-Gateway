@@ -1,7 +1,9 @@
 import type { Operation, Policy } from './api'
 import type { StepState } from './checks'
 
-export interface TraceStep {
+// The Designer's trace: the checks one caller's request meets on one endpoint, in the gateway's order.
+
+interface TraceStep {
   name: string
   state: Extract<StepState, 'passed' | 'refused' | 'inapplicable' | 'unreached'>
   text: string

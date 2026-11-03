@@ -1,4 +1,7 @@
-import type { Admin, Permission } from './api'
+import type { Admin } from './http'
+import type { Permission } from './api'
+
+// The Dashboard's pages, the props each page gets, and links from one page to another.
 
 export type View =
   | 'overview'

@@ -1,8 +1,13 @@
-import { Fragment, useEffect, useId, useRef, useState } from 'react'
+import { Fragment, useId, useState } from 'react'
 import { explain, type HistoryEntry } from './api'
 import { usePaged, useRemembered, useResource } from './hooks'
-import { actorName, Badge, CodeBlock, Empty, PageHeader, Problem, ReadStamp, ReplyView, ShowMore, TableScroll, Time, XRef } from './ui'
+import { actorName, Problem, ShowMore } from './replies'
+import { Badge, Empty, TableScroll } from './ui'
+import { PageHeader } from './header'
+import { ReadStamp, Time } from './time'
+import { XRef } from './links'
 import type { ViewProps } from './views'
+import { Entry } from './entry'
 
 // targetWords names a history target in the Dashboard's words, in title
 // case; the exact target stays beside it. An ID, such as an account, is
@@ -31,7 +36,7 @@ type Area = 'policy' | 'overrides' | 'accounts' | 'keys' | 'administrators' | 'o
 
 // What each recorded kind of transition is, in words, and the area it
 // belongs to. A kind not listed is shown by its code.
-const kinds: Record<string, { label: string; area: Area }> = {
+export const kinds: Record<string, { label: string; area: Area }> = {
   genesis: { label: 'First Policy Established', area: 'policy' },
   recovery_base: { label: 'Starting Policy After a Restore Established', area: 'policy' },
   'candidate.create': { label: 'Draft Change Saved', area: 'policy' },
@@ -255,59 +260,5 @@ export function History({ admin }: ViewProps) {
         </div>
       </section>
     </>
-  )
-}
-
-const entryFields: [keyof HistoryEntry, string][] = [
-  ['seq', 'Sequence'],
-  ['transition_id', 'Transition'],
-  ['kind', 'Kind'],
-  ['actor', 'By'],
-  ['target', 'Target'],
-  ['expected_revision', 'Based on version'],
-  ['outcome', 'Outcome'],
-  ['reason', 'Reason'],
-  ['revision', 'Resulting Version'],
-  ['candidate', 'Draft Change'],
-  ['recorded_at', 'Recorded'],
-  ['published_at', 'Published'],
-  ['published_by', 'Published by'],
-  ['audited_at', 'Recorded in the security log'],
-]
-
-function Entry({ admin, id }: { admin: ViewProps['admin']; id: string }) {
-  const heading = useRef<HTMLHeadingElement>(null)
-  const entry = useResource<HistoryEntry>((signal) => admin.get(`/admin/history/${encodeURIComponent(id)}`, signal), [id])
-  useEffect(() => {
-    heading.current?.focus()
-  }, [])
-  return (
-    <section className="entry-detail" aria-labelledby="entry-title">
-      <h2 id="entry-title" ref={heading} tabIndex={-1}>
-        Transition <code>{id}</code>
-      </h2>
-      <ReplyView reply={entry.reply}>
-        {(h) => (
-          <>
-            <p className="entry-what">{kinds[h.kind]?.label ?? h.kind}</p>
-            {h.reason && explain(h.reason) ? <p className="hint">{explain(h.reason)}</p> : null}
-            <dl className="facts">
-              {entryFields
-                .filter(([key]) => h[key] !== undefined && h[key] !== '')
-                .map(([key, label]) => (
-                  <div key={key} className="fact">
-                    <dt>{label}</dt>
-                    <dd>{key.endsWith('_at') ? <Time value={String(h[key])} /> : <code>{String(h[key])}</code>}</dd>
-                  </div>
-                ))}
-            </dl>
-            <details className="document">
-              <summary>Record as Stored</summary>
-              <CodeBlock label={`Entry ${h.seq} as stored`}>{JSON.stringify(h, null, 2)}</CodeBlock>
-            </details>
-          </>
-        )}
-      </ReplyView>
-    </section>
   )
 }

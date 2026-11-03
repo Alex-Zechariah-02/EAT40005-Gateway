@@ -1,0 +1,145 @@
+/* Policy pages: APIs, request rules, policy as code and the draft bar. */
+
+/* APIs */
+.api-head {
+  align-items: flex-start;
+}
+
+.api-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 28px;
+  margin: 0;
+}
+
+.api-figures dt {
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+}
+
+.api-figures dd {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The same five columns line up from one API to the next. */
+/* APIs: each endpoint is its route with its ID under it; who may call it is
+   a row of role chips; limits and bodies are short figures. */
+.ops-table {
+  table-layout: fixed;
+  min-width: 44rem;
+}
+
+.ops-table th:nth-child(1) {
+  width: 40%;
+}
+
+.ops-table th:nth-child(2) {
+  width: 30%;
+}
+
+.ops-table th:nth-child(3) {
+  width: 14%;
+}
+
+.ops-route {
+  display: block;
+}
+
+.chips .xref {
+  text-decoration: none;
+}
+
+.xref:hover .chip {
+  background: var(--accent-tint);
+  color: var(--accent-active);
+}
+
+/* Policy as code */
+.code-block {
+  max-height: 24rem;
+  margin: 0;
+  padding: 14px 20px;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  box-shadow: none;
+  border-top: 1px solid var(--rule);
+}
+
+.code-block-short {
+  margin: 8px 0 12px;
+  border: 0;
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 0 0 1px var(--rule);
+}
+
+/* Padding, not margin: the card has no border, so a margin would collapse
+   out of its bottom edge. */
+.api-rules {
+  padding: 12px 20px 20px;
+}
+
+.api-rules > summary {
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* The Policy page's draft bar: the draft's state and its two actions, kept
+   at the bottom of the window under the work, where editors keep them. */
+/* The draft's state and its Save and Discard actions close the page, below
+   the views, and never cover them. */
+.save-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 10px 12px 10px 18px;
+  border-radius: var(--radius-lg);
+  background: var(--paper);
+  box-shadow: var(--card-shadow);
+}
+
+.save-bar.is-dirty {
+  box-shadow: inset 0 0 0 1px var(--accent-line), var(--card-shadow);
+}
+
+.save-bar-state {
+  flex: 1 1 12rem;
+  min-width: 0;
+  margin: 0;
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}
+
+.save-bar.is-dirty .save-bar-state {
+  color: var(--accent-active);
+  font-weight: 600;
+}
+
+.json-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.api-requests {
+  margin-top: 20px;
+}
+
+.api-requests > p {
+  max-width: 72ch;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+.page h2[tabindex='-1'] {
+  scroll-margin-top: 120px;
+}
+
+.page h2[tabindex='-1']:focus:not(:focus-visible) {
+  outline: none;
+}

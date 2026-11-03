@@ -1,30 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { newKey, type Activation, type Admin, type Outcome, type ProvisionalView, type Reply, type Status } from './api'
-import { useGatewayState, useMutation, usePaged, liveMs, usePoll, useRereadWhen, useResource } from './hooks'
-import { reasonOf, type Traffic } from './monitor'
-import { actorName, age, Badge, clock, Confirm, Empty, MutationResult, Problem, Receipt, Remaining, ShowMore, staleAfterMs, TableScroll, Time, TimeOfDay } from './ui'
+import { newKey, type Admin } from './http'
+import type { Outcome, ProvisionalView, Reply, Status } from './api'
+import { useGatewayState, useMutation, liveMs, usePoll, useRereadWhen, useResource } from './hooks'
+import type { Traffic } from './summary'
+import { MutationResult, Problem, Receipt } from './replies'
+import { age, Remaining, staleAfterMs, Time, TimeOfDay } from './time'
+import { Confirm } from './dialogs'
+import { type Asking, type Check, KeepDialog, sinceStart, trafficWindow, TrialTraffic } from './trial'
+import { DeadlineBar, TrialSide, TrialTile } from './activation'
 
-// trafficWindow is the smallest traffic window, in seconds, that reaches back
-// to the start of the trial; a trial older than an hour is counted over the
-// last hour only.
-function trafficWindow(activatedAt: string): number {
-  const elapsed = (Date.now() - new Date(activatedAt).getTime()) / 1000
-  return elapsed <= 60 ? 60 : elapsed <= 300 ? 300 : 3600
-}
-
-// sinceStart adds up the requests the gateway decided from the second the
-// trial started, from the per-second counts of a traffic reading.
-function sinceStart(traffic: Traffic, activatedAt: string) {
-  const from = Math.floor(new Date(activatedAt).getTime() / 1000) * 1000
-  let allowed = 0
-  let refused = 0
-  for (const second of traffic.per_second) {
-    if (new Date(second.at).getTime() < from) continue
-    allowed += second.allowed
-    refused += second.refused
-  }
-  return { allowed, refused, total: allowed + refused }
-}
+// The change on trial: keep it or undo it, in full on Changes or as a tile on the Overview.
 
 // What the administrator was looking at when they chose Confirm.
 interface Seen {
@@ -36,11 +21,6 @@ interface Seen {
   trafficAt: Date | null
   failed: string[]
 }
-
-type Check =
-  | { phase: 'reading' }
-  | { phase: 'blocked'; why: string }
-  | { phase: 'ready'; at: Date; view: ProvisionalView; etag: string | null; traffic?: Traffic; reasons: string[] }
 
 // TrialDecision shows the change on trial (the provisional policy) with the
 // server's deadline and its changed controls, and offers confirmation and
@@ -57,7 +37,7 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
   // depends on it.
   const refresh = state.refresh
   const mutation = useMutation(admin, refresh)
-  const [asking, setAsking] = useState<'confirm' | 'rollback' | null>(null)
+  const [asking, setAsking] = useState<Asking>(null)
   const [check, setCheck] = useState<Check>({ phase: 'reading' })
   const [reviewed, setReviewed] = useState(false)
   const seen = useRef<Seen | null>(null)
@@ -205,52 +185,16 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
   const asked = confirming.current
   const confirmDialog =
     variant === 'full' && asked ? (
-      <Confirm
-        open={asking === 'confirm'}
-        title={`Keep version ${asked.activation.revision}?`}
-        confirmLabel="Keep Change"
-        disabled={!ready || (ready.reasons.length > 0 && !reviewed)}
-        onCancel={cancel}
-        onConfirm={confirm}
-      >
-        <p>
-          Version {asked.activation.revision} stays active and is no longer undone at the deadline. Version {asked.activation.rollback_target} is then no
-          longer restored by an undo.
-        </p>
-        <p className="hint">The Admin API calls this “confirm”.</p>
-        {asked.changes.length > 0 ? (
-          <div className="change-set">
-            <h3>What Stays Active ({asked.changes.length} {asked.changes.length === 1 ? 'change' : 'changes'})</h3>
-            <ul>
-              {asked.changes.slice(0, 8).map((c) => (
-                <li key={`${c.control}:${c.target}`}>
-                  {controls[c.control] ?? c.control} <code>{c.target}</code>
-                </li>
-              ))}
-            </ul>
-            {asked.changes.length > 8 ? <p className="hint">And {asked.changes.length - 8} more, listed on the trial card.</p> : null}
-          </div>
-        ) : null}
-          <p className="hint" role="status">
-            {check.phase === 'reading' ? "Reading the gateway's current state…" : ready ? `Read again at ${clock(ready.at.toISOString(), true)}.` : ''}
-          </p>
-          {ready ? <CheckedFacts check={ready} /> : null}
-          {check.phase === 'blocked' ? <p className="notice tone-refused">{check.why}</p> : null}
-          {ready && ready.reasons.length > 0 ? (
-            <div className="notice tone-pending">
-              <p className="notice-title">Before keeping it, note:</p>
-              <ul className="check-reasons">
-                {ready.reasons.map((reason) => (
-                  <li key={reason}>{reason}</li>
-                ))}
-              </ul>
-              <label className="check">
-                <input type="checkbox" checked={reviewed} onChange={(e) => setReviewed(e.target.checked)} />
-                <span>I have reviewed the current facts above</span>
-              </label>
-            </div>
-          ) : null}
-      </Confirm>
+      <KeepDialog
+        asked={asked}
+        asking={asking}
+        check={check}
+        ready={ready}
+        reviewed={reviewed}
+        setReviewed={setReviewed}
+        cancel={cancel}
+        confirm={confirm}
+      />
     ) : null
   const dialogs = (
     <>
@@ -281,58 +225,19 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
   ) : null
 
   if (variant === 'tile') {
-    if (!view) {
-      return (
-        <div className="tile tile-empty">
-          <p className="tile-label">Change on Trial</p>
-          {current.reply && current.reply.kind !== 'ok' && !none ? (
-            <Problem reply={current.reply} />
-          ) : (
-            <p className="tile-value tile-value-quiet">None</p>
-          )}
-          {mutation.phase.state === 'replied' ? null : (
-            <p className="tile-foot">
-              <a href="#/changes">Open Changes</a>
-            </p>
-          )}
-          {result}
-        </div>
-      )
-    }
     return (
-      <div className="tile tile-trial tone-pending">
-        <div className="tile-row">
-          <div>
-            <p className="tile-label tile-label-tone">Change on Trial</p>
-            <p className="tile-value">Version {view.activation.revision}</p>
-          </div>
-          <div className="tile-end">
-            <p className="tile-label">Undone in</p>
-            <p className="tile-countdown">
-              <Remaining key={view.activation.deadline} until={view.activation.deadline} onPassed={refresh} format="clock" />
-            </p>
-          </div>
-        </div>
-        <DeadlineBar from={view.activation.activated_at} until={view.activation.deadline} />
-        <div className="tile-row tile-row-end">
-          <p className="tile-note">
-            <ChangeSummary view={view} />
-          </p>
-          <div className="actions">
-            {manage ? (
-              <button type="button" className="btn btn-small" onClick={() => setAsking('rollback')} disabled={mutation.pending}>
-                Undo Change
-              </button>
-            ) : null}
-            <a className="btn btn-small btn-primary" href="#/changes">
-              {manage ? 'Review and Keep' : 'Open Changes'}
-            </a>
-          </div>
-        </div>
-        {stale}
-        {result}
-        {dialogs}
-      </div>
+      <TrialTile
+        view={view}
+        current={current}
+        none={none}
+        manage={manage}
+        mutation={mutation}
+        refresh={refresh}
+        setAsking={setAsking}
+        stale={stale}
+        result={result}
+        dialogs={dialogs}
+      />
     )
   }
 
@@ -370,227 +275,11 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
             ) : null}
             <TrialTraffic traffic={traffic} activatedAt={view.activation.activated_at} />
           </div>
-          <div className="trial-side">
-            <h3>What Changed from Version {view.activation.rollback_target}</h3>
-            {view.changes.length === 0 ? (
-              <p className="hint">Nothing, as the gateway reports it.</p>
-            ) : (
-              <>
-                <p className="hint">
-                  {view.changes.length} {view.changes.length === 1 ? 'change' : 'changes'}, as the gateway reports them.
-                </p>
-                <ChangedControls changes={view.changes.slice(0, shownChanges)} />
-                {view.changes.length > shownChanges ? (
-                  <details className="more-changes">
-                    <summary>Show the Other {view.changes.length - shownChanges}</summary>
-                    <ChangedControls changes={view.changes.slice(shownChanges)} />
-                  </details>
-                ) : null}
-              </>
-            )}
-            <dl className="facts facts-compact">
-              <div className="fact">
-                <dt>From Draft Change</dt>
-                <dd>{view.activation.candidate}</dd>
-              </div>
-              <div className="fact">
-                <dt>Started</dt>
-                <dd>
-                  <Time value={view.activation.activated_at} /> by {view.activation.actor}
-                </dd>
-              </div>
-              <div className="fact">
-                <dt>Active Generation</dt>
-                <dd>{view.generation ? <code>{view.generation}</code> : 'not the active generation'}</dd>
-              </div>
-            </dl>
-          </div>
+          <TrialSide view={view} />
         </section>
       ) : null}
       {result}
       {dialogs}
     </>
-  )
-}
-
-// TrialTraffic shows how requests have been decided since the trial
-// started, so a confirmation rests on what the gateway did, with when that
-// was read. These are all requests the gateway decided in that time, from
-// its memory of the latest 10,000; they are not a comparison with the
-// confirmed policy.
-function TrialTraffic(props: { traffic: ReturnType<typeof useResource<Traffic>>; activatedAt: string }) {
-  const { traffic, activatedAt } = props
-  const last = traffic.last
-  return (
-    <section className="trial-traffic" aria-labelledby="trial-traffic-title">
-      <h3 id="trial-traffic-title">Requests Since the Trial Started</h3>
-      {last ? <TrafficFigures traffic={last.body} activatedAt={activatedAt} /> : <p className="hint">{traffic.failed ? 'Not read.' : 'Reading…'}</p>}
-      <p className={traffic.failed ? 'hint read-stamp-failed' : 'hint'}>
-        {last ? `Updated ${clock(last.at.toISOString(), true)}` : ''}
-        {last && Date.now() - last.at.getTime() > staleAfterMs ? ` · ${age(last.at)}` : ''}
-        {traffic.failed ? `${last ? ' · ' : ''}latest read failed` : ''}
-      </p>
-    </section>
-  )
-}
-
-function TrafficFigures({ traffic, activatedAt }: { traffic: Traffic; activatedAt: string }) {
-  const counts = sinceStart(traffic, activatedAt)
-  const windowWords = traffic.window_seconds === 3600 ? 'last hour' : `last ${traffic.window_seconds / 60 >= 1 ? `${traffic.window_seconds / 60} min` : `${traffic.window_seconds} s`}`
-  if (counts.total === 0) {
-    return <p className="hint">No request has been decided since the trial started, so nothing shows yet how the change behaves.</p>
-  }
-  return (
-    <>
-      <p className="trial-counts">
-        <strong>{counts.total.toLocaleString()}</strong> decided · {counts.allowed.toLocaleString()} allowed · {counts.refused.toLocaleString()} refused
-        {traffic.window_seconds === 3600 && Date.now() - new Date(activatedAt).getTime() > 3_600_000 ? ' (last hour only)' : ''}
-      </p>
-      {traffic.refusal_reasons.length > 0 ? (
-        <p className="hint">
-          Refused in the {windowWords}: {traffic.refusal_reasons.map((r) => `${reasonOf(r.code)} ${r.count}`).join(' · ')}
-        </p>
-      ) : null}
-    </>
-  )
-}
-
-// CheckedFacts lists what the confirmation's fresh reads found.
-function CheckedFacts({ check }: { check: Extract<Check, { phase: 'ready' }> }) {
-  const counts = check.traffic ? sinceStart(check.traffic, check.view.activation.activated_at) : null
-  return (
-    <dl className="facts facts-compact">
-      <div className="fact">
-        <dt>Deadline</dt>
-        <dd>
-          <Time value={check.view.activation.deadline} />
-        </dd>
-      </div>
-      <div className="fact">
-        <dt>Requests Since It Started</dt>
-        <dd>{counts ? `${counts.total} decided: ${counts.allowed} allowed, ${counts.refused} refused` : 'not read'}</dd>
-      </div>
-    </dl>
-  )
-}
-
-// ChangeSummary says in one line what the change on trial changes.
-function ChangeSummary({ view }: { view: ProvisionalView }) {
-  if (view.changes.length === 0) return <>No control changed.</>
-  const first = view.changes[0]
-  return (
-    <>
-      Changes {controls[first.control] ?? first.control} <code>{first.target}</code>
-      {view.changes.length > 1 ? ` and ${view.changes.length - 1} more` : null}
-    </>
-  )
-}
-
-// DeadlineBar draws how much of the confirmation period has passed, from the
-// server's activation and deadline times. Like the countdown beside it, it is
-// a display aid: the gateway decides when the deadline has passed.
-function DeadlineBar(props: { from: string; until: string }) {
-  const start = new Date(props.from).getTime()
-  const end = new Date(props.until).getTime()
-  const [now, setNow] = useState(Date.now())
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(timer)
-  }, [])
-  const passed = end > start ? Math.min(1, Math.max(0, (now - start) / (end - start))) : 1
-  // An SVG attribute, not a style: the content policy allows no inline style.
-  return (
-    <svg className="deadline-bar" aria-hidden="true" focusable="false">
-      <rect height="100%" width={`${passed * 100}%`} rx="2" />
-    </svg>
-  )
-}
-
-// A long list of changed controls shows this many, then the rest on request.
-const shownChanges = 12
-
-function ChangedControls({ changes }: { changes: ProvisionalView['changes'] }) {
-  return (
-    <ul className="changes">
-      {changes.map((c) => (
-        <li key={`${c.control}:${c.target}`} className="change change-changed">
-          <span className="change-control">{controls[c.control] ?? c.control}</span> <code>{c.target}</code>
-        </li>
-      ))}
-    </ul>
-  )
-}
-
-// The kinds of control the gateway reports as changed, in plain words. A
-// permit target is written "ROLE:operation".
-export const controls: Record<string, string> = {
-  upstream: 'service address',
-  api: 'API',
-  operation: 'endpoint',
-  rate: 'rate limit',
-  role: 'role',
-  permit: 'permission',
-  subject: 'account',
-}
-
-const dispositions: Record<string, { tone: 'ok' | 'neutral' | 'refused'; word: string }> = {
-  confirmed: { tone: 'ok', word: 'Kept' },
-  rolled_back: { tone: 'neutral', word: 'Undone' },
-  timed_out: { tone: 'neutral', word: 'Undone at the Deadline' },
-  quarantined: { tone: 'refused', word: 'Set aside after a restore' },
-}
-
-// ActivationHistory lists every trial and how it ended.
-export function ActivationHistory({ admin, reads }: { admin: Admin; reads: unknown }) {
-  const history = usePaged<Activation>(admin, '/admin/activations', [reads])
-  return (
-    <section className="section" aria-labelledby="trials-title">
-      <h2 id="trials-title">Past Trials</h2>
-      {history.reply && history.reply.kind !== 'ok' ? <Problem reply={history.reply} /> : null}
-      {history.reply?.kind === 'ok' && history.items.length === 0 ? <Empty title="No change has been put on trial yet." /> : null}
-      {history.items.length > 0 ? (
-        <TableScroll label="Past Trials">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Version</th>
-                <th scope="col">From Draft Change</th>
-                <th scope="col">Started</th>
-                <th scope="col">Deadline</th>
-                <th scope="col">How It Ended</th>
-              </tr>
-            </thead>
-            <tbody>
-              {history.items.map((a) => (
-                <tr key={a.revision}>
-                  <td className="num">{a.revision}</td>
-                  <td className="num">{a.candidate}</td>
-                  <td>
-                    <Time value={a.activated_at} /> <span className="muted">by {a.actor}</span>
-                  </td>
-                  <td>
-                    <Time value={a.deadline} />
-                  </td>
-                  <td>
-                    {a.disposition ? (
-                      <Badge tone={dispositions[a.disposition]?.tone ?? 'neutral'}>{dispositions[a.disposition]?.word ?? a.disposition}</Badge>
-                    ) : (
-                      <Badge tone="pending">On Trial Now</Badge>
-                    )}
-                    {a.resolved_at ? (
-                      <span className="cell-sub">
-                        <Time value={a.resolved_at} /> by {actorName(a.resolved_by)}
-                        {a.disposition && a.disposition !== 'confirmed' ? ` · back to version ${a.rollback_target}` : null}
-                      </span>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </TableScroll>
-      ) : null}
-      <ShowMore list={history} />
-    </section>
   )
 }

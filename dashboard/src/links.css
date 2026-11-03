@@ -1,0 +1,37 @@
+/* Cross-references: an ID that opens its own page, and the tint on the item it opened. */
+
+/* Cross-references: an ID that opens its own page. Quiet until pointed at,
+   so tables stay calm, but always underlined so it reads as a link. */
+.xref {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklch, var(--link) 35%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition: color var(--dur-fast) var(--ease-out), text-decoration-color var(--dur-fast) var(--ease-out);
+}
+
+.xref:hover {
+  color: var(--link);
+  text-decoration-color: currentColor;
+}
+
+/* The item a link opened is tinted, then the tint fades. */
+[data-target='true'] > td,
+[data-target='true'] > th {
+  animation: target-fade 2.4s var(--ease-out);
+}
+
+@keyframes target-fade {
+  from {
+    background-color: var(--accent-soft);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-target='true'] > td,
+  [data-target='true'] > th {
+    animation: none;
+    background-color: var(--accent-tint);
+  }
+}

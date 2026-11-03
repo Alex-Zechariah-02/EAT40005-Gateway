@@ -1,0 +1,262 @@
+/*
+ * Design tokens of the Fetch Gateway administration: colours, type, spacing,
+ * motion, the dark palette and the state tones.
+ *
+ * A light console. Neutrals carry the
+ * structure; colour is kept for state: green confirmed or allowed, amber on
+ * trial or time-bound, red refused, violet unknown outcome, slate inactive.
+ * Primary actions are ink; links, focus and selection are the one blue. Depth
+ * is a faint ring under white cards; the modal dialog is the only raised
+ * layer. A dark mode keeps every hue and flips lightness.
+ *
+ * Type is Hanken Grotesk, with Geist Mono for identifiers (revisions,
+ * references, operation IDs, accounts). The faces are registered by
+ * src/fonts.ts; the generic families below are only a fallback.
+ */
+:root {
+  --ground: oklch(98.6% 0.002 250);
+  --side: oklch(98.6% 0.002 250);
+  --paper: oklch(100% 0 0);
+  --well: oklch(97.1% 0.003 250);
+  --ink: oklch(20% 0.012 262);
+  --ink-2: oklch(40% 0.012 262);
+  --ink-3: oklch(52% 0.012 262);
+  --rule: oklch(92.3% 0.004 262);
+  --rule-strong: oklch(86% 0.006 262);
+  /* Control edges: at least 3:1 against paper, well and ground (WCAG 1.4.11). */
+  --control-line: oklch(62% 0.01 262);
+  --focus: oklch(52% 0.2 268);
+  --link: oklch(50% 0.2 268);
+  --link-hover: oklch(42% 0.19 268);
+  --accent: oklch(50% 0.2 268);
+  --accent-hover: oklch(43% 0.19 268);
+  --accent-active: oklch(37% 0.17 268);
+  --accent-tint: oklch(96.4% 0.024 268);
+  --accent-line: oklch(86% 0.07 268);
+  --accent-soft: oklch(91% 0.05 268);
+  --on-accent: oklch(100% 0 0);
+  --glass: oklch(100% 0 0 / 0.78);
+  --kind-role: oklch(50% 0.2 268);
+  --kind-role-tint: oklch(96.4% 0.024 268);
+  --kind-operation: oklch(50% 0.13 200);
+  --kind-operation-tint: oklch(96.5% 0.022 200);
+  --kind-api: oklch(50% 0.16 310);
+  --kind-api-tint: oklch(96.5% 0.022 310);
+  --kind-upstream: oklch(50% 0.11 160);
+  --kind-upstream-tint: oklch(96.5% 0.025 160);
+
+  --ok: oklch(48% 0.12 152);
+  --ok-tint: oklch(96% 0.035 152);
+  --ok-line: oklch(85% 0.07 152);
+  --pending: oklch(53% 0.13 62);
+  --pending-tint: oklch(96.5% 0.045 80);
+  --pending-line: oklch(85% 0.09 75);
+  --pending-wash: oklch(98.2% 0.028 82);
+  --refused: oklch(50% 0.19 26);
+  --refused-tint: oklch(96% 0.025 26);
+  --refused-line: oklch(85% 0.07 26);
+  --unknown: oklch(48% 0.15 295);
+  --unknown-tint: oklch(96% 0.025 295);
+  --unknown-line: oklch(85% 0.06 295);
+  --neutral: oklch(45% 0.012 262);
+  --neutral-tint: oklch(95.5% 0.004 262);
+  --neutral-line: oklch(86% 0.006 262);
+
+  /* State colours for controls, marks and charts, so both themes work. */
+  --primary-hover: oklch(32% 0.012 262);
+  --primary-active: oklch(12% 0.01 262);
+  --on-refused: oklch(100% 0 0);
+  --refused-strong: oklch(44% 0.18 26);
+  --row-hover: oklch(97.9% 0.003 250);
+  --hover: oklch(20% 0.012 262 / 0.05);
+  --chart-allowed: oklch(62% 0.12 268);
+  --chart-refused: oklch(53% 0.2 26);
+  --chart-latency: oklch(52% 0.1 195);
+  --step-cleared: oklch(62% 0.11 152);
+  --card-shadow: 0 0 0 1px oklch(20% 0.012 262 / 0.07), 0 1px 2px -1px oklch(20% 0.012 262 / 0.06), 0 2px 4px oklch(20% 0.012 262 / 0.03);
+  --shadow-overlay: 0 0 0 1px oklch(20% 0.012 262 / 0.08), 0 18px 48px oklch(20% 0.012 262 / 0.18), 0 2px 6px oklch(20% 0.012 262 / 0.08);
+  --scrim: oklch(20% 0.012 262 / 0.4);
+
+  --font-display: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-ui: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, monospace;
+
+  --text-xs: 0.8rem;
+  --text-sm: 0.85rem;
+  --text-md: 0.92rem;
+  --text-lg: 0.98rem;
+  --text-xl: 1.31rem;
+  --text-2xl: 1.44rem;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 12px;
+  --control-h: 34px;
+  --sidebar-w: 248px;
+  --content-w: 1920px;
+  --gutter: 40px;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  /* Movement on screen eases in and out, so a box never jumps into place. */
+  --ease-in-out: cubic-bezier(0.45, 0, 0.25, 1);
+  --dur-fast: 180ms;
+  --dur-base: 240ms;
+  --dur-move: 320ms;
+  --dur-layout: 420ms;
+  color-scheme: light;
+}
+
+/* Dark: the same values twice, once for the computer's setting (no stored
+   choice) and once for an explicit choice, so the first paint is right
+   before any script runs. */
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --ground: oklch(16.5% 0.006 262);
+    --side: oklch(16.5% 0.006 262);
+    --paper: oklch(20.5% 0.007 262);
+    --well: oklch(14% 0.006 262);
+    --ink: oklch(95% 0.004 262);
+    --ink-2: oklch(79% 0.008 262);
+    --ink-3: oklch(66% 0.01 262);
+    --rule: oklch(28% 0.008 262);
+    --rule-strong: oklch(36% 0.01 262);
+    --control-line: oklch(52% 0.01 262);
+    --focus: oklch(74% 0.14 268);
+    --link: oklch(77% 0.12 268);
+    --link-hover: oklch(85% 0.09 268);
+    --accent: oklch(70% 0.15 268);
+    --accent-hover: oklch(77% 0.12 268);
+    --accent-active: oklch(83% 0.09 268);
+    --accent-tint: oklch(27% 0.06 268);
+    --accent-line: oklch(42% 0.1 268);
+    --accent-soft: oklch(33% 0.08 268);
+    --on-accent: oklch(16% 0.02 268);
+    --glass: oklch(22% 0.01 262 / 0.78);
+    --kind-role: oklch(74% 0.14 268);
+    --kind-role-tint: oklch(26% 0.05 268);
+    --kind-operation: oklch(76% 0.11 200);
+    --kind-operation-tint: oklch(26% 0.04 200);
+    --kind-api: oklch(76% 0.12 310);
+    --kind-api-tint: oklch(26% 0.045 310);
+    --kind-upstream: oklch(76% 0.11 160);
+    --kind-upstream-tint: oklch(26% 0.04 160);
+    --ok: oklch(75% 0.14 152);
+    --ok-tint: oklch(28% 0.05 152);
+    --ok-line: oklch(40% 0.08 152);
+    --pending: oklch(81% 0.125 75);
+    --pending-tint: oklch(29% 0.05 75);
+    --pending-line: oklch(42% 0.08 75);
+    --pending-wash: oklch(23.5% 0.032 75);
+    --refused: oklch(71% 0.17 25);
+    --refused-tint: oklch(29% 0.065 25);
+    --refused-line: oklch(42% 0.1 25);
+    --unknown: oklch(76% 0.11 295);
+    --unknown-tint: oklch(29% 0.05 295);
+    --unknown-line: oklch(42% 0.08 295);
+    --neutral: oklch(72% 0.01 262);
+    --neutral-tint: oklch(25% 0.007 262);
+    --neutral-line: oklch(36% 0.01 262);
+    --primary-hover: oklch(85% 0.006 262);
+    --primary-active: oklch(99% 0 0);
+    --on-refused: oklch(16% 0.01 262);
+    --refused-strong: oklch(77% 0.15 25);
+    --row-hover: oklch(23% 0.007 262);
+    --hover: oklch(100% 0 0 / 0.06);
+    --chart-allowed: oklch(66% 0.11 268);
+    --chart-refused: oklch(68% 0.18 25);
+    --chart-latency: oklch(72% 0.1 195);
+  --chart-latency: oklch(72% 0.1 195);
+    --step-cleared: oklch(66% 0.12 152);
+    --card-shadow: 0 0 0 1px oklch(100% 0 0 / 0.07);
+    --shadow-overlay: 0 0 0 1px oklch(100% 0 0 / 0.1), 0 18px 48px oklch(0% 0 0 / 0.55);
+    --scrim: oklch(0% 0 0 / 0.6);
+    color-scheme: dark;
+  }
+}
+:root.dark {
+  --ground: oklch(16.5% 0.006 262);
+  --side: oklch(16.5% 0.006 262);
+  --paper: oklch(20.5% 0.007 262);
+  --well: oklch(14% 0.006 262);
+  --ink: oklch(95% 0.004 262);
+  --ink-2: oklch(79% 0.008 262);
+  --ink-3: oklch(66% 0.01 262);
+  --rule: oklch(28% 0.008 262);
+  --rule-strong: oklch(36% 0.01 262);
+  --control-line: oklch(52% 0.01 262);
+  --focus: oklch(74% 0.14 268);
+  --link: oklch(77% 0.12 268);
+  --link-hover: oklch(85% 0.09 268);
+  --accent: oklch(70% 0.15 268);
+  --accent-hover: oklch(77% 0.12 268);
+  --accent-active: oklch(83% 0.09 268);
+  --accent-tint: oklch(27% 0.06 268);
+  --accent-line: oklch(42% 0.1 268);
+  --accent-soft: oklch(33% 0.08 268);
+  --on-accent: oklch(16% 0.02 268);
+  --glass: oklch(22% 0.01 262 / 0.78);
+  --kind-role: oklch(74% 0.14 268);
+  --kind-role-tint: oklch(26% 0.05 268);
+  --kind-operation: oklch(76% 0.11 200);
+  --kind-operation-tint: oklch(26% 0.04 200);
+  --kind-api: oklch(76% 0.12 310);
+  --kind-api-tint: oklch(26% 0.045 310);
+  --kind-upstream: oklch(76% 0.11 160);
+  --kind-upstream-tint: oklch(26% 0.04 160);
+  --ok: oklch(75% 0.14 152);
+  --ok-tint: oklch(28% 0.05 152);
+  --ok-line: oklch(40% 0.08 152);
+  --pending: oklch(81% 0.125 75);
+  --pending-tint: oklch(29% 0.05 75);
+  --pending-line: oklch(42% 0.08 75);
+  --pending-wash: oklch(23.5% 0.032 75);
+  --refused: oklch(71% 0.17 25);
+  --refused-tint: oklch(29% 0.065 25);
+  --refused-line: oklch(42% 0.1 25);
+  --unknown: oklch(76% 0.11 295);
+  --unknown-tint: oklch(29% 0.05 295);
+  --unknown-line: oklch(42% 0.08 295);
+  --neutral: oklch(72% 0.01 262);
+  --neutral-tint: oklch(25% 0.007 262);
+  --neutral-line: oklch(36% 0.01 262);
+  --primary-hover: oklch(85% 0.006 262);
+  --primary-active: oklch(99% 0 0);
+  --on-refused: oklch(16% 0.01 262);
+  --refused-strong: oklch(77% 0.15 25);
+  --row-hover: oklch(23% 0.007 262);
+  --hover: oklch(100% 0 0 / 0.06);
+  --chart-allowed: oklch(66% 0.11 268);
+  --chart-refused: oklch(68% 0.18 25);
+  --chart-latency: oklch(72% 0.1 195);
+  --step-cleared: oklch(66% 0.12 152);
+  --card-shadow: 0 0 0 1px oklch(100% 0 0 / 0.07);
+  --shadow-overlay: 0 0 0 1px oklch(100% 0 0 / 0.1), 0 18px 48px oklch(0% 0 0 / 0.55);
+  --scrim: oklch(0% 0 0 / 0.6);
+  color-scheme: dark;
+}
+
+/* State tones. Each sets the three values its components use. */
+.tone-ok {
+  --tone: var(--ok);
+  --tone-tint: var(--ok-tint);
+  --tone-line: var(--ok-line);
+}
+.tone-pending {
+  --tone: var(--pending);
+  --tone-tint: var(--pending-tint);
+  --tone-line: var(--pending-line);
+}
+.tone-refused {
+  --tone: var(--refused);
+  --tone-tint: var(--refused-tint);
+  --tone-line: var(--refused-line);
+}
+.tone-unknown {
+  --tone: var(--unknown);
+  --tone-tint: var(--unknown-tint);
+  --tone-line: var(--unknown-line);
+}
+.tone-neutral {
+  --tone: var(--neutral);
+  --tone-tint: var(--neutral-tint);
+  --tone-line: var(--neutral-line);
+}

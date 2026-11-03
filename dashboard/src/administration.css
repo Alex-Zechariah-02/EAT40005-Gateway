@@ -1,0 +1,58 @@
+/* Administration pages: History and its opened records. */
+
+/* History: filters over the entries read. */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0 16px;
+  margin-bottom: 12px;
+  padding: 14px 16px 4px;
+  border-radius: var(--radius-lg);
+  background: var(--paper);
+  box-shadow: var(--card-shadow);
+}
+
+.filters .field {
+  flex: 0 1 13rem;
+  margin-bottom: 10px;
+}
+
+.filters .check {
+  margin-bottom: 10px;
+}
+
+.entry-what {
+  margin: 4px 0 12px;
+  font-weight: 600;
+}
+
+/* An opened history record, under its own row. */
+tbody tr.row-detail,
+tbody tr.row-detail:hover {
+  background: var(--well);
+}
+
+tr.row-detail > td {
+  padding: 14px 18px 18px 46px;
+  border-top: 0;
+  white-space: normal;
+}
+
+.entry-detail h2 {
+  margin-bottom: 4px;
+}
+
+.entry-detail .facts {
+  max-width: 54rem;
+}
+
+tr.row-detail code,
+tr.row-detail time {
+  white-space: normal;
+}
+
+/* Long IDs in an opened record wrap instead of widening the table. */
+tr.row-detail code {
+  overflow-wrap: anywhere;
+}

@@ -1,0 +1,128 @@
+/* The sidebar: wide with labels or a strip of icons, and its navigation. */
+
+/* Sidebar: wide with labels, or a strip of icons (the default), chosen with
+   the button above the account and remembered by the browser. */
+.sidebar-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar-toggle:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+@media (min-width: 961px) {
+  .shell {
+    transition: grid-template-columns var(--dur-base) var(--ease-out);
+  }
+
+  .shell.is-rail {
+    grid-template-columns: 68px minmax(0, 1fr);
+  }
+
+  /* Tips are drawn by their own layer, so the strip can scroll like the
+     full sidebar when the window is shorter than its icons. */
+  .is-rail .sidebar {
+    align-items: center;
+    padding: 16px 10px 12px;
+  }
+
+  .is-rail .sidebar-head {
+    padding: 0 0 16px;
+  }
+
+  .is-rail .nav-group-label,
+  .is-rail .theme-switch {
+    display: none;
+  }
+
+  /* The labels leave the strip but stay the links' accessible names. */
+  .is-rail .brand-text,
+  .is-rail .nav-label,
+  .is-rail .who-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .is-rail .sidebar-nav {
+    gap: 0;
+  }
+
+  .is-rail .nav-group + .nav-group {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--rule);
+  }
+
+  /* Every view stays one click away while the strip is narrow. */
+  .is-rail .nav-group ul[hidden] {
+    display: flex;
+  }
+
+  .is-rail .nav-group a,
+  .is-rail .sidebar-toggle {
+    justify-content: center;
+    width: 44px;
+    height: 40px;
+    padding: 0;
+  }
+
+  .is-rail .nav-flag,
+  .is-rail .nav-count {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+  }
+
+  .is-rail .nav-flag {
+    width: 8px;
+    height: 8px;
+    padding: 0;
+    overflow: hidden;
+    background: var(--tone);
+    color: transparent;
+  }
+
+  .is-rail .nav-count {
+    min-width: 16px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--accent-tint);
+    color: var(--accent-active);
+    font-size: 10px;
+    line-height: 16px;
+    text-align: center;
+  }
+
+  .is-rail .who {
+    align-items: center;
+  }
+
+  .is-rail .who-row {
+    flex-direction: column;
+    gap: 6px;
+    padding: 4px 0;
+  }
+}
+
+@media (max-width: 960px) {
+  .sidebar-toggle {
+    display: none;
+  }
+}

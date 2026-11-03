@@ -1,11 +1,14 @@
 import type { Activation, OverridesView, Page, Revision, Status } from './api'
 import { useGatewayState, useRemembered, useResource } from './hooks'
 import { Alerts } from './tools'
-import { overrideChange } from './overrides'
-import { OverviewLive } from './monitor'
+import { overrideChange } from './rule'
+import { OverviewLive } from './activity'
 import { TrialDecision } from './provisional'
 import { admissionText, AdmissionBadge } from './state'
-import { Badge, MoreDetails, PageHeader, Problem, ReadStamp, TimeOfDay } from './ui'
+import { Badge, MoreDetails } from './ui'
+import { PageHeader } from './header'
+import { Problem } from './replies'
+import { ReadStamp, TimeOfDay } from './time'
 import type { ViewProps } from './views'
 
 // Overview answers "is the gateway healthy and what is it enforcing?" at a

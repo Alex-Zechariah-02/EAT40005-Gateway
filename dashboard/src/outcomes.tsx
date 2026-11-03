@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { committedAnyway, committedMessage, describe, explain, type Admin, type HistoryEntry, type MutationRequest, type Reply } from './api'
+import { committedAnyway, committedMessage, describe, explain, type HistoryEntry, type MutationRequest, type Reply } from './api'
+import type { Admin } from './http'
 import { useGatewayState, type OutcomeRegister, type Unresolved } from './hooks'
-import { Glyph, clock } from './ui'
+import { Glyph } from './ui'
+import { clock } from './time'
 
 // transitionOf names the transition the gateway records a keyed request
 // under: the administrator's name and the request key.
