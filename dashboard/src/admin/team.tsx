@@ -6,6 +6,7 @@ import { MutationResult, ReplyView } from '../shared/replies'
 import { PageHeader } from '../app/header'
 import { ReadStamp, Time } from '../shared/time'
 import type { ViewProps } from '../app/views'
+import { permissionWords } from '../shared/checks'
 
 // The Team page: administrators and trusted token signing keys.
 
@@ -20,13 +21,6 @@ interface SigningKey {
   loaded_at: string
   verified: number
   last_verified_at: string | null
-}
-
-const permissionWords: Record<string, string> = {
-  read: 'View',
-  read_history: 'Read history',
-  manage_subjects: 'Block accounts',
-  manage_policy: 'Change policy',
 }
 
 // TeamView lists the gateway's administrators and the token signing keys it

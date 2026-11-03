@@ -85,3 +85,11 @@ export const stepWords: Record<StepState, string> = {
 type Decision = 'allowed' | 'refused' | 'failed'
 
 export const decisionWords: Record<Decision, string> = { allowed: 'Allowed', refused: 'Refused', failed: 'Outcome Unknown' }
+
+// The administrator permissions in plain words; the exact names stay beside them.
+export const permissionWords: Record<string, string> = {
+  read: 'View Status',
+  read_history: 'View History',
+  manage_subjects: 'Block Accounts',
+  manage_policy: 'Change Policy',
+}

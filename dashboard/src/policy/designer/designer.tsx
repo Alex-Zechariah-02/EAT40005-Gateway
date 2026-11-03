@@ -25,6 +25,7 @@ import { Badge, Empty } from '../../shared/ui'
 import { MutationResult, Problem } from '../../shared/replies'
 import { PageHeader } from '../../app/header'
 import { ReadStamp, Remaining, Time } from '../../shared/time'
+import { permissionWords } from '../../shared/checks'
 import { useFocus } from '../../shared/links'
 import type { ViewProps } from '../../app/views'
 import { DesignerBar, type Mode, SidePanel, type Staged, StaleNotice, type Tab } from './panels'
@@ -396,7 +397,7 @@ export function Designer({
           ) : null}
           {!can('manage_policy') ? (
             <p className="notice tone-neutral">
-              Read-only. Editing needs the “Change the policy” permission (manage_policy).
+              Read-only. Editing needs the “{permissionWords.manage_policy}” permission (manage_policy).
             </p>
           ) : null}
           {tab === 'json' && editable && json !== serialised ? (

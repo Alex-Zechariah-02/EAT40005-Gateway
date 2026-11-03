@@ -4,6 +4,7 @@ import type { Admin } from '../shared/http'
 import { useGatewayState, type OutcomeRegister, type Unresolved } from '../shared/hooks'
 import { Glyph } from '../shared/ui'
 import { Time } from '../shared/time'
+import { permissionWords } from '../shared/checks'
 
 // transitionOf names the transition the gateway records a keyed request
 // under: the administrator's name and the request key.
@@ -78,7 +79,7 @@ export function UnresolvedChanges(props: { admin: Admin; name: string; register:
     async (item: Unresolved) => {
       if (!canReadHistory) {
         register.update(item.id, {
-          checked: { at: new Date(), text: 'Looking it up needs the Read history permission. Sending the identical request again is safe.' },
+          checked: { at: new Date(), text: `Looking it up needs the “${permissionWords.read_history}” permission. Sending the identical request again is safe.` },
         })
         return
       }

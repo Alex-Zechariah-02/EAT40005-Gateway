@@ -8,6 +8,7 @@ import { Badge, describedBy, Field, fieldError } from '../shared/ui'
 import { ChangeSet } from '../shared/review'
 import { Confirm, TypedConfirmation } from '../shared/dialogs'
 import { duration, Time } from '../shared/time'
+import { permissionWords } from '../shared/checks'
 import { MutationResult, Problem, Receipt } from '../shared/replies'
 import type { ViewProps } from '../app/views'
 import { CandidateFacts, CandidateStatus, Stepper } from './draft'
@@ -109,7 +110,7 @@ export function CandidateDetail(props: {
           ) : null}
 
           {guided && step === 1 ? <ImpactPreview admin={props.admin} candidate={candidate.id} /> : null}
-          {guided && step === 2 && !props.manage ? <p className="hint">Starting a trial needs the “Change the policy” permission.</p> : null}
+          {guided && step === 2 && !props.manage ? <p className="hint">Starting a trial needs the “{permissionWords.manage_policy}” permission.</p> : null}
 
           {props.manage && usable && (!guided || step === 2) ? (
             <div className="detail-actions">

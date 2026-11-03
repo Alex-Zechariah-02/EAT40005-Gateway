@@ -6,15 +6,8 @@ import { describedBy, Field, fieldError } from '../shared/ui'
 import { MutationResult } from '../shared/replies'
 import { PageHeader } from '../app/header'
 import { Time, zoneLabel } from '../shared/time'
+import { permissionWords } from '../shared/checks'
 import { automatic, browserZone, setZone, useZoneChoice } from '../shared/zone'
-
-// The administrator permissions in plain words; the exact names stay beside them.
-const permissionWords: Record<string, string> = {
-  read: 'View the gateway',
-  read_history: 'View the history',
-  manage_subjects: 'Block and unblock accounts',
-  manage_policy: 'Change the policy',
-}
 
 // Account shows the signed-in administrator's permissions and session, and
 // changes their password. A password change ends all of their sessions.
