@@ -1,7 +1,8 @@
 import { useId, useState } from 'react'
 import { addEndpoint } from './edits'
 import { Wizard } from '../../shared/dialogs'
-import { suggestedId } from './inputs'
+import { countProblem, idProblem, pathProblem, suggestedId } from './inputs'
+import { Entry } from './routes'
 import { Choice, methods, Review, Whole, wholeNumber, withBody, type WizardProps } from './wizards'
 
 // The new-endpoint wizard: where it is, who may call it, its rate limit, then a review.
@@ -16,19 +17,16 @@ export function EndpointWizard({ policy, api: start, apply, close }: WizardProps
   const [roles, setRoles] = useState<string[]>([])
   const [count, setCount] = useState('100')
   const [seconds, setSeconds] = useState('60')
+  // shown lists the steps whose Next was pressed early; their fields say what to fix.
+  const [shown, setShown] = useState<number[]>([])
+  const reveal = (step: number) => () => setShown((list) => (list.includes(step) ? list : [...list, step]))
   // Until an ID is typed, it follows the API and the path's last fixed part.
   const endpointId = name ?? suggestedId(api, target)
   const requests = wholeNumber(count)
   const span = wholeNumber(seconds)
-  const where = !policy.apis.length
-    ? 'Add an API first.'
-    : !target.startsWith('/')
-      ? 'Enter a path starting with /.'
-      : !endpointId
-        ? 'Enter an endpoint ID.'
-        : policy.operations.some((operation) => operation.id === endpointId)
-          ? `Endpoint ${endpointId} already exists. Choose another ID.`
-          : undefined
+  const pathError = pathProblem(target)
+  const idError = idProblem(endpointId, policy.operations.some((operation) => operation.id === endpointId) ? 'This draft already has an endpoint with this ID.' : undefined)
+  const where = !policy.apis.length ? 'Add an API first.' : pathError || idError ? 'Fix the marked fields to continue.' : undefined
   const next =
     !where && requests && span
       ? addEndpoint(policy, { id: endpointId, api, method, target, open, roles, count: requests, windowSeconds: span })
@@ -43,33 +41,13 @@ export function EndpointWizard({ policy, api: start, apply, close }: WizardProps
         {
           title: 'Where It Is',
           problem: where,
+          reveal: reveal(0),
           body: (
             <div className="form-grid">
               <Choice id={`${id}-api`} label="API" value={api} options={policy.apis.map((item) => [item.id, item.id])} onChange={setApi} />
               <Choice id={`${id}-method`} label="Method" value={method} options={methods.map((item) => [item, item])} onChange={setMethod} />
-              <div className="field field-wide">
-                <label htmlFor={`${id}-target`}>Path</label>
-                <input
-                  id={`${id}-target`}
-                  className="input mono"
-                  value={target}
-                  placeholder="/reports/daily"
-                  spellCheck={false}
-                  autoComplete="off"
-                  onChange={(event) => setTarget(event.target.value)}
-                />
-              </div>
-              <div className="field field-wide">
-                <label htmlFor={`${id}-name`}>Endpoint ID</label>
-                <input
-                  id={`${id}-name`}
-                  className="input mono"
-                  value={endpointId}
-                  spellCheck={false}
-                  autoComplete="off"
-                  onChange={(event) => setName(event.target.value)}
-                />
-              </div>
+              <Entry wide id={`${id}-target`} label="Path" value={target} placeholder="/reports/daily" onChange={setTarget} error={shown.includes(0) ? pathError : undefined} />
+              <Entry wide id={`${id}-name`} label="Endpoint ID" value={endpointId} onChange={setName} error={shown.includes(0) ? idError : undefined} />
             </div>
           ),
         },
@@ -110,6 +88,7 @@ export function EndpointWizard({ policy, api: start, apply, close }: WizardProps
         {
           title: 'Rate Limit',
           problem: requests && span ? undefined : 'Enter whole numbers of at least 1.',
+          reveal: reveal(2),
           body: (
             <div className="form-grid">
               <Whole
@@ -118,8 +97,15 @@ export function EndpointWizard({ policy, api: start, apply, close }: WizardProps
                 value={count}
                 onChange={setCount}
                 hint={`Counted per ${open ? 'client address' : 'account'}.`}
+                error={shown.includes(2) ? countProblem(count) : undefined}
               />
-              <Whole id={`${id}-seconds`} label="Per How Many Seconds" value={seconds} onChange={setSeconds} />
+              <Whole
+                id={`${id}-seconds`}
+                label="Per How Many Seconds"
+                value={seconds}
+                onChange={setSeconds}
+                error={shown.includes(2) ? countProblem(seconds) : undefined}
+              />
             </div>
           ),
         },

@@ -93,20 +93,21 @@ export function Confirm(props: {
 interface WizardStep {
   title: string
   body: ReactNode
-  // problem holds Next back, and says why, until the step is complete.
+  // problem keeps the step open, and says why, until the step is complete.
   problem?: string
   // plain says what the step decides; technical names the policy field it writes.
   plain?: string
   technical?: ReactNode
-  // reveal, when given, keeps Next available: pressing it early marks the
-  // step's fields and states the problem instead of moving on.
+  // reveal, when given, marks the step's fields when Next is pressed early;
+  // the step's problem is then stated beside Next.
   reveal?: () => void
   // skip, when given, offers to pass over an optional step after clearing it.
   skip?: () => void
 }
 
 // Wizard walks through one task a step at a time in a modal dialog and ends on
-// a review of its effect. Finishing only hands back to the caller, which makes
+// a review of its effect; Next never greys out, it says what is missing.
+// Finishing only hands back to the caller, which makes
 // the usual draft edit or asks the usual confirmation. Each new step's heading
 // takes focus, so a screen reader hears where it is; closing returns focus to
 // the control that opened it.
@@ -130,7 +131,8 @@ export function Wizard(props: {
   const titleId = useId()
   const problemId = useId()
   const [ownIndex, setOwnIndex] = useState(0)
-  const [tried, setTried] = useState(-1)
+  // tried counts presses of Next on an incomplete step, so each is announced.
+  const [tried, setTried] = useState({ step: -1, count: 0 })
   const [asking, setAsking] = useState(false)
   const index = props.step ?? ownIndex
   const setIndex = props.onStep ?? setOwnIndex
@@ -154,11 +156,14 @@ export function Wizard(props: {
   const close = () => (props.unsaved ? setAsking(true) : props.onClose())
   const step = props.steps[index]
   const last = index === props.steps.length - 1
-  const stated = step.problem && (!step.reveal || tried === index) ? step.problem : undefined
+  const pressed = tried.step === index
+  const stated = step.problem && (!step.reveal || pressed) ? step.problem : undefined
+  // Next stays available: pressed early, it stays on the step, says why and
+  // moves focus to the first field marked to fix.
   const advance = () => {
-    if (step.problem && step.reveal) {
-      setTried(index)
-      step.reveal()
+    if (step.problem) {
+      setTried((previous) => ({ step: index, count: previous.count + 1 }))
+      step.reveal?.()
       requestAnimationFrame(() => ref.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus())
       return
     }
@@ -202,7 +207,7 @@ export function Wizard(props: {
           {step.technical ? <p className="wizard-technical">{step.technical}</p> : null}
           {step.body}
           {stated ? (
-            <p id={problemId} className="hint" role={step.reveal ? 'alert' : undefined}>
+            <p key={pressed ? tried.count : 0} id={problemId} className="hint" role={pressed ? 'alert' : undefined}>
               {stated}
             </p>
           ) : null}
@@ -231,7 +236,7 @@ export function Wizard(props: {
           <button
             type="button"
             className="btn btn-primary"
-            disabled={(Boolean(step.problem) && !step.reveal) || (last && props.finishDisabled)}
+            disabled={last && props.finishDisabled}
             aria-describedby={stated ? problemId : undefined}
             onClick={advance}
           >

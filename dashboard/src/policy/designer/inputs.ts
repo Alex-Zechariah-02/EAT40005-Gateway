@@ -61,13 +61,13 @@ export function dialProblem(dial: string): string | undefined {
   return match && port >= 1 && port <= 65535 ? undefined : 'Enter the address as host:port, for example 127.0.0.1:9600.'
 }
 
-function pathProblem(target: string): string | undefined {
+export function pathProblem(target: string): string | undefined {
   if (!target.startsWith('/')) return 'Enter a path starting with /.'
   if (/\s/.test(target)) return 'A path cannot contain spaces.'
   return undefined
 }
 
-function countProblem(text: string): string | undefined {
+export function countProblem(text: string): string | undefined {
   return wholeNumber(text) ? undefined : 'Enter a whole number of at least 1.'
 }
 

@@ -60,7 +60,12 @@ test.describe.serial('dashboard', () => {
     await wizard.getByLabel('Role', { exact: true }).selectOption('OPERATIONS')
     await wizard.getByRole('button', { name: 'Next', exact: true }).click()
     await wizard.getByLabel('Lifetime (Seconds)').fill('0')
-    await expect(wizard.getByRole('button', { name: 'Next', exact: true })).toBeDisabled()
+    // Next pressed with an invalid lifetime stays on the step and says why.
+    const early = wizard.getByRole('button', { name: 'Next', exact: true })
+    await early.click()
+    await expect(wizard.getByRole('alert')).toHaveText('Enter a whole number of seconds from 1 to 86400.')
+    await expect(early).toHaveAccessibleDescription('Enter a whole number of seconds from 1 to 86400.')
+    await expect(wizard.getByLabel('Lifetime (Seconds)')).toHaveValue('0')
     await wizard.getByLabel('Lifetime (Seconds)').fill('120')
     await wizard.getByRole('button', { name: 'Next', exact: true }).click()
     await expect(wizard).toContainText('OPERATIONS may not call inventory.stock.adjust, for 2 min.')
