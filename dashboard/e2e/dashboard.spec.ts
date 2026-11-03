@@ -1378,6 +1378,15 @@ test.describe.serial('dashboard', () => {
   test('the main screens pass the automated accessibility rules, work by keyboard and fit narrow screens', async ({ browser }) => {
     const results: Record<string, string[]> = {}
     const scan = async (page: Page, name: string) => {
+      // Contrast is judged on the settled screen: running fades and colour transitions would be measured half-way.
+      await page.evaluate(() =>
+        Promise.all(
+          document
+            .getAnimations()
+            .filter((animation) => animation.effect?.getComputedTiming().endTime !== Infinity)
+            .map((animation) => animation.finished.catch(() => undefined)),
+        ),
+      )
       const report = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22a', 'wcag22aa']).analyze()
       results[name] = report.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`)
       expect(results[name], name).toEqual([])
