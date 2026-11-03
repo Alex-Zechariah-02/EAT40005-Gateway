@@ -453,7 +453,7 @@
 @media (prefers-reduced-motion: no-preference) {
   .designer-side-panel > .designer-object,
   .designer-side-panel > .designer-trace {
-    animation: designer-panel 150ms var(--ease-out);
+    animation: designer-panel var(--dur-base) var(--ease-out);
   }
 }
 @keyframes designer-panel {
@@ -496,7 +496,7 @@
   --lane-ink: var(--kind-upstream);
 }
 .designer-canvas .react-flow__edge-path {
-  transition: opacity 200ms var(--ease-out), stroke-width 200ms var(--ease-out);
+  transition: opacity var(--dur-base) var(--ease-out), stroke-width var(--dur-base) var(--ease-out);
 }
 
 .designer-draft-state {
@@ -525,7 +525,7 @@
   border: 1px solid var(--rule-strong);
   border-radius: var(--radius-lg);
   box-shadow: 0 1px 2px oklch(20% 0.012 262 / 0.06), 0 4px 12px oklch(20% 0.012 262 / 0.04);
-  transition: opacity 160ms var(--ease-out);
+  transition: opacity var(--dur-base) var(--ease-out);
 }
 /* A card outside the traced path steps back in colour, not opacity, so its
    text keeps a readable contrast. */
@@ -583,6 +583,36 @@
   color: var(--lane-ink);
   font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
+}
+/* A group eases open and closed: the row track grows from nothing, and the
+   rows fade in just behind it. */
+.designer-card-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--dur-move) var(--ease-in-out);
+}
+.designer-card-body[data-open] {
+  grid-template-rows: 1fr;
+}
+.designer-card-body > .designer-card-rows {
+  min-height: 0;
+  overflow: hidden;
+  padding-block: 0;
+  visibility: hidden;
+  opacity: 0;
+  transition:
+    opacity var(--dur-fast) var(--ease-out),
+    padding-block var(--dur-move) var(--ease-in-out),
+    visibility 0s linear var(--dur-move);
+}
+.designer-card-body[data-open] > .designer-card-rows {
+  padding-block: 4px;
+  visibility: visible;
+  opacity: 1;
+  transition:
+    opacity var(--dur-move) var(--ease-out) 60ms,
+    padding-block var(--dur-move) var(--ease-in-out),
+    visibility 0s;
 }
 .designer-card-rows {
   margin: 0;
@@ -647,7 +677,7 @@
 .designer-canvas .react-flow__edge-path {
   stroke: var(--control-line);
   stroke-width: 1.5px;
-  transition: opacity 160ms var(--ease-out), stroke 160ms var(--ease-out);
+  transition: opacity var(--dur-base) var(--ease-out), stroke var(--dur-base) var(--ease-out);
 }
 .designer-canvas .react-flow__arrowhead polyline {
   stroke: var(--control-line);
@@ -703,7 +733,7 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   box-shadow: var(--shadow-overlay);
-  animation: drawer-in 180ms var(--ease-out);
+  animation: drawer-in var(--dur-move) var(--ease-out);
 }
 .designer-panel-close {
   float: right;
@@ -733,7 +763,8 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin: 0 0 12px;
+  /* Block margin only: the page sets the side gutter. */
+  margin-block: 0 12px;
   padding: 0;
   list-style: none;
   color: var(--ink-2);
@@ -907,7 +938,7 @@
   width: 26px;
   height: 26px;
   opacity: 0;
-  transition: opacity 120ms var(--ease-out);
+  transition: opacity var(--dur-fast) var(--ease-out);
 }
 .designer-form-group-head:hover .designer-form-add.is-icon,
 .designer-form-add.is-icon:focus-visible,
@@ -936,7 +967,7 @@
   width: 26px;
   height: 26px;
   opacity: 0;
-  transition: opacity 120ms var(--ease-out);
+  transition: opacity var(--dur-fast) var(--ease-out);
 }
 .designer-card:hover .designer-card-add,
 .designer-card-add:focus-visible,

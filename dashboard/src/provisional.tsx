@@ -292,7 +292,7 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
           )}
           {mutation.phase.state === 'replied' ? null : (
             <p className="tile-foot">
-              <a href="#/candidates">Open Changes</a>
+              <a href="#/changes">Open Changes</a>
             </p>
           )}
           {result}
@@ -324,7 +324,7 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
                 Undo Change
               </button>
             ) : null}
-            <a className="btn btn-small btn-primary" href="#/candidates">
+            <a className="btn btn-small btn-primary" href="#/changes">
               {manage ? 'Review and Keep' : 'Open Changes'}
             </a>
           </div>

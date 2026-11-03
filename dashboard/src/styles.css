@@ -95,6 +95,12 @@
   --content-w: 1920px;
   --gutter: 40px;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  /* Movement on screen eases in and out, so a box never jumps into place. */
+  --ease-in-out: cubic-bezier(0.45, 0, 0.25, 1);
+  --dur-fast: 180ms;
+  --dur-base: 240ms;
+  --dur-move: 320ms;
+  --dur-layout: 420ms;
   color-scheme: light;
 }
 
@@ -526,10 +532,10 @@ code.tag {
   white-space: nowrap;
   cursor: pointer;
   transition:
-    background-color 0.12s,
-    box-shadow 0.12s,
-    color 0.12s,
-    transform 0.12s var(--ease-out);
+    background-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
 }
 
 .btn:hover {
@@ -671,7 +677,7 @@ code.tag {
   box-shadow: inset 0 0 0 1px var(--control-line);
   color: var(--ink);
   font: inherit;
-  transition: box-shadow 0.12s;
+  transition: box-shadow var(--dur-fast) var(--ease-out);
 }
 
 .input:hover {
@@ -1050,7 +1056,7 @@ details > summary::before {
   border-top: 4px solid transparent;
   border-bottom: 4px solid transparent;
   border-left: 5px solid currentColor;
-  transition: transform 0.12s;
+  transition: transform var(--dur-fast) var(--ease-out);
 }
 
 details[open] > summary::before {
@@ -1088,7 +1094,7 @@ dialog {
 }
 
 dialog[open] {
-  animation: dialog-in 0.16s var(--ease-out);
+  animation: dialog-in var(--dur-base) var(--ease-out);
 }
 
 dialog::backdrop {
@@ -1166,10 +1172,10 @@ dialog h2 {
   font-weight: 600;
   cursor: pointer;
   transition:
-    background-color 0.12s,
-    box-shadow 0.12s,
-    color 0.12s,
-    transform 0.12s var(--ease-out);
+    background-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
 }
 
 .segmented button:hover {
@@ -2116,7 +2122,7 @@ dialog h2 {
   background: var(--rule);
 }
 
-.dp-cleared {
+.dp-passed {
   background: var(--step-cleared);
 }
 
@@ -2198,7 +2204,7 @@ dialog h2 {
   background: var(--rule);
 }
 
-.path-step.dp-cleared .path-bar {
+.path-step.dp-passed .path-bar {
   background: var(--step-cleared);
 }
 
@@ -2431,8 +2437,8 @@ dialog h2 {
   text-align: left;
   cursor: pointer;
   transition:
-    background-color 0.12s,
-    box-shadow 0.12s;
+    background-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
 }
 
 .quick-action:hover {
@@ -2896,8 +2902,10 @@ tr.row-detail code {
   white-space: nowrap;
 }
 
+/* Padding, not margin: the card has no border, so a margin would collapse
+   out of its bottom edge. */
 .api-rules {
-  margin: 12px 18px 16px;
+  padding: 12px 20px 20px;
 }
 
 .api-rules > summary {
@@ -3397,7 +3405,7 @@ input[type='radio'] {
    explanation. Pages load straight into the task. */
 .card,
 .section.card {
-  transition: box-shadow 160ms var(--ease-out), transform 160ms var(--ease-out);
+  transition: box-shadow var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
 }
 
 .events tbody tr:first-child {
@@ -3405,7 +3413,7 @@ input[type='radio'] {
 }
 
 .page-about:not([hidden]) {
-  animation: rise-in 200ms var(--ease-out);
+  animation: rise-in var(--dur-base) var(--ease-out);
 }
 
 /* Movement only, no fade: text keeps its full contrast from the first frame. */
@@ -3525,8 +3533,8 @@ input[type='radio'] {
   cursor: pointer;
   appearance: none;
   transition:
-    background-color 120ms var(--ease-out),
-    box-shadow 120ms var(--ease-out);
+    background-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
 }
 
 input[type='radio'] {
@@ -3540,7 +3548,7 @@ input[type='checkbox']::before {
   border-bottom: 2px solid var(--on-accent);
   border-left: 2px solid var(--on-accent);
   transform: translateY(-1px) rotate(-45deg) scale(0);
-  transition: transform 120ms var(--ease-out);
+  transition: transform var(--dur-fast) var(--ease-out);
 }
 
 input[type='radio']::before {
@@ -3550,7 +3558,7 @@ input[type='radio']::before {
   border-radius: 50%;
   background: var(--on-accent);
   transform: scale(0);
-  transition: transform 120ms var(--ease-out);
+  transition: transform var(--dur-fast) var(--ease-out);
 }
 
 input[type='checkbox']:checked,
@@ -3598,7 +3606,7 @@ details > summary::before {
   border-right: 1.5px solid currentColor;
   border-bottom: 1.5px solid currentColor;
   transform: rotate(-45deg);
-  transition: transform 160ms var(--ease-out);
+  transition: transform var(--dur-base) var(--ease-out);
 }
 
 details[open] > summary::before {
@@ -3624,7 +3632,7 @@ details[open] > summary::before {
   font: 500 var(--text-xs)/1.4 var(--font-ui);
   white-space: nowrap;
   pointer-events: none;
-  animation: tip-in 120ms var(--ease-out);
+  animation: tip-in var(--dur-fast) var(--ease-out);
 }
 
 @keyframes tip-in {
@@ -3673,7 +3681,7 @@ details[open] > summary::before {
 
 @media (min-width: 961px) {
   .shell {
-    transition: grid-template-columns 200ms var(--ease-out);
+    transition: grid-template-columns var(--dur-base) var(--ease-out);
   }
 
   .shell.is-rail {
@@ -3852,7 +3860,7 @@ details[open] > summary::before {
   color: var(--ink-3);
   font: 500 var(--text-md)/1.4 var(--font-ui);
   cursor: pointer;
-  transition: color 120ms var(--ease-out), box-shadow 120ms var(--ease-out);
+  transition: color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
 
 .section-tabs button:hover {
@@ -3885,7 +3893,7 @@ details[open] > summary::before {
   color: var(--ink-2);
   font: 500 var(--text-sm)/1.4 var(--font-ui);
   cursor: pointer;
-  transition: color 120ms var(--ease-out), background-color 120ms var(--ease-out);
+  transition: color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
 }
 
 .role-tabs button:hover {
@@ -4124,7 +4132,7 @@ dialog.wizard {
   border-radius: var(--radius-md);
   background: var(--paper);
   box-shadow: var(--shadow-overlay);
-  animation: tip-in 120ms var(--ease-out);
+  animation: tip-in var(--dur-fast) var(--ease-out);
 }
 
 .action-menu-item {
@@ -4176,7 +4184,7 @@ dialog.wizard {
   text-decoration-color: color-mix(in oklch, var(--link) 35%, transparent);
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
-  transition: color 120ms var(--ease-out), text-decoration-color 120ms var(--ease-out);
+  transition: color var(--dur-fast) var(--ease-out), text-decoration-color var(--dur-fast) var(--ease-out);
 }
 
 .xref:hover {
@@ -4351,4 +4359,89 @@ dialog.wizard {
   margin: 6px 0 0;
   padding: 0;
   list-style: none;
+}
+
+/* Every control eases its colour and outline changes, so hover, focus and
+   press read as one calm response instead of a flash. Zero specificity:
+   a component's own transition always wins. */
+:where(button, a, input, select, textarea, summary, label, [role='tab'], [tabindex]) {
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    outline-color var(--dur-fast) var(--ease-out),
+    text-decoration-color var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out);
+}
+
+/* A term with an explanation: dotted underline, a button to keyboard users. */
+.explain-term {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  text-decoration: underline dotted;
+  text-decoration-color: var(--rule-strong);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  cursor: help;
+}
+.explain-term:hover,
+.explain-term[aria-describedby]:focus-visible {
+  text-decoration-color: var(--ink-3);
+}
+
+.explain-note {
+  position: fixed;
+  inset: auto;
+  width: min(340px, calc(100vw - 16px));
+  margin: 0;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  box-shadow: var(--shadow-overlay);
+  color: var(--ink);
+  font: 400 var(--text-sm)/1.45 var(--font-ui);
+  opacity: 0;
+  transform: translateY(-2px);
+  transition:
+    opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out),
+    overlay var(--dur-fast) allow-discrete,
+    display var(--dur-fast) allow-discrete;
+}
+.explain-note:popover-open {
+  opacity: 1;
+  transform: none;
+  transition-duration: var(--dur-base);
+}
+@starting-style {
+  .explain-note:popover-open {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+}
+.explain-note p {
+  margin: 4px 0 0;
+}
+.explain-title {
+  font-weight: 600;
+}
+.explain-note .explain-technical {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--rule);
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .explain-note,
+  .explain-note:popover-open {
+    transform: none;
+  }
 }

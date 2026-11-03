@@ -113,7 +113,7 @@ export function Candidates({ admin, can, draft, candidate }: ViewProps & { draft
               No draft changes yet.{' '}
               {manage ? (
                 <>
-                  Draft one in the <a href="#/designer">Policy</a> designer, or paste a document below.
+                  Draft one on the <a href="#/policy">Policy</a> page, or paste a document below.
                 </>
               ) : null}
             </p>

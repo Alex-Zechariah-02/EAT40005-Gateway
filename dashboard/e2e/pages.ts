@@ -83,14 +83,18 @@ export async function stage(page: Page, document: { text?: string; file?: string
 // trialStep moves the change open for review through its guided steps
 // (review, then impact preview) to its trial step, by keyboard.
 export async function trialStep(page: Page) {
-  for (const next of ['Next: Preview Impact', 'Next: Start Trial']) {
-    const button = page.getByRole('main').getByRole('button', { name: next, exact: true })
-    if (await button.isVisible()) {
-      await button.focus()
-      await page.keyboard.press('Enter')
-    }
+  const trial = page.getByLabel('Trial Length (Seconds)')
+  const next = page.getByRole('main').getByRole('button', { name: /^Next: (Preview Impact|Start Trial)$/ })
+  // Wait for whichever step is showing; each press must leave its step.
+  for (let step = 0; step < 2; step++) {
+    await expect(next.or(trial).first()).toBeVisible()
+    if (await trial.isVisible()) break
+    const name = (await next.first().textContent())!.trim()
+    await next.first().focus()
+    await page.keyboard.press('Enter')
+    await expect(page.getByRole('main').getByRole('button', { name, exact: true })).toBeHidden()
   }
-  await expect(page.getByLabel('Trial Length (Seconds)')).toBeVisible()
+  await expect(trial).toBeVisible()
 }
 
 // activate puts the change open for review on trial and returns the

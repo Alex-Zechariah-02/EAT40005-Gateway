@@ -2,21 +2,21 @@ import type { Admin, Permission } from './api'
 
 export type View =
   | 'overview'
-  | 'traffic'
-  | 'lookup'
+  | 'live-traffic'
+  | 'request-lookup'
   | 'security-log'
-  | 'access'
+  | 'access-checker'
   | 'limits'
   | 'advice'
   | 'apis'
-  | 'designer'
   | 'policy'
-  | 'candidates'
-  | 'overrides'
+  | 'versions'
+  | 'changes'
+  | 'temporary-rules'
   | 'accounts'
   | 'history'
   | 'team'
-  | 'account'
+  | 'my-account'
 
 export interface Handoff {
   draft?: string
@@ -32,7 +32,7 @@ export interface ViewProps {
 }
 
 // to is the address of a view opened on one item, such as
-// #/designer?select=operation%3Aorders.create, so a link elsewhere can show
+// #/policy?select=operation%3Aorders.create, so a link elsewhere can show
 // exactly what it names and the back button returns to where it was.
 export function to(view: View, focus?: Record<string, string | number>): string {
   const query = new URLSearchParams()

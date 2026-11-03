@@ -98,7 +98,7 @@ export function PolicyView({ admin, can, open }: ViewProps) {
           admin={admin}
           id={inspected}
           confirmed={revision}
-          propose={can('manage_policy') ? (document) => open('candidates', { draft: JSON.stringify(document, null, 2) }) : undefined}
+          propose={can('manage_policy') ? (document) => open('changes', { draft: JSON.stringify(document, null, 2) }) : undefined}
           close={() => setInspected(null)}
         />
       ) : null}
@@ -109,7 +109,7 @@ export function PolicyView({ admin, can, open }: ViewProps) {
     <>
       <PageHeader title="Versions" lede="The active policy in detail, and every version made active.">
         {revision && can('manage_policy') ? (
-          <button type="button" className="btn btn-small" onClick={() => open('candidates', { draft: JSON.stringify(revision.document, null, 2) })}>
+          <button type="button" className="btn btn-small" onClick={() => open('changes', { draft: JSON.stringify(revision.document, null, 2) })}>
             Start a Change from This
           </button>
         ) : null}
@@ -123,7 +123,7 @@ export function PolicyView({ admin, can, open }: ViewProps) {
       {none ? (
         <Empty title="No policy is active yet.">
           <p>A new or restored installation refuses every request until an administrator establishes a policy that denies everything.</p>
-          <button type="button" className="btn" onClick={() => open('candidates')}>
+          <button type="button" className="btn" onClick={() => open('changes')}>
             Go to Changes
           </button>
         </Empty>
@@ -352,7 +352,7 @@ function RolesSection(props: { policy: Policy; active: Override[]; recent: Reque
             noun={['endpoint', 'endpoints']}
           >
             {props.canChange ? (
-              <a className="btn" href="#/designer">
+              <a className="btn" href="#/policy">
                 Change Permissions
               </a>
             ) : null}
@@ -394,12 +394,12 @@ function RolesSection(props: { policy: Policy; active: Override[]; recent: Reque
                             {operation.access === 'deny' ? (
                               <>
                                 {' '}
-                                <Badge tone="refused">Denied for Everyone</Badge>
+                                <Badge tone="refused">Access: Deny</Badge>
                               </>
                             ) : null}
                           </td>
                           <td>
-                            <XRef view="designer" focus={{ select: `operation:${operation.id}` }}>
+                            <XRef view="policy" focus={{ select: `operation:${operation.id}` }}>
                               <code>{operation.id}</code>
                             </XRef>
                           </td>
@@ -545,7 +545,7 @@ function PolicyTables({ policy: p, part }: { policy: Policy; part: 'endpoints' |
                 {p.operations.map((o) => (
                   <tr key={o.id}>
                     <td>
-                      <XRef view="designer" focus={{ select: `operation:${o.id}` }}>
+                      <XRef view="policy" focus={{ select: `operation:${o.id}` }}>
                         <code>{o.id}</code>
                       </XRef>
                     </td>

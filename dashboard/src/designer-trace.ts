@@ -1,8 +1,9 @@
 import type { Operation, Policy } from './api'
+import type { StepState } from './checks'
 
 export interface TraceStep {
   name: string
-  state: 'passes' | 'refused' | 'not applicable' | 'not reached'
+  state: Extract<StepState, 'passed' | 'refused' | 'inapplicable' | 'unreached'>
   text: string
 }
 export const traceExplanation =
@@ -15,8 +16,8 @@ export function trace(policy: Policy, who: string, operation: Operation): TraceS
   const step = (name: string, text: string, refused = false, applicable = true) => {
     steps.push({
       name,
-      state: stopped ? 'not reached' : !applicable ? 'not applicable' : refused ? 'refused' : 'passes',
-      text: stopped ? 'not reached' : text,
+      state: stopped ? 'unreached' : !applicable ? 'inapplicable' : refused ? 'refused' : 'passed',
+      text: stopped ? '' : text,
     })
     if (refused && applicable) stopped = true
   }
@@ -26,28 +27,29 @@ export function trace(policy: Policy, who: string, operation: Operation): TraceS
   )
   step(
     'Access',
-    operation.access === 'deny' ? '403 forbidden: the endpoint is denied' : 'The endpoint allows requests.',
+    operation.access === 'deny' ? '403 forbidden: the endpoint is set to Access: Deny.' : 'The endpoint allows requests.',
     operation.access === 'deny',
   )
   const isPublic = operation.auth === 'none'
   step(
     'Sign-In',
     isPublic
-      ? 'not checked (public)'
+      ? 'Public endpoint: no token is read.'
       : who === 'none'
         ? '401: a valid token is required'
         : 'A valid token from the trusted issuer is required; this trace does not verify one. Its roles are kept only if this policy defines them.',
     !isPublic && who === 'none',
+    !isPublic,
   )
   step(
     'Blocked List',
-    isPublic ? 'not applicable' : 'An account on the blocked list is refused (403 account_blocked). The list is kept apart from the policy.',
+    isPublic ? 'Public endpoint: no account to check.' : 'An account on the blocked list is refused (403 account_blocked). The list is kept apart from the policy.',
     false,
     !isPublic,
   )
   const roles = who.startsWith('role:') ? [who.slice(5)] : []
   const permitted = policy.permits.some((permit) => permit.operation === operation.id && roles.includes(permit.role))
-  step('Role', isPublic ? 'not applicable' : permitted ? 'A held role has permission.' : '403: no permission', !isPublic && !permitted, !isPublic)
+  step('Role', isPublic ? 'Public endpoint: no role to check.' : permitted ? 'A held role has permission.' : '403: no permission', !isPublic && !permitted, !isPublic)
   step(
     'Rate',
     operation.rate

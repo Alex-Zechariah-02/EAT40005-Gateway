@@ -237,7 +237,7 @@ export function Overrides({ admin, can }: ViewProps) {
                             {overrideChange(o, document)}
                             <span className="cell-sub">
                               {o.operation ? (
-                                <XRef view="designer" focus={{ select: `operation:${o.operation}` }}>
+                                <XRef view="policy" focus={{ select: `operation:${o.operation}` }}>
                                   <code>{o.target}</code>
                                 </XRef>
                               ) : (

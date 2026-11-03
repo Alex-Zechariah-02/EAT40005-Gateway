@@ -37,8 +37,8 @@ const navigation: { label: string; items: NavItem[] }[] = [
     label: 'Monitor',
     items: [
       { id: 'overview', label: 'Overview', icon: 'overview', needs: 'read' },
-      { id: 'traffic', label: 'Live Traffic', icon: 'traffic', needs: 'read' },
-      { id: 'lookup', label: 'Request Lookup', icon: 'lookup', needs: 'read' },
+      { id: 'live-traffic', label: 'Live Traffic', icon: 'traffic', needs: 'read' },
+      { id: 'request-lookup', label: 'Request Lookup', icon: 'lookup', needs: 'read' },
       { id: 'security-log', label: 'Security Log', icon: 'log', needs: 'read_history' },
       { id: 'apis', label: 'APIs', icon: 'apis', needs: 'read' },
     ],
@@ -46,23 +46,23 @@ const navigation: { label: string; items: NavItem[] }[] = [
   {
     label: 'Policy',
     items: [
-      { id: 'designer', label: 'Policy', icon: 'permit', needs: 'read' },
-      { id: 'policy', label: 'Versions', icon: 'versions', needs: 'read' },
+      { id: 'policy', label: 'Policy', icon: 'permit', needs: 'read' },
+      { id: 'versions', label: 'Versions', icon: 'versions', needs: 'read' },
       { id: 'advice', label: 'Advice', icon: 'advice', needs: 'read' },
     ],
   },
   {
     label: 'Deploy',
     items: [
-      { id: 'candidates', label: 'Changes', icon: 'candidates', needs: 'read' },
-      { id: 'overrides', label: 'Temporary Rules', icon: 'overrides', needs: 'read' },
+      { id: 'changes', label: 'Changes', icon: 'candidates', needs: 'read' },
+      { id: 'temporary-rules', label: 'Temporary Rules', icon: 'overrides', needs: 'read' },
     ],
   },
   {
     label: 'Access',
     items: [
       { id: 'accounts', label: 'Accounts', icon: 'accounts', needs: 'read' },
-      { id: 'access', label: 'Access Checker', icon: 'access', needs: 'read' },
+      { id: 'access-checker', label: 'Access Checker', icon: 'access', needs: 'read' },
     ],
   },
   {
@@ -71,36 +71,36 @@ const navigation: { label: string; items: NavItem[] }[] = [
       { id: 'history', label: 'History', icon: 'history', needs: 'read_history' },
       { id: 'team', label: 'Team', icon: 'team', needs: 'read' },
       { id: 'limits', label: 'Limits', icon: 'limits', needs: 'read' },
-      { id: 'account', label: 'My Account', icon: 'account', needs: 'read' },
+      { id: 'my-account', label: 'My Account', icon: 'account', needs: 'read' },
     ],
   },
 ]
 
 const titles: Record<View, string> = {
   overview: 'Overview',
-  traffic: 'Live Traffic',
-  lookup: 'Request Lookup',
+  'live-traffic': 'Live Traffic',
+  'request-lookup': 'Request Lookup',
   'security-log': 'Security Log',
-  access: 'Access Checker',
+  'access-checker': 'Access Checker',
   limits: 'Limits',
   advice: 'Advice',
   apis: 'APIs',
-  designer: 'Policy',
-  policy: 'Versions',
-  candidates: 'Changes',
-  overrides: 'Temporary Rules',
+  policy: 'Policy',
+  versions: 'Versions',
+  changes: 'Changes',
+  'temporary-rules': 'Temporary Rules',
   accounts: 'Accounts',
   history: 'History',
   team: 'Team',
-  account: 'My Account',
+  'my-account': 'My Account',
 }
 
 // Former pages now part of another one, so an old bookmark still opens it.
-const moved: Record<string, View> = { provisional: 'candidates', roles: 'policy', code: 'designer' }
+const moved: Record<string, View> = { provisional: 'changes', roles: 'versions', code: 'policy' }
 
 // The open view is kept in the address fragment, so a reload or the
 // browser's back button returns to it. The fragment is never sent to the
-// server; a view may keep its search there (#/lookup?ref=...).
+// server; a view may keep its search there (#/request-lookup?ref=...).
 function viewFromHash(): View {
   const id = window.location.hash.replace(/^#\/?/, '').split('?')[0]
   if (Object.hasOwn(moved, id)) return moved[id]
@@ -418,8 +418,8 @@ function Shell(props: {
                         <a href={`#/${item.id}`} aria-current={current === item.id ? 'page' : undefined} data-tip={item.label}>
                           <Icon name={item.icon} />
                           <span className="nav-label">{item.label}</span>
-                          {item.id === 'candidates' && facts?.provisional !== undefined ? <span className="nav-flag tone-pending">On Trial</span> : null}
-                          {item.id === 'overrides' && facts?.overrides && facts.overrides.length > 0 ? (
+                          {item.id === 'changes' && facts?.provisional !== undefined ? <span className="nav-flag tone-pending">On Trial</span> : null}
+                          {item.id === 'temporary-rules' && facts?.overrides && facts.overrides.length > 0 ? (
                             <span className="nav-count" aria-label={`${facts.overrides.length} active`}>
                               {facts.overrides.length}
                             </span>
@@ -487,7 +487,7 @@ function Shell(props: {
               Sign in again before then to keep or undo it; otherwise the gateway undoes it by itself at the deadline.
             </p>
           ) : null}
-          {paused && (view === 'overview' || view === 'traffic' || view === 'apis') ? (
+          {paused && (view === 'overview' || view === 'live-traffic' || view === 'apis') ? (
             <p className="banner tone-neutral">
               Auto-refresh paused after 10 minutes of inactivity, so an unattended page does not keep the session open. It resumes when you use
               the page.
@@ -495,25 +495,25 @@ function Shell(props: {
           ) : null}
           {outcomes ? <UnresolvedChanges admin={admin} name={session.name} register={outcomes} canReadHistory={can('read_history')} /> : null}
           {view === 'overview' ? <Overview {...viewProps} /> : null}
-          {view === 'traffic' ? <LiveTraffic {...viewProps} /> : null}
-          {view === 'lookup' ? <RequestLookup key={window.location.hash} {...viewProps} /> : null}
+          {view === 'live-traffic' ? <LiveTraffic {...viewProps} /> : null}
+          {view === 'request-lookup' ? <RequestLookup key={window.location.hash} {...viewProps} /> : null}
           {view === 'apis' ? <ApisView {...viewProps} /> : null}
-          {view === 'designer' ? (
-            <Suspense fallback={<p role="status" className="hint">Loading the Policy Designer…</p>}>
+          {view === 'policy' ? (
+            <Suspense fallback={<p role="status" className="hint">Loading the Policy Page…</p>}>
               <Designer {...viewProps} draft={designerDraft} setDraft={setDesignerDraft} />
             </Suspense>
           ) : null}
-          {view === 'policy' ? <PolicyView {...viewProps} /> : null}
-          {view === 'candidates' ? <Candidates {...viewProps} draft={draft} candidate={candidate} /> : null}
-          {view === 'overrides' ? <Overrides {...viewProps} /> : null}
+          {view === 'versions' ? <PolicyView {...viewProps} /> : null}
+          {view === 'changes' ? <Candidates {...viewProps} draft={draft} candidate={candidate} /> : null}
+          {view === 'temporary-rules' ? <Overrides {...viewProps} /> : null}
           {view === 'accounts' ? <AccountsView {...viewProps} /> : null}
           {view === 'history' ? <History {...viewProps} /> : null}
           {view === 'team' ? <TeamView {...viewProps} /> : null}
           {view === 'security-log' ? <SecurityLogView {...viewProps} /> : null}
-          {view === 'access' ? <AccessCheckView {...viewProps} /> : null}
+          {view === 'access-checker' ? <AccessCheckView {...viewProps} /> : null}
           {view === 'limits' ? <LimitsView {...viewProps} /> : null}
           {view === 'advice' ? <AdviceView {...viewProps} /> : null}
-          {view === 'account' ? <Account
+          {view === 'my-account' ? <Account
               admin={admin}
               session={session}
               signedOut={signedOut}

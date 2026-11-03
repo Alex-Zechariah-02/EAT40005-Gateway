@@ -26,13 +26,14 @@ import {
   XRef,
 } from './ui'
 import type { ViewProps } from './views'
+import { decisionWords, stages, stepWords, type Stage, type StepState } from './checks'
+import { Explain } from './explain'
 
 // The Monitor and Admin pages: live traffic, request lookup, APIs, accounts,
 // team and policy as code, reading the gateway's Admin API.
 // Everything shown comes from the gateway; nothing here decides or evaluates
 // policy.
 
-export type Stage = 'route' | 'access' | 'token' | 'blocked' | 'permit' | 'rate' | 'validation' | 'record' | 'forward'
 
 export interface RequestEvent {
   request_id: string
@@ -97,19 +98,6 @@ interface SigningKey {
   last_verified_at: string | null
 }
 
-// The gateway's checks in the order it applies them; plain names first.
-export const stages: { id: Stage; name: string }[] = [
-  { id: 'route', name: 'Route' },
-  { id: 'access', name: 'Access' },
-  { id: 'token', name: 'Sign-In' },
-  { id: 'blocked', name: 'Blocked List' },
-  { id: 'permit', name: 'Role' },
-  { id: 'rate', name: 'Rate' },
-  { id: 'validation', name: 'Body' },
-  { id: 'record', name: 'Record' },
-  { id: 'forward', name: 'Forward' },
-]
-
 // Plain words for the gateway's refusal codes; the code stays one
 // hover away.
 export const reasons: Record<string, string> = {
@@ -132,10 +120,6 @@ export function reasonOf(code: string | null): string {
 }
 
 const decisionTone: Record<RequestEvent['decision'], Tone> = { allowed: 'ok', refused: 'refused', failed: 'unknown' }
-const decisionWord: Record<RequestEvent['decision'], string> = { allowed: 'Allowed', refused: 'Refused', failed: 'Unknown' }
-
-type StepState = 'cleared' | 'refused' | 'unknown' | 'skipped' | 'unreached'
-const stepWords: Record<StepState, string> = { cleared: 'passed', refused: 'refused here', unknown: 'outcome unknown', skipped: 'not checked', unreached: 'not reached' }
 
 // beforeRouting says the gateway decided a request before matching it to an
 // operation: it was refused on its form, or no policy could be captured (a
@@ -152,10 +136,10 @@ function pathStates(event: Pick<RequestEvent, 'stage' | 'decision' | 'operation'
   const stop = stages.findIndex((s) => s.id === event.stage)
   const early = beforeRouting(event)
   return stages.map((_, n) => {
-    if (event.decision === 'allowed') return 'cleared'
+    if (event.decision === 'allowed') return 'passed'
     if (n === stop) return event.decision === 'failed' ? 'unknown' : 'refused'
     if (n > stop) return 'unreached'
-    return early ? 'skipped' : 'cleared'
+    return early ? 'skipped' : 'passed'
   })
 }
 
@@ -166,7 +150,7 @@ export function DecisionPath({ event }: { event: Pick<RequestEvent, 'stage' | 'd
   const allowed = event.decision === 'allowed'
   const early = beforeRouting(event)
   const name = stages.find((s) => s.id === event.stage)?.name ?? event.stage
-  const cleared = states.filter((s) => s === 'cleared').length
+  const cleared = states.filter((s) => s === 'passed').length
   return (
     <span className="decision-path">
       <span
@@ -178,7 +162,7 @@ export function DecisionPath({ event }: { event: Pick<RequestEvent, 'stage' | 'd
           <span key={s.id} className={`dp-step dp-${states[n] === 'skipped' ? 'unreached' : states[n]}`} title={`${s.name}: ${stepWords[states[n]]}`} />
         ))}
       </span>
-      <span className={`dp-label dp-label-${event.decision}`}>{allowed ? 'Forwarded' : early ? 'Before routing' : name}</span>
+      <span className={`dp-label dp-label-${event.decision}`}>{allowed ? 'All Passed' : early ? 'Before Routing' : name}</span>
     </span>
   )
 }
@@ -453,7 +437,7 @@ function BusiestCard({ traffic }: { traffic: Traffic }) {
           {busiest.map((o) => (
             <li key={o.operation}>
               <span className="rank-name">
-                <XRef view="designer" focus={{ select: `operation:${o.operation}` }}>
+                <XRef view="policy" focus={{ select: `operation:${o.operation}` }}>
                   <code>{o.operation}</code>
                 </XRef>
                 <span className="cell-sub">
@@ -676,7 +660,7 @@ export function EventRows({ events, open, label }: { events: RequestEvent[]; ope
               </td>
               <td className="nowrap">
                 {e.operation ? (
-                  <XRef view="designer" focus={{ select: `operation:${e.operation}` }}>
+                  <XRef view="policy" focus={{ select: `operation:${e.operation}` }}>
                     <code>
                       <span className="method">{e.method}</span> {e.path}
                     </code>
@@ -725,7 +709,7 @@ export function EventRows({ events, open, label }: { events: RequestEvent[]; ope
 
 // lookupRef opens Request lookup for one reference.
 function lookupRef(ref: string) {
-  window.location.hash = `#/lookup?ref=${encodeURIComponent(ref)}`
+  window.location.hash = `#/request-lookup?ref=${encodeURIComponent(ref)}`
 }
 
 // OverviewLive is the Overview's live half: traffic in a chosen window, the
@@ -761,7 +745,7 @@ export function OverviewLive({ admin, history }: { admin: Admin; history: boolea
               <section className="card" aria-labelledby="refusals-title">
                 <div className="card-head card-head-pad">
                   <h2 id="refusals-title">Recent Refusals</h2>
-                  <a className="card-link" href="#/traffic">
+                  <a className="card-link" href="#/live-traffic">
                     Open Live Traffic
                   </a>
                 </div>
@@ -1105,7 +1089,7 @@ export function RequestLookup({ admin }: ViewProps) {
       <PageHeader
         title="Request Lookup"
         search={false}
-        lede="Find a request by Ref, account or endpoint and see each check it passed or failed."
+        lede="Find a request by Ref, account or endpoint and see each check it passed or refused."
       />
       <form className="section card card-pad lookup-form" onSubmit={search} role="search" aria-label="Find Requests">
         <Field id={`${id}-ref`} label="Reference (Ref)">
@@ -1197,7 +1181,7 @@ export function EventDetail({ event }: { event: RequestEvent }) {
     <section className="section card card-pad event-detail" aria-labelledby="detail-title">
       <div className="card-head">
         <h2 id="detail-title">
-          <Badge tone={decisionTone[event.decision]}>{decisionWord[event.decision]}</Badge>{' '}
+          <Badge tone={decisionTone[event.decision]}>{decisionWords[event.decision]}</Badge>{' '}
           {event.decision === 'allowed' ? 'Forwarded to the service' : reasonOf(event.code)}
         </h2>
       </div>
@@ -1205,7 +1189,9 @@ export function EventDetail({ event }: { event: RequestEvent }) {
         {pathStates(event).map((state, n) => (
           <li key={stages[n].id} className={`path-step dp-${state === 'skipped' ? 'unreached' : state}`}>
             <span className="path-bar" aria-hidden="true" />
-            <span className="path-name">{stages[n].name}</span>
+            <span className="path-name">
+              <Explain term={stages[n].name} plain={stages[n].plain} technical={stages[n].technical} />
+            </span>
             <span className="path-word">{stepWords[state]}</span>
           </li>
         ))}
@@ -1238,7 +1224,7 @@ export function EventDetail({ event }: { event: RequestEvent }) {
           <dt>Endpoint</dt>
           <dd>
             {event.operation ? (
-              <XRef view="designer" focus={{ select: `operation:${event.operation}` }}>
+              <XRef view="policy" focus={{ select: `operation:${event.operation}` }}>
                 <code>{event.operation}</code>
               </XRef>
             ) : (
@@ -1353,8 +1339,8 @@ export function ApisView({ admin, can }: ViewProps) {
                 noun={['endpoint', 'endpoints']}
               >
                 {can('manage_policy') ? (
-                  <a className="btn btn-primary" href="#/designer">
-                    Change Endpoints in the Designer
+                  <a className="btn btn-primary" href="#/policy">
+                    Edit Endpoints in Policy
                   </a>
                 ) : null}
               </ListToolbar>
@@ -1424,7 +1410,7 @@ export function ApisView({ admin, can }: ViewProps) {
                                       <span className="method">{o.method}</span> {o.target}
                                     </code>
                                     <span className="cell-sub">
-                                      <XRef view="designer" focus={{ select: `operation:${o.id}` }}>
+                                      <XRef view="policy" focus={{ select: `operation:${o.id}` }}>
                                         <code>{o.id}</code>
                                       </XRef>
                                     </span>
@@ -1437,7 +1423,7 @@ export function ApisView({ admin, can }: ViewProps) {
                                     ) : roles.length ? (
                                       <span className="chips">
                                         {roles.map((role) => (
-                                          <XRef key={role} view="policy" focus={{ role }}>
+                                          <XRef key={role} view="versions" focus={{ role }}>
                                             <span className="chip">{role}</span>
                                           </XRef>
                                         ))}
@@ -1635,7 +1621,7 @@ export function AccountsView({ admin, can }: ViewProps) {
                             e.roles.length ? (
                               <span className="chips">
                                 {e.roles.map((role) => (
-                                  <XRef key={role} view="policy" focus={{ role }}>
+                                  <XRef key={role} view="versions" focus={{ role }}>
                                     <span className="chip">{role}</span>
                                   </XRef>
                                 ))}

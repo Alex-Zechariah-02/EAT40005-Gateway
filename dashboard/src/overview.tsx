@@ -26,7 +26,7 @@ export function Overview({ admin, can, open }: ViewProps) {
       <Alerts admin={admin} open={open} />
       {status && blocked ? <Admission status={status} /> : null}
       {status && (status.admission === 'bootstrap_locked' || status.admission === 'recovery_required') ? (
-        <FirstBase recovery={status.admission === 'recovery_required'} manage={can('manage_policy')} goChanges={() => open('candidates')} />
+        <FirstBase recovery={status.admission === 'recovery_required'} manage={can('manage_policy')} goChanges={() => open('changes')} />
       ) : status ? (
         <GettingStarted admin={admin} status={status} open={open} />
       ) : null}
@@ -100,7 +100,7 @@ function StatusStrip({ admin, can, status }: Pick<ViewProps, 'admin' | 'can'> & 
           )
         ) : null}
         <p className="tile-foot">
-          <a href="#/overrides">{rules?.length ? 'Manage Temporary Rules' : 'Add a Temporary Rule'}</a>
+          <a href="#/temporary-rules">{rules?.length ? 'Manage Temporary Rules' : 'Add a Temporary Rule'}</a>
         </p>
         {overrides.reply && overrides.reply.kind !== 'ok' ? <Problem reply={overrides.reply} /> : null}
       </div>
@@ -135,9 +135,9 @@ function GettingStarted({ admin, status, open }: Pick<ViewProps, 'admin' | 'open
   // has ended a trial has been kept or undone.
   const first = trials.reply?.kind === 'ok' ? trials.reply.body.items[0] : undefined
   const steps = [
-    { done: status.confirmed !== undefined, text: 'A policy is active.', go: 'policy' as const, label: 'Versions' },
-    { done: first !== undefined, text: 'A draft change has been saved, checked and put on trial.', go: 'candidates' as const, label: 'Changes' },
-    { done: first?.disposition !== undefined, text: 'A trial has ended: the change was kept, or undone.', go: 'candidates' as const, label: 'Changes' },
+    { done: status.confirmed !== undefined, text: 'A policy is active.', go: 'versions' as const, label: 'Versions' },
+    { done: first !== undefined, text: 'A draft change has been saved, checked and put on trial.', go: 'changes' as const, label: 'Changes' },
+    { done: first?.disposition !== undefined, text: 'A trial has ended: the change was kept, or undone.', go: 'changes' as const, label: 'Changes' },
   ]
   const done = steps.filter((step) => step.done).length
   return (

@@ -120,7 +120,9 @@ const Card = memo(function Card({ id, data }: NodeProps<CardNode>) {
           <ActionMenu className="designer-card-add nopan" label={`Add to ${data.title}`} tip={`Add to ${data.title}`} items={data.actions} />
         ) : null}
       </h2>
-      {data.open ? (
+      {/* The list stays mounted so it can ease open and closed; the canvas
+          measures each frame, so the cards below glide with it. */}
+      <div className="designer-card-body" data-open={data.open ? '' : undefined}>
         <ul id={listId} className="designer-card-rows">
           {data.rows.map((row) => (
             <li key={row.key}>
@@ -136,7 +138,7 @@ const Card = memo(function Card({ id, data }: NodeProps<CardNode>) {
                   <span className="designer-row-title">{row.title}</span>
                   {row.detail ? <span className="designer-row-detail">{row.detail}</span> : null}
                 </span>
-                {row.mark ? <span className="designer-row-mark">{row.mark === 'allowed' ? 'Allowed' : 'No Access'}</span> : null}
+                {row.mark ? <span className="designer-row-mark">{row.mark === 'allowed' ? 'Allowed' : 'No Permission'}</span> : null}
                 {row.badges.map((badge) => (
                   <Badge key={badge.text} tone={badge.tone}>
                     {badge.text}
@@ -146,7 +148,7 @@ const Card = memo(function Card({ id, data }: NodeProps<CardNode>) {
             </li>
           ))}
         </ul>
-      ) : null}
+      </div>
       <Handle type="source" position={Position.Right} isConnectable={false} />
     </section>
   )
@@ -184,9 +186,16 @@ const fit: { maxZoom: number; padding: FitViewOptions['padding'] } = { maxZoom: 
 // A card brought into focus is never shown smaller than this, so its text
 // stays readable.
 const readable = 0.85
+// Camera moves ease in and out over a calm, fixed time; with reduced motion
+// the view changes at once.
+function motion(ms: number): number {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : ms
+}
+const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2)
 
 function CanvasGraph(props: CanvasProps) {
   const flow = useReactFlow()
+  const travel = motion(420)
   const [message, setMessage] = useState('')
   const measured = useNodesInitialized()
   const placed = useRef(false)
@@ -195,6 +204,8 @@ function CanvasGraph(props: CanvasProps) {
   // or after Expand All or Collapse All, every card is fitted again when
   // they can all be read; otherwise the view stays on the closed group.
   const refit = useRef<{ card?: string; opened: boolean } | null>(null)
+  const settle = useRef<ReturnType<typeof setTimeout>>(undefined)
+  useEffect(() => () => clearTimeout(settle.current), [])
   // Which groups are open. Roles start open; endpoint lists start closed and
   // open on demand, or by themselves for the selected or traced endpoint.
   const [open, setOpen] = useState<Set<string>>(() => new Set(['roles']))
@@ -255,9 +266,9 @@ function CanvasGraph(props: CanvasProps) {
       const key: BoxKey = `operation:${operation.id}`
       const badges = badgesFor(key)
       if (operation.auth === 'none') badges.push({ tone: 'neutral', text: 'Public' })
-      if (operation.access === 'deny') badges.push({ tone: 'refused', text: 'Denied' })
+      if (operation.access === 'deny') badges.push({ tone: 'refused', text: 'Access: Deny' })
       const denied = props.overlays.find((override) => override.control === 'operation' && override.operation === operation.id)
-      if (denied) badges.push({ tone: 'refused', text: `Denied until ${until(denied.expires_at)}` })
+      if (denied) badges.push({ tone: 'refused', text: `Access: Deny until ${until(denied.expires_at)}` })
       const rate = props.overlays.find((override) => override.control === 'rate' && override.operation === operation.id)
       if (rate) badges.push({ tone: 'pending', text: `Limit ${rate.count} until ${until(rate.expires_at)}` })
       for (const override of props.overlays.filter((item) => item.control === 'permit' && item.operation === operation.id))
@@ -444,13 +455,17 @@ function CanvasGraph(props: CanvasProps) {
     setNodes((previous) => {
       const updated = applyNodeChanges(changes, previous)
       if (!changes.some((change) => change.type === 'dimensions')) return updated
+      // The view moves once the cards stop changing size, so it travels to
+      // where they end, not to a frame of their opening.
       if (refit.current) {
-        const { card, opened } = refit.current
-        refit.current = null
-        requestAnimationFrame(() => {
-          if (card && (opened || !allReadable())) focusOn(flow.getNodesBounds([card]), 250)
-          else fitTo(200)
-        })
+        clearTimeout(settle.current)
+        settle.current = setTimeout(() => {
+          if (!refit.current) return
+          const { card, opened } = refit.current
+          refit.current = null
+          if (card && (opened || !allReadable())) focusOn(flow.getNodesBounds([card]), travel)
+          else fitTo(travel)
+        }, 80)
       }
       return keepMeasured(laidOut(heightsOf(updated)), updated)
     })
@@ -461,7 +476,7 @@ function CanvasGraph(props: CanvasProps) {
     fitTo(0)
   }, [measured])
   useEffect(() => {
-    if (placed.current) fitTo(200)
+    if (placed.current) fitTo(travel)
   }, [props.expanded])
 
   const area = useRef<HTMLDivElement>(null)
@@ -475,7 +490,7 @@ function CanvasGraph(props: CanvasProps) {
     const panel = canvas?.closest('.designer-workspace')?.querySelector('.designer-side-panel')
     const covered = canvas && panel && panel.getBoundingClientRect().top < canvas.getBoundingClientRect().bottom - 1
     const padding: FitViewOptions['padding'] = covered ? { top: '64px', bottom: '24px', left: '24px', right: `${panel.getBoundingClientRect().width + 36}px` } : fit.padding
-    void flow.fitView({ ...fit, padding, duration })
+    void flow.fitView({ ...fit, padding, duration, ease })
   }
   // allReadable says whether fitting every card keeps them at a readable size.
   function allReadable(): boolean {
@@ -502,7 +517,7 @@ function CanvasGraph(props: CanvasProps) {
     const zoom = Math.max(readable, Math.min(1, width / box.width, height / box.height))
     const x = left + (width - box.width * zoom) / 2 - box.x * zoom
     const y = box.height * zoom <= height ? top + (height - box.height * zoom) / 2 - box.y * zoom : top - box.y * zoom
-    void flow.setViewport({ x, y, zoom }, { duration })
+    void flow.setViewport({ x, y, zoom }, { duration, ease })
   }
   // The canvas takes the window's height left between the toolbar above it
   // and what follows it, so the whole diagram shows without scrolling the
@@ -540,11 +555,11 @@ function CanvasGraph(props: CanvasProps) {
     }
   }, [props.expanded])
   useEffect(() => {
-    if (placed.current) fitTo(200)
+    if (placed.current) fitTo(travel)
   }, [height])
   useEffect(() => {
     if (!props.panelOpen) {
-      if (before.current) void flow.setViewport(before.current, { duration: 250 })
+      if (before.current) void flow.setViewport(before.current, { duration: travel, ease })
       before.current = null
       return
     }
@@ -564,7 +579,7 @@ function CanvasGraph(props: CanvasProps) {
         const box = row.getBoundingClientRect()
         const start = flow.screenToFlowPosition({ x: box.left, y: box.top })
         const end = flow.screenToFlowPosition({ x: box.right, y: box.bottom })
-        focusOn({ x: start.x, y: start.y, width: end.x - start.x, height: end.y - start.y }, 250)
+        focusOn({ x: start.x, y: start.y, width: end.x - start.x, height: end.y - start.y }, travel)
         return
       }
       const rowBox = row.getBoundingClientRect()
@@ -579,7 +594,7 @@ function CanvasGraph(props: CanvasProps) {
       before.current ??= viewport
       // Move left by what is covered, but never push the row off the left edge.
       const limit = canvasBox.left + room - rowBox.left
-      void flow.setViewport({ ...viewport, x: viewport.x + Math.max(shift, Math.min(0, limit)) }, { duration: 250 })
+      void flow.setViewport({ ...viewport, x: viewport.x + Math.max(shift, Math.min(0, limit)) }, { duration: travel, ease })
     }, 120)
     pendingFocus.current = timer
     return () => clearTimeout(timer)
@@ -609,7 +624,7 @@ function CanvasGraph(props: CanvasProps) {
             const viewport = flow.getViewport()
             const x = event.key === 'ArrowLeft' ? 32 : event.key === 'ArrowRight' ? -32 : 0
             const y = event.key === 'ArrowUp' ? 32 : event.key === 'ArrowDown' ? -32 : 0
-            void flow.setViewport({ ...viewport, x: viewport.x + x, y: viewport.y + y })
+            void flow.setViewport({ ...viewport, x: viewport.x + x, y: viewport.y + y }, { duration: motion(140), ease })
             return
           }
           if (event.key === 'Escape' && props.expanded) {

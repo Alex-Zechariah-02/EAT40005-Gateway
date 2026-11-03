@@ -79,7 +79,7 @@ export function SecurityLogView({ admin }: ViewProps) {
             <option value="">Any</option>
             <option value="allowed">Allowed</option>
             <option value="refused">Refused</option>
-            <option value="failed">Unknown outcome</option>
+            <option value="failed">Outcome Unknown</option>
           </select>
         </Field>
         <Field id={`${id}-from`} label="From">
@@ -484,7 +484,7 @@ export function Alerts({ admin, open }: { admin: ViewProps['admin']; open: ViewP
           <li key={item.id}>
             <Badge tone={severityTone[item.severity]}>{severityWord[item.severity]}</Badge> {item.message}{' '}
             {item.id === 'A1' ? (
-              <button type="button" className="link-button" onClick={() => open('lookup')}>
+              <button type="button" className="link-button" onClick={() => open('request-lookup')}>
                 Look Up Requests
               </button>
             ) : item.id === 'A3' ? (

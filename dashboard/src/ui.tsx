@@ -100,16 +100,16 @@ function GlobalSearch() {
       query: `${field}=${encodeURIComponent(value)}`,
     })
     searches += 1
-    window.location.hash = `#/lookup?search=${searches}`
+    window.location.hash = `#/request-lookup?search=${searches}`
   }
   const find = (value: string) => {
     let match: RegExpExecArray | null
-    if (/^[0-9a-f]{32}$/i.test(value)) window.location.hash = `#/lookup?ref=${encodeURIComponent(value.toLowerCase())}`
+    if (/^[0-9a-f]{32}$/i.test(value)) window.location.hash = `#/request-lookup?ref=${encodeURIComponent(value.toLowerCase())}`
     else if (/^[0-9a-f]{4}-[0-9a-f]{4}$/i.test(value))
       return 'That is a short Ref. Ask for the full reference: the copy button beside a Ref copies all 32 characters.'
-    else if ((match = /^(?:draft\s+)?change\s*#?(\d+)$/i.exec(value))) navigate?.('candidates', { candidate: Number(match[1]) })
-    else if (/^(?:temporary\s+)?rule\s*#?\d+$/i.test(value)) navigate?.('overrides')
-    else if (/^version\s*#?\d+$/i.test(value)) navigate?.('policy')
+    else if ((match = /^(?:draft\s+)?change\s*#?(\d+)$/i.exec(value))) navigate?.('changes', { candidate: Number(match[1]) })
+    else if (/^(?:temporary\s+)?rule\s*#?\d+$/i.test(value)) navigate?.('temporary-rules')
+    else if (/^version\s*#?\d+$/i.test(value)) navigate?.('versions')
     else if (/^[a-z][a-z0-9_-]*(\.[a-z0-9_-]+)+$/i.test(value)) lookup('operation', value)
     else if (/^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,63}$/.test(value)) lookup('subject', value)
     else return 'Search finds a full Ref, an account ID, an endpoint ID, “change 12”, “rule 3” or “version 4”.'
@@ -1068,7 +1068,7 @@ export function AccountLink({ account, children }: { account: string; children: 
   return (
     <a
       className="xref"
-      href="#/lookup"
+      href="#/request-lookup"
       onClick={() =>
         memory?.set('lookup', {
           form: { ref: '', subject: account, operation: '', decision: '' },

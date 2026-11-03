@@ -34,6 +34,8 @@ import { trace, traceExplanation } from './designer-trace'
 import { Badge, ChangeList, CodeBlock, Confirm, Empty, Field, MutationResult, PageHeader, Problem, ReadStamp, Remaining, TimeOfDay, useFocus } from './ui'
 import { controls } from './provisional'
 import type { ViewProps } from './views'
+import { stages, stepWords } from './checks'
+import { Explain } from './explain'
 
 type Mode = 'draft' | 'confirmed' | 'provisional'
 type Tab = 'canvas' | 'form' | 'json'
@@ -305,7 +307,7 @@ export function Designer({
   const traceRoles = who.startsWith('role:') ? [who.slice(5)] : []
   const tracePath: TracePath | undefined =
     showTrace && currentOperation
-      ? { operation: currentOperation.id, roles: traceRoles, forward: steps.find((step) => step.name === 'Forward')?.state === 'passes' }
+      ? { operation: currentOperation.id, roles: traceRoles, forward: steps.find((step) => step.name === 'Forward')?.state === 'passed' }
       : undefined
   const stale = current && draft && current.id !== draft.baseRevision
   const formProps = document
@@ -331,7 +333,7 @@ export function Designer({
       </PageHeader>
       {none ? (
         <Empty title="Establish the first policy before designing changes.">
-          <button className="btn" type="button" onClick={() => open('candidates')}>
+          <button className="btn" type="button" onClick={() => open('changes')}>
             Go to Changes
           </button>
         </Empty>
@@ -505,7 +507,7 @@ export function Designer({
             success={(body) => (
               <>
                 <p className="notice-title">The gateway checked it: saved as draft change {body.candidate.id}. Nothing is active yet.</p>
-                <button ref={review} className="btn" type="button" onClick={() => open('candidates', { candidate: body.candidate.id })}>
+                <button ref={review} className="btn" type="button" onClick={() => open('changes', { candidate: body.candidate.id })}>
                   Preview Its Impact and Put It on Trial
                 </button>
               </>
@@ -848,13 +850,15 @@ function TracePanel({
         <ol className="designer-trace-steps">
           {steps.map((step) => (
             <li key={step.name}>
-              <strong>{step.name}</strong>{' '}
-              {step.state === 'not reached' ? (
-                <span className="hint">not reached</span>
+              <strong>
+                <CheckName name={step.name} />
+              </strong>{' '}
+              {step.state === 'unreached' ? (
+                <span className="hint">{stepWords.unreached}</span>
               ) : (
-                <Badge tone={step.state === 'passes' ? 'ok' : step.state === 'refused' ? 'refused' : 'neutral'}>{step.state}</Badge>
+                <Badge tone={step.state === 'passed' ? 'ok' : step.state === 'refused' ? 'refused' : 'neutral'}>{stepWords[step.state]}</Badge>
               )}
-              {step.state === 'not reached' ? null : <p>{step.text}</p>}
+              {step.text ? <p>{step.text}</p> : null}
             </li>
           ))}
         </ol>
@@ -864,4 +868,10 @@ function TracePanel({
       <p className="notice tone-neutral">{traceExplanation}</p>
     </section>
   )
+}
+
+// CheckName names one of the gateway's checks with its explanation.
+function CheckName({ name }: { name: string }) {
+  const check = stages.find((item) => item.name === name)
+  return check ? <Explain term={check.name} plain={check.plain} technical={check.technical} /> : <>{name}</>
 }

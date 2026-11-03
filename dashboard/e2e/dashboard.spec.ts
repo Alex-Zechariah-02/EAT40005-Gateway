@@ -357,7 +357,7 @@ test.describe.serial('dashboard', () => {
 
     // The open view is kept across a reload, and the session resumes.
     await revisions(admin)
-    expect(new URL(admin.url()).hash).toBe('#/policy')
+    expect(new URL(admin.url()).hash).toBe('#/versions')
     await expect(admin.getByText('No policy is active yet.')).toBeVisible()
     await admin.reload()
     await expect(admin.getByText('Signed in as admin')).toBeAttached()
@@ -1095,9 +1095,9 @@ test.describe.serial('dashboard', () => {
     await admin.getByRole('searchbox', { name: 'Search', exact: true }).press('Enter')
     await expect(admin.getByRole('heading', { level: 1, name: 'Request Lookup' })).toBeVisible()
     const checks = main.getByRole('list', { name: "The gateway's checks, in order" })
-    await expect(checks.getByRole('listitem').filter({ hasText: 'Blocked List' })).toContainText('refused here')
-    await expect(checks.getByRole('listitem').filter({ hasText: 'Sign-In' })).toContainText('passed')
-    await expect(checks.getByRole('listitem').filter({ hasText: 'Role' })).toContainText('not reached')
+    await expect(checks.getByRole('listitem').filter({ hasText: 'Blocked List' })).toContainText('Refused Here')
+    await expect(checks.getByRole('listitem').filter({ hasText: 'Sign-In' })).toContainText('Passed')
+    await expect(checks.getByRole('listitem').filter({ hasText: 'Role' })).toContainText('Not Reached')
     await shot(admin, '21-lookup-blocked')
 
     // The same header search finds an account's requests without putting the
@@ -1130,8 +1130,8 @@ test.describe.serial('dashboard', () => {
     await main.getByLabel('Account', { exact: true }).fill('')
     await main.getByLabel('Reference (Ref)').fill(early.request_id)
     await main.getByRole('button', { name: 'Find Requests' }).click()
-    await expect(checks.getByRole('listitem').filter({ hasText: 'Route' })).toContainText('not checked')
-    await expect(checks.getByRole('listitem').filter({ hasText: 'Record' })).toContainText('refused here')
+    await expect(checks.getByRole('listitem').filter({ hasText: 'Route' })).toContainText('Not Checked')
+    await expect(checks.getByRole('listitem').filter({ hasText: 'Record' })).toContainText('Refused Here')
     await expect(main.getByText('Decided before endpoint matching; earlier checks did not run.')).toBeVisible()
 
     // A trial and its rollback leave the block in place.
@@ -1220,7 +1220,7 @@ test.describe.serial('dashboard', () => {
     expect(allowed.status).toBe(200)
     const allowedRef = allowed.receipts[0].request_id
     await expect(row(allowedRef)).toContainText('ops-01')
-    await expect(row(allowedRef)).toContainText('Forwarded')
+    await expect(row(allowedRef)).toContainText('All Passed')
 
     // While paused a new request is counted, not shown; Resume adds it.
     await stream.getByRole('button', { name: 'Pause' }).click()

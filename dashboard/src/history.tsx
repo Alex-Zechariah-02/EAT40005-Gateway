@@ -22,9 +22,9 @@ function TargetLink({ target }: { target: string }) {
   const words = targetWords(target)
   if (!match) return <>{words}</>
   const id = Number(match[2])
-  if (match[1] === 'revision') return <XRef view="policy" focus={{ version: id }}>{words}</XRef>
-  if (match[1] === 'candidate') return <XRef view="candidates" focus={{ candidate: id }}>{words}</XRef>
-  return <XRef view="overrides" focus={{ rule: id }}>{words}</XRef>
+  if (match[1] === 'revision') return <XRef view="versions" focus={{ version: id }}>{words}</XRef>
+  if (match[1] === 'candidate') return <XRef view="changes" focus={{ candidate: id }}>{words}</XRef>
+  return <XRef view="temporary-rules" focus={{ rule: id }}>{words}</XRef>
 }
 
 type Area = 'policy' | 'overrides' | 'accounts' | 'keys' | 'administrators' | 'operator'
@@ -207,7 +207,7 @@ export function History({ admin }: ViewProps) {
                         {targetWords(h.target) !== h.target ? <code className="cell-sub">{h.target}</code> : null}
                       </td>
                       <td>
-                        {h.outcome === 'committed' ? 'Applied' : <Badge tone="refused">{h.outcome === 'rejected' ? 'Refused' : h.outcome}</Badge>}
+                        {h.outcome === 'committed' ? <Badge tone="ok">Applied</Badge> : <Badge tone="refused">{h.outcome === 'rejected' ? 'Refused' : h.outcome}</Badge>}
                         {h.reason ? (
                           <>
                             {' '}
