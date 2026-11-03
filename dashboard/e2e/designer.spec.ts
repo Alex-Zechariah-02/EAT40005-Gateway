@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
-import type { Candidate, Policy, Revision } from '../src/api'
+import type { Candidate, Policy, Revision } from '../src/shared/api'
 import { adminURL, build, Demo, raw, siteURL, webRoot } from './env'
 import {
   activate,

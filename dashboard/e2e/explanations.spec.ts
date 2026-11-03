@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { committedMessage, explain, message } from '../src/api'
+import { committedMessage, explain, message } from '../src/shared/api'
 
 // Every error and refusal code the Admin API can send, as the gateway's
 // source produced them on 28 October 2026: the protected Admin API's own
