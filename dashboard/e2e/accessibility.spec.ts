@@ -71,7 +71,7 @@ test.describe.serial('dashboard', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Changes' })).toBeFocused()
 
     // Every view in the navigation.
-    const views = ['Overview', 'Live Traffic', 'Request Lookup', 'APIs', 'Policy', 'Versions', 'Changes', 'Temporary Rules', 'Accounts', 'History', 'Team', 'My Account']
+    const views = ['Overview', 'Live Traffic', 'APIs', 'Policy', 'Versions', 'Changes', 'Temporary Rules', 'Accounts', 'History', 'Team', 'My Account']
     for (const view of views) {
       await go(page, view)
       await scan(page, view)

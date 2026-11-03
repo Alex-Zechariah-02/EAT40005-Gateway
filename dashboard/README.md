@@ -12,7 +12,7 @@ The views are grouped by job.
 
 - **Overview:** the policy in force, any change on trial with its countdown and **Undo change** and **Review and keep**, the temporary rules in force, traffic in a chosen window, why requests were refused, the latest refusals with the check that decided each, figures per API, and a timeline of policy changes. A new or restored installation is told how to establish its first policy, and every page warns at the top while the gateway is not accepting requests. Once a policy is in force, a Getting started guide ticks off the first steps (a policy in force, a first trial, a trial kept or undone) from what the gateway reports; **Hide this guide** removes it until My account shows it again.
 - **Live traffic:** every request as the gateway decides it, streamed as it happens, with a pause for inspection and filters that show only changes (anything but reads) or only refusals. It keeps the latest 1,000 requests and draws the newest 200 that match.
-- **Request lookup:** find a request by the reference (Ref) a person quotes from an error, by account or by endpoint, and see each check it passed, the one that decided it and those it never reached. The **Search** box in every page header finds a full Ref, an account or endpoint ID, a draft change (“change 12”), a temporary rule (“rule 3”) or a version (“version 4”) and opens its page; an account searched for never enters the address.
+- **Request details:** every request row on the Overview, Live traffic and the Security log opens that request in a side panel over the page, at the page's own address plus `?ref=`; the browser's Back button closes it. The panel shows when the request arrived, its method and path, the response, the policy version and the account, then each check it passed, the one that decided it and those it never reached, the full reason and the Ref to copy. The **Search** box in every page header opens a full Ref the same way, opens the Security log on an account or endpoint ID (which never enters the address), and finds a draft change (“change 12”), a temporary rule (“rule 3”) or a version (“version 4”).
 - **APIs:** each API's endpoints, who may call them, their rate limits and bodies, its traffic figures, and each endpoint's request rules in words with the exact schema under More details.
 
 **Policy**
@@ -88,5 +88,7 @@ $env:E2E_DEV_PORT='15173'
 npm run build
 npm run e2e
 ```
+
+Each spec file starts its own gateway and builds the state its tests read. One file or one test can be rerun alone with `npx playwright test e2e/<file>.spec.ts [-g "<test name>"]`, with `E2E_BACKEND_SOURCE` and `EAT_PORT_OFFSET` set as above.
 
 The tests serve `dist/`, or the existing build named by `E2E_APP_DIST`. The demo tool also needs a website build; the helper builds `../client`, unless `WEBSITE_DIST` names a built client to use instead. Optional: `E2E_EVIDENCE` names a file for JSON-lines evidence (backend source manifests, statuses, receipts and event fields, never secrets), and `E2E_SHOTS` a directory for screenshots. Pages taller than 16,000 pixels are captured as viewport images with a JSON manifest of their scroll positions, avoiding Chrome's tall-image repetition.

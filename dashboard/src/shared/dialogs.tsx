@@ -1,6 +1,25 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 
 // Modal dialogs: confirmations and step-by-step wizards.
+
+const focusable = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])'
+
+// keepTabInside makes Tab and Shift+Tab wrap within a modal dialog, so
+// keyboard focus never leaves it for the browser's own controls.
+export function keepTabInside(event: KeyboardEvent<HTMLElement>) {
+  if (event.key !== 'Tab') return
+  const items = [...event.currentTarget.querySelectorAll<HTMLElement>(focusable)].filter((item) => item.getClientRects().length > 0)
+  const first = items[0]
+  const last = items.at(-1)
+  if (!first || !last) return
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first.focus()
+  }
+}
 
 // Confirm asks for explicit confirmation of a policy-changing action in a
 // native modal dialog, which keeps keyboard focus inside until it closes.

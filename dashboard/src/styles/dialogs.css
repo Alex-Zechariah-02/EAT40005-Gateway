@@ -53,6 +53,36 @@ dialog h2 {
   }
 }
 
+/* The request drawer: a modal panel along the window's right edge, the
+   whole width of a phone. */
+dialog.drawer {
+  width: min(36rem, 100%);
+  max-width: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: 0 0 0 auto;
+  border-radius: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+dialog.drawer[open] {
+  animation: drawer-in var(--dur-base) var(--ease-out);
+}
+
+@keyframes drawer-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  dialog.drawer[open] {
+    animation: none;
+  }
+}
+
 /* A modal dialog stays centred in the window, whatever page holds it. */
 .page > dialog {
   margin: auto;

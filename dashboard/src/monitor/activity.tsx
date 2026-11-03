@@ -7,7 +7,6 @@ import { TableScroll, type Tone } from '../shared/ui'
 import { Time } from '../shared/time'
 import { EventRows, type RequestEvent } from './requests'
 import { type Traffic, TrafficCards } from './summary'
-import { lookupRef } from './lookup'
 import { apiName } from '../policy/catalog'
 
 // The Overview's live half: traffic, latest refusals, API figures and policy timeline.
@@ -50,7 +49,7 @@ export function OverviewLive({ admin, history }: { admin: Admin; history: boolea
                   </a>
                 </div>
                 <div className="card-body">
-                  <EventRows events={recent} open={lookupRef} label="Recent Refusals" />
+                  <EventRows events={recent} label="Recent Refusals" />
                 </div>
               </section>
             ) : null}

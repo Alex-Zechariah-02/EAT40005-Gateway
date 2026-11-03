@@ -1,6 +1,7 @@
-import { useId, useState } from 'react'
+import { useContext, useId, useState } from 'react'
 import type { Candidate, Page } from '../shared/api'
-import { usePoll, useResource } from '../shared/hooks'
+import { Can, usePoll, useResource, ViewMemory } from '../shared/hooks'
+import { searchLog } from '../shared/links'
 import { Badge, Field, TableScroll } from '../shared/ui'
 import { PageHeader } from '../app/header'
 import { ReplyView } from '../shared/replies'
@@ -219,6 +220,10 @@ export function AdviceView({ admin }: ViewProps) {
 // the security log, so it is not read every second.
 export function Alerts({ admin, open }: { admin: ViewProps['admin']; open: ViewProps['open'] }) {
   const alerts = useResource<{ alerts: Finding[] }>((signal) => admin.get('/admin/alerts', signal), [])
+  const memory = useContext(ViewMemory)
+  const can = useContext(Can)
+  // Refusals open in the Security Log for an administrator who may read it, else in Live Traffic.
+  const seeRefusals = () => (can('read_history') ? searchLog(memory, { decision: 'refused' }) : open('live-traffic'))
   usePoll(alerts.refresh, 5_000, false)
   const items = alerts.reply?.kind === 'ok' ? alerts.reply.body.alerts : []
   if (!items.length) return null
@@ -230,8 +235,8 @@ export function Alerts({ admin, open }: { admin: ViewProps['admin']; open: ViewP
           <li key={item.id}>
             <Badge tone={severityTone[item.severity]}>{severityWord[item.severity]}</Badge> {item.message}{' '}
             {item.id === 'A1' ? (
-              <button type="button" className="link-button" onClick={() => open('request-lookup')}>
-                Look Up Requests
+              <button type="button" className="link-button" onClick={seeRefusals}>
+                See Refusals
               </button>
             ) : item.id === 'A3' ? (
               <button type="button" className="link-button" onClick={() => open('limits')}>

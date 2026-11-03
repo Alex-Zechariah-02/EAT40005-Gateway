@@ -51,12 +51,15 @@ test.describe.serial('dashboard', () => {
     // The refusal's Ref finds the request and the check that decided it.
     await admin.getByRole('searchbox', { name: 'Search', exact: true }).fill(event.request_id)
     await admin.getByRole('searchbox', { name: 'Search', exact: true }).press('Enter')
-    await expect(admin.getByRole('heading', { level: 1, name: 'Request Lookup' })).toBeVisible()
-    const checks = main.getByRole('list', { name: "The gateway's checks, in order" })
+    await expect(admin.getByRole('heading', { level: 1, name: 'Accounts' })).toBeVisible()
+    expect(admin.url()).toContain(`#/accounts?ref=${event.request_id}`)
+    await expect(admin.getByRole('dialog').getByRole('heading', { name: 'PATCH /inventory/stock/ITM-501' })).toBeVisible()
+    const checks = admin.getByRole('dialog').getByRole('list', { name: "The gateway's checks, in order" })
     await expect(checks.getByRole('listitem').filter({ hasText: 'Blocked List' })).toContainText('Refused Here')
     await expect(checks.getByRole('listitem').filter({ hasText: 'Sign-In' })).toContainText('Passed')
     await expect(checks.getByRole('listitem').filter({ hasText: 'Role' })).toContainText('Not Reached')
-    await shot(admin, '21-lookup-blocked')
+    await shot(admin, '21-drawer-blocked')
+    await admin.keyboard.press('Escape')
 
     // The same header search finds an account's requests without putting the
     // account into the address, opens a draft change by its number, and says
@@ -65,7 +68,7 @@ test.describe.serial('dashboard', () => {
     await go(admin, 'Overview')
     await search.fill('ops-01')
     await search.press('Enter')
-    await expect(admin.getByRole('heading', { level: 1, name: 'Request Lookup' })).toBeVisible()
+    await expect(admin.getByRole('heading', { level: 1, name: 'Security Log' })).toBeVisible()
     await expect(main.getByLabel('Account', { exact: true })).toHaveValue('ops-01')
     expect(admin.url()).not.toContain('ops-01')
     await go(admin, 'Overview')
@@ -82,15 +85,12 @@ test.describe.serial('dashboard', () => {
       (e) => e.operation === null && e.code === 'gateway_unavailable',
     )!
     expect(early.stage).toBe('record')
-    // Request lookup has its own search form in place of the header box; the
-    // account searched above is cleared so only the Ref is asked for.
-    await go(admin, 'Request Lookup')
-    await main.getByLabel('Account', { exact: true }).fill('')
-    await main.getByLabel('Reference (Ref)').fill(early.request_id)
-    await main.getByRole('button', { name: 'Find Requests' }).click()
+    // Its address opens its drawer, as a link pasted from elsewhere would.
+    await admin.evaluate((ref) => (window.location.hash = `#/overview?ref=${ref}`), early.request_id)
     await expect(checks.getByRole('listitem').filter({ hasText: 'Route' })).toContainText('Not Checked')
     await expect(checks.getByRole('listitem').filter({ hasText: 'Record' })).toContainText('Refused Here')
-    await expect(main.getByText('Decided before endpoint matching; earlier checks did not run.')).toBeVisible()
+    await expect(admin.getByRole('dialog').getByText('Decided before endpoint matching; earlier checks did not run.')).toBeVisible()
+    await admin.keyboard.press('Escape')
 
     // A trial and its rollback leave the block in place.
     await propose(admin, { role: 'CUSTOMER', operation: 'reports.summary' })

@@ -6,7 +6,6 @@ import type { Permission } from '../shared/api'
 export type View =
   | 'overview'
   | 'live-traffic'
-  | 'request-lookup'
   | 'security-log'
   | 'access-checker'
   | 'limits'
@@ -42,6 +41,19 @@ export function to(view: View, focus?: Record<string, string | number>): string 
   for (const [name, value] of Object.entries(focus ?? {})) query.set(name, String(value))
   const text = query.toString()
   return text ? `#/${view}?${text}` : `#/${view}`
+}
+
+// refAddress is a page's address, the current one by default, with one
+// request's drawer open over it (#/live-traffic?ref=8e72...) or, for null,
+// with the drawer closed. Back closes a drawer opened from its page.
+export function refAddress(ref: string | null, hash = window.location.hash): string {
+  const [path, query = ''] = hash.split('?')
+  const params = new URLSearchParams(query)
+  if (ref) params.set('ref', ref)
+  else params.delete('ref')
+  const text = params.toString()
+  const page = path || '#/overview'
+  return text ? `${page}?${text}` : page
 }
 
 // focusParam reads one item a view was opened on from the address.

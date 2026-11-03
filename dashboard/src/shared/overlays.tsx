@@ -8,7 +8,7 @@ import { createPortal } from 'react-dom'
 // layer above the page. A tip drawn inside a scrolling list would be clipped
 // by it and would widen it, giving the list a sideways scrollbar.
 export function TooltipLayer() {
-  const [tip, setTip] = useState<{ text: string; box: DOMRect; side: 'top' | 'right' } | null>(null)
+  const [tip, setTip] = useState<{ text: string; box: DOMRect; side: 'top' | 'right'; layer: Element } | null>(null)
   const drawn = useRef<HTMLDivElement>(null)
   useEffect(() => {
     let current: HTMLElement | null = null
@@ -22,7 +22,9 @@ export function TooltipLayer() {
         setTip(null)
         return
       }
-      setTip({ text: element.dataset.tip, box: element.getBoundingClientRect(), side: element.closest('.sidebar') ? 'right' : 'top' })
+      // A tip inside an open modal dialog is drawn in it: the dialog's top layer covers the rest of the page.
+      const layer = element.closest('dialog[open]') ?? document.body
+      setTip({ text: element.dataset.tip, box: element.getBoundingClientRect(), side: element.closest('.sidebar') ? 'right' : 'top', layer })
     }
     const hide = () => {
       current = null
@@ -58,7 +60,7 @@ export function TooltipLayer() {
         <div ref={drawn} className="tooltip" aria-hidden="true">
           {tip.text}
         </div>,
-        document.body,
+        tip.layer,
       )
     : null
 }

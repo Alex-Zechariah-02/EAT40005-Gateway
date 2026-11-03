@@ -6,7 +6,6 @@ import { Problem } from '../shared/replies'
 import type { ViewProps } from '../app/views'
 import { EventRows, type RequestEvent } from './requests'
 import { type Traffic, TrafficCards } from './summary'
-import { lookupRef } from './lookup'
 
 // The Live Traffic page: the request stream and a summary of a chosen window.
 
@@ -123,7 +122,7 @@ export function LiveTraffic({ admin }: ViewProps) {
               </div>
             </div>
             {reconnected ? (
-              <p className="notice tone-pending card-notice">Stream reconnected. Events may have been missed; use Request lookup to search recent requests.</p>
+              <p className="notice tone-pending card-notice">Stream reconnected. Events may have been missed; the Security Log has every request.</p>
             ) : null}
             {dropped > 0 ? (
               <p className="notice tone-pending card-notice">This view fell behind and skipped {dropped} events. The security log has every request.</p>
@@ -131,10 +130,10 @@ export function LiveTraffic({ admin }: ViewProps) {
             <div className="card-body">
               {shown.length ? (
                 <>
-                  <EventRows events={shown} open={lookupRef} label="Request Stream" />
+                  <EventRows events={shown} label="Request Stream" />
                   {matching.length > shown.length ? (
                     <p className="hint card-empty">
-                      Showing the newest {shown.length} of {matching.length.toLocaleString()}. Request lookup finds any request by its Ref.
+                      Showing the newest {shown.length} of {matching.length.toLocaleString()}. The search box finds any request by its Ref.
                     </p>
                   ) : null}
                 </>

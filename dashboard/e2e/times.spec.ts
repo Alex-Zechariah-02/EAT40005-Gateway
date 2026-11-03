@@ -17,7 +17,6 @@ const compact = /^(\d{1,2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{
 const pages = [
   'overview',
   'live-traffic',
-  'request-lookup',
   'security-log',
   'access-checker',
   'limits',

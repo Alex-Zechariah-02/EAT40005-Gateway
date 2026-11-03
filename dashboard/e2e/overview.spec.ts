@@ -2,14 +2,14 @@ import { expect, test } from '@playwright/test'
 import { go, record, revisions, shot, versionsPart } from './pages'
 import { admin, adminCall, adminRequests, finish, open, ready, status, strip, summary } from './setup'
 
-// Overview, APIs, Versions, Accounts and Team, Request Lookup and page addresses.
+// Overview, APIs, Versions, Accounts and Team, the Security Log account search and page addresses.
 // Each file starts its own gateway; setup.ts builds the state the tests read.
 
 test.describe.serial('dashboard', () => {
   test.beforeAll(async ({ browser }) => {
     await open(browser)
     await ready()
-    // Request Lookup finds this account's requests.
+    // The Security Log finds this account's requests.
     await summary('cust-001')
   })
 
@@ -170,27 +170,33 @@ test.describe.serial('dashboard', () => {
     record('overview', { status: now, changesIdle: changesIdle.length, overviewIdle: idle.length, seconds: 6 })
   })
 
-  test('request lookup keeps its search while moving between views without putting the account in the address, and a miss says what was searched', async () => {
-    await go(admin, 'Request Lookup')
-    await admin.getByLabel('Account').fill('cust-001')
-    await admin.getByRole('button', { name: 'Find Requests' }).click()
-    await expect(admin.getByText(/^Reading/)).toHaveCount(0)
+  test('the security log keeps an account search while moving between views without putting the account in the address, and a missing Ref says what was searched', async () => {
+    const search = admin.getByRole('searchbox', { name: 'Search', exact: true })
+    const account = admin.getByRole('main').getByLabel('Account', { exact: true })
+    await go(admin, 'Overview')
+    await search.fill('cust-001')
+    await search.press('Enter')
+    await expect(admin.getByRole('heading', { level: 1, name: 'Security Log' })).toBeVisible()
+    await expect(account).toHaveValue('cust-001')
+    await expect(admin.getByRole('heading', { name: /^[1-9]\d* requests?$/ })).toBeVisible()
     await expect(admin.getByText('No request matches.')).toHaveCount(0)
     await go(admin, 'Overview')
-    await go(admin, 'Request Lookup')
-    await expect(admin.getByLabel('Account')).toHaveValue('cust-001')
+    await go(admin, 'Security Log')
+    await expect(account).toHaveValue('cust-001')
+    await expect(admin.getByRole('heading', { name: /^[1-9]\d* requests?$/ })).toBeVisible()
     await expect(admin.getByText('No request matches.')).toHaveCount(0)
     expect(admin.url()).not.toContain('cust-001')
-    await admin.getByLabel('Account').fill('')
-    await admin.getByLabel('Reference (Ref)').fill('0'.repeat(32))
-    await admin.getByRole('button', { name: 'Find Requests' }).click()
-    await expect(admin.getByText(/Only the latest 10,000 requests since the gateway started are searched/)).toBeVisible()
+    await search.fill('0'.repeat(32))
+    await search.press('Enter')
+    await expect(admin.getByRole('dialog')).toContainText(/Searched the latest 10,000 requests since the gateway started/)
+    await admin.keyboard.press('Escape')
+    await expect(admin.getByRole('dialog')).toHaveCount(0)
   })
 
   test('an address that names no view, an inherited name such as constructor included, opens the Overview', async () => {
     for (const name of ['constructor', '__proto__', 'toString', 'no-such-view']) {
-      await go(admin, 'Request Lookup')
-      await expect(admin).toHaveTitle('Request Lookup – Fetch Gateway')
+      await go(admin, 'Live Traffic')
+      await expect(admin).toHaveTitle('Live Traffic – Fetch Gateway')
       await admin.evaluate((fragment) => (window.location.hash = fragment), `#/${name}`)
       await expect(admin, name).toHaveTitle('Overview – Fetch Gateway')
       await expect(admin.locator('#page-title'), name).toBeVisible()

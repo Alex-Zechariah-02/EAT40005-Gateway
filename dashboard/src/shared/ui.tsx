@@ -44,7 +44,7 @@ export function Arrowed({ text }: { text: string }) {
 }
 
 // CopyButton copies one exact value, such as a code or an ID, and says so.
-function CopyButton(props: { value: string; label: string }) {
+export function CopyButton(props: { value: string; label: string }) {
   const [copied, setCopied] = useState(false)
   return (
     <button

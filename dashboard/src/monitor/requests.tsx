@@ -1,8 +1,9 @@
 import { AccountLink, XRef } from '../shared/links'
-import { Badge, TableScroll, type Tone } from '../shared/ui'
+import { TableScroll, type Tone } from '../shared/ui'
 import { Time, Zone } from '../shared/time'
 import { decisionWords, stages, stepWords, type Stage, type StepState } from '../shared/checks'
 import { Explain } from '../shared/explain'
+import { refAddress } from '../app/views'
 
 // Request events as the gateway records them: their rows, details and decision path.
 
@@ -45,7 +46,12 @@ export function reasonOf(code: string | null): string {
   return code ? (reasons[code] ?? code) : 'Allowed'
 }
 
-const decisionTone: Record<RequestEvent['decision'], Tone> = { allowed: 'ok', refused: 'refused', failed: 'unknown' }
+// outcomeOf is a request's short outcome with its HTTP status, such as "Refused · 401".
+export function outcomeOf(event: Pick<RequestEvent, 'decision' | 'status'>): string {
+  return `${decisionWords[event.decision]} · ${event.status}`
+}
+
+export const decisionTone: Record<RequestEvent['decision'], Tone> = { allowed: 'ok', refused: 'refused', failed: 'unknown' }
 
 // beforeRouting says the gateway decided a request before matching it to an
 // operation: it was refused on its form, or no policy could be captured (a
@@ -93,12 +99,15 @@ function DecisionPath({ event }: { event: Pick<RequestEvent, 'stage' | 'decision
   )
 }
 
-export function EventRows({ events, open, label }: { events: RequestEvent[]; open: (ref: string) => void; label: string }) {
+// EventRows lists requests, newest first; each Ref, first so it is always in
+// view, opens the request's drawer over the page.
+export function EventRows({ events, label }: { events: RequestEvent[]; label: string }) {
   return (
     <TableScroll label={label}>
       <table className="events">
         <thead>
           <tr>
+            <th scope="col">Ref</th>
             <th scope="col">
               Time (<Zone />)
             </th>
@@ -106,14 +115,17 @@ export function EventRows({ events, open, label }: { events: RequestEvent[]; ope
             <th scope="col">Account</th>
             <th scope="col">Result</th>
             <th scope="col">Checks</th>
-            <th scope="col" className="end">
-              Ref
-            </th>
           </tr>
         </thead>
         <tbody>
           {events.map((e) => (
             <tr key={e.request_id}>
+              <td className="nowrap">
+                <a className="xref" href={refAddress(e.request_id)}>
+                  <span className="visually-hidden">Open request </span>
+                  <code>{e.request_id.slice(0, 8)}</code>
+                </a>
+              </td>
               <td className="num nowrap muted">
                 <Time value={e.time} compact />
               </td>
@@ -139,24 +151,11 @@ export function EventRows({ events, open, label }: { events: RequestEvent[]; ope
                   <code className="soft">{e.client_address}</code>
                 )}
               </td>
-              <td>
-                {e.decision === 'allowed' ? (
-                  <span className="muted">
-                    Allowed in {e.duration_ms.toFixed(1)} ms
-                  </span>
-                ) : (
-                  <span title={e.code ?? undefined}>{reasonOf(e.code)}</span>
-                )}{' '}
-                <span className="status-chip">{e.status}</span>
+              <td className="result nowrap">
+                <span className={`outcome outcome-${e.decision}`}>{outcomeOf(e)}</span>
               </td>
               <td>
                 <DecisionPath event={e} />
-              </td>
-              <td className="nowrap end">
-                <button type="button" className="link-button" onClick={() => open(e.request_id)} title="Open in Request Lookup">
-                  <code>{e.request_id.slice(0, 8)}</code>
-                  <span className="visually-hidden"> (open request {e.request_id})</span>
-                </button>
               </td>
             </tr>
           ))}
@@ -166,15 +165,11 @@ export function EventRows({ events, open, label }: { events: RequestEvent[]; ope
   )
 }
 
-export function EventDetail({ event }: { event: RequestEvent }) {
+// CheckList shows each of the gateway's checks for one request, in order,
+// with what happened at it.
+export function CheckList({ event }: { event: RequestEvent }) {
   return (
-    <section className="section card card-pad event-detail" aria-labelledby="detail-title">
-      <div className="card-head">
-        <h2 id="detail-title">
-          <Badge tone={decisionTone[event.decision]}>{decisionWords[event.decision]}</Badge>{' '}
-          {event.decision === 'allowed' ? 'Forwarded to the service' : reasonOf(event.code)}
-        </h2>
-      </div>
+    <>
       <ol className="path-steps" aria-label="The gateway's checks, in order">
         {pathStates(event).map((state, n) => (
           <li key={stages[n].id} className={`path-step dp-${state === 'skipped' ? 'unreached' : state}`}>
@@ -186,73 +181,7 @@ export function EventDetail({ event }: { event: RequestEvent }) {
           </li>
         ))}
       </ol>
-      {beforeRouting(event) ? (
-        <p className="hint">Decided before endpoint matching; earlier checks did not run.</p>
-      ) : null}
-      <dl className="facts">
-        <div className="fact">
-          <dt>Reference</dt>
-          <dd>
-            <code>{event.request_id}</code>
-          </dd>
-        </div>
-        <div className="fact">
-          <dt>When</dt>
-          <dd>
-            <Time value={event.time} />
-          </dd>
-        </div>
-        <div className="fact">
-          <dt>Request</dt>
-          <dd>
-            <code>
-              {event.method} {event.path}
-            </code>
-          </dd>
-        </div>
-        <div className="fact">
-          <dt>Endpoint</dt>
-          <dd>
-            {event.operation ? (
-              <XRef view="policy" focus={{ select: `operation:${event.operation}` }}>
-                <code>{event.operation}</code>
-              </XRef>
-            ) : (
-              'none matched'
-            )}
-          </dd>
-        </div>
-        <div className="fact">
-          <dt>Account</dt>
-          <dd>
-            {event.subject ? <code>{event.subject}</code> : 'not signed in'}
-            {event.roles.length ? <> as {event.roles.join(', ')}</> : null}
-          </dd>
-        </div>
-        <div className="fact">
-          <dt>Client Address</dt>
-          <dd>
-            <code>{event.client_address}</code>
-          </dd>
-        </div>
-        <div className="fact">
-          <dt>Answer</dt>
-          <dd>
-            <code>
-              {event.status}
-              {event.code ? ` ${event.code}` : ''}
-            </code>{' '}
-            in {event.duration_ms.toFixed(1)} ms
-          </dd>
-        </div>
-        <div className="fact">
-          <dt>Active Policy (Generation)</dt>
-          <dd>
-            <code>{event.generation}</code>
-          </dd>
-        </div>
-      </dl>
-      <p className="hint">Tokens, passwords and request bodies are never logged.</p>
-    </section>
+      {beforeRouting(event) ? <p className="hint">Decided before endpoint matching; earlier checks did not run.</p> : null}
+    </>
   )
 }

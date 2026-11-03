@@ -24,7 +24,6 @@ const navigation: { label: string; items: NavItem[] }[] = [
     items: [
       { id: 'overview', label: 'Overview', icon: 'overview', needs: 'read' },
       { id: 'live-traffic', label: 'Live Traffic', icon: 'traffic', needs: 'read' },
-      { id: 'request-lookup', label: 'Request Lookup', icon: 'lookup', needs: 'read' },
       { id: 'security-log', label: 'Security Log', icon: 'log', needs: 'read_history' },
       { id: 'apis', label: 'APIs', icon: 'apis', needs: 'read' },
     ],

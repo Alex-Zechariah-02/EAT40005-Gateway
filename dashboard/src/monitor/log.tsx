@@ -1,6 +1,8 @@
-import { useId, useState, type FormEvent } from 'react'
+import { useContext, useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import type { Reply } from '../shared/api'
-import { EventDetail, EventRows, type RequestEvent } from './requests'
+import { EventRows, type RequestEvent } from './requests'
+import { useRemembered, ViewMemory } from '../shared/hooks'
+import { logSearch, useFocus, type LogFilter } from '../shared/links'
 import { Empty, Field } from '../shared/ui'
 import { instant, zoneLabel } from '../shared/time'
 import { useZone } from '../shared/zone'
@@ -34,15 +36,21 @@ function logQuery(form: typeof blankLogForm, zone: string): URLSearchParams {
   return query
 }
 
+// SecurityLogView keeps its last search in the page's memory while the
+// administrator moves between views; another page hands it a search the
+// same way, so an account never enters the address.
 export function SecurityLogView({ admin }: ViewProps) {
   const id = useId()
   const zone = useZone()
-  const [form, setForm] = useState(blankLogForm)
+  const memory = useContext(ViewMemory)
+  const [saved, remember] = useRemembered('security-log', { form: blankLogForm, query: '' })
+  const [form, setForm] = useState(saved.form)
   const [query, setQuery] = useState<URLSearchParams | null>(null)
   const [pages, setPages] = useState<LogPage[]>([])
   const [reply, setReply] = useState<Reply<LogPage> | null>(null)
   const [loading, setLoading] = useState(false)
-  const [selected, setSelected] = useState<string | null>(null)
+  const asked = useFocus('search')
+  const resumed = useRef(false)
 
   async function read(next: URLSearchParams, more: boolean) {
     setLoading(true)
@@ -51,16 +59,33 @@ export function SecurityLogView({ admin }: ViewProps) {
     setReply(answer)
     if (answer.kind === 'ok') setPages((earlier) => (more ? [...earlier, answer.body] : [answer.body]))
   }
+  function start(next: typeof blankLogForm) {
+    const params = logQuery(next, zone)
+    setForm(next)
+    setQuery(params)
+    remember({ form: next, query: params.toString() })
+    void read(params, false)
+  }
   function search(event: FormEvent) {
     event.preventDefault()
-    const next = logQuery(form, zone)
-    setQuery(next)
-    setSelected(null)
-    void read(next, false)
+    start(form)
   }
+  // A handed-over search runs at once; otherwise, on returning to the page,
+  // the last search runs again.
+  useEffect(() => {
+    const handed = memory?.get(logSearch) as LogFilter | undefined
+    if (handed) {
+      memory?.delete(logSearch)
+      start({ ...blankLogForm, ...handed })
+    } else if (!resumed.current && saved.query) {
+      const params = new URLSearchParams(saved.query)
+      setQuery(params)
+      void read(params, false)
+    }
+    resumed.current = true
+  }, [asked])
   const items = pages.flatMap((page) => page.items)
   const last = pages.at(-1)
-  const chosen = items.find((item) => item.request_id === selected)
   const exportQuery = (format: string) => `/admin/security-log?${new URLSearchParams([...(query ?? new URLSearchParams()), ['format', format]])}`
   const set = (name: keyof typeof blankLogForm) => (e: { target: { value: string } }) => setForm({ ...form, [name]: e.target.value })
 
@@ -109,7 +134,6 @@ export function SecurityLogView({ admin }: ViewProps) {
         <p className="hint log-form-hint">Exports hold up to 10,000 requests with the same filters. Searches and exports are recorded in the security log.</p>
       </form>
       {reply && reply.kind !== 'ok' ? <Problem reply={reply} /> : null}
-      {chosen ? <EventDetail event={chosen} /> : null}
       {last ? (
         <section className="section card" aria-labelledby="log-title">
           <div className="card-head card-head-pad">
@@ -117,7 +141,7 @@ export function SecurityLogView({ admin }: ViewProps) {
             <span className="muted">Newest first. Choose a Ref to see its checks.</span>
           </div>
           <div className="card-body">
-            {items.length ? <EventRows events={items} open={setSelected} label="Security Log Results" /> : <Empty title="No request matches." />}
+            {items.length ? <EventRows events={items} label="Security Log Results" /> : <Empty title="No request matches." />}
           </div>
           <div className="card-pad-x log-coverage">
             <p className="hint">

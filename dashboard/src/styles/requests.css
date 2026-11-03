@@ -1,4 +1,4 @@
-/* Requests: the decision path, Request Lookup and Live Traffic. */
+/* Requests: the decision path, request rows, the request drawer and Live Traffic. */
 
 /* The decision path: one short bar per check, in the gateway's order. */
 .decision-path {
@@ -58,24 +58,108 @@
   vertical-align: middle;
 }
 
-/* Request lookup */
-.lookup-form {
-  display: grid;
-  grid-template-columns: 2fr 1fr 1fr 9rem auto;
-  align-items: end;
-  gap: 0 14px;
+/* A request row's short outcome and status, one line. */
+.outcome {
+  font-weight: 500;
 }
 
-.lookup-form .field {
-  margin-bottom: 0;
+.outcome-refused {
+  color: var(--refused);
 }
 
-.lookup-submit .btn {
-  min-height: 36px;
+.outcome-failed {
+  color: var(--unknown);
 }
 
-.event-detail .card-head h2 {
+.outcome-allowed {
+  color: var(--ink-3);
+}
+
+/* The request drawer: its title bar stays in view while the facts scroll. */
+.drawer-panel {
+  min-height: 100%;
+}
+
+.drawer-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 24px 14px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper);
+}
+
+.drawer-head h2 {
+  min-width: 0;
+  padding: 0;
+  font-size: var(--text-lg);
+}
+
+.drawer-request code {
+  font-size: inherit;
+}
+
+.drawer-body {
+  padding: 20px 24px 24px;
+}
+
+.drawer-body code {
+  overflow-wrap: anywhere;
+}
+
+.drawer-outcome {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 20px;
   font-size: var(--text-xl);
+  font-weight: 600;
+}
+
+.drawer-facts {
+  margin-bottom: 20px;
+}
+
+.drawer-section {
+  margin: 0 0 8px;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+.drawer-block {
+  display: flex;
+  margin-top: 8px;
+}
+
+.drawer-ref {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* In the drawer the checks read top to bottom, one per line, each with the
+   same short bar as a request row. */
+.drawer .path-steps {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+.drawer .path-step {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 12px;
+  padding: 5px 0;
+}
+
+.drawer .path-bar {
+  margin: 0;
 }
 
 .path-steps {

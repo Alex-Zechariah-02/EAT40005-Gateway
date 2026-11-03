@@ -1,5 +1,5 @@
 import { useContext, useEffect, useState, type ReactNode } from 'react'
-import { ViewMemory } from './hooks'
+import { Can, ViewMemory } from './hooks'
 import { focusParam, to, type View } from '../app/views'
 
 // Cross-reference links between pages and the focus they carry.
@@ -39,21 +39,37 @@ export function useTarget(ready: boolean, key: string | null) {
   }, [ready, key])
 }
 
-// AccountLink opens Request Lookup on one account's requests. The account is
-// handed over through the page's memory, never the address, so like any
-// account searched for it stays out of the browser's history.
+// The Security Log search a page hands over through the page's memory.
+export const logSearch = 'security-log-search'
+export type LogFilter = Partial<Record<'subject' | 'operation' | 'decision', string>>
+
+// Each handed-over search gets a new address, so a repeated search runs
+// again; the counter carries no search term.
+let searches = 0
+
+// searchLog opens the Security Log searching for an account, endpoint or
+// decision. The filter goes through the page's memory, never the address, so
+// an account searched for stays out of the browser's history.
+export function searchLog(memory: Map<string, unknown> | null, filter: LogFilter) {
+  memory?.set(logSearch, filter)
+  searches += 1
+  window.location.hash = `#/security-log?search=${searches}`
+}
+
+// AccountLink opens the Security Log on one account's requests, for an
+// administrator who may read it; for anyone else the account is plain text.
 export function AccountLink({ account, children }: { account: string; children: ReactNode }) {
   const memory = useContext(ViewMemory)
+  const can = useContext(Can)
+  if (!can('read_history')) return <>{children}</>
   return (
     <a
       className="xref"
-      href="#/request-lookup"
-      onClick={() =>
-        memory?.set('lookup', {
-          form: { ref: '', subject: account, operation: '', decision: '' },
-          query: `subject=${encodeURIComponent(account)}`,
-        })
-      }
+      href="#/security-log"
+      onClick={(event) => {
+        event.preventDefault()
+        searchLog(memory, { subject: account })
+      }}
     >
       {children}
     </a>

@@ -1,7 +1,7 @@
-import { useId, useState } from 'react'
+import { useContext, useEffect, useId, useState } from 'react'
 import { newKey } from '../shared/http'
 import type { Page } from '../shared/api'
-import { useMutation, useResource } from '../shared/hooks'
+import { useMutation, useResource, ViewMemory } from '../shared/hooks'
 import { AccountLink, XRef } from '../shared/links'
 import { Badge, Field, ListToolbar, matches, TableScroll } from '../shared/ui'
 import { Confirm } from '../shared/dialogs'
@@ -12,6 +12,10 @@ import type { ViewProps } from '../app/views'
 import { reasonOf, type RequestEvent } from '../monitor/requests'
 
 // The Accounts page: blocked accounts and accounts seen in traffic.
+
+// blockHandoff is the page memory's key for an account another page asks to
+// block; this page then opens its usual block confirmation for it.
+export const blockHandoff = 'block-account'
 
 interface BlockedAccount {
   subject: string
@@ -47,6 +51,12 @@ export function AccountsView({ admin, can }: ViewProps) {
     setReason('')
     setBlocking(true)
   }
+  const memory = useContext(ViewMemory)
+  useEffect(() => {
+    const handed = memory?.get(blockHandoff)
+    memory?.delete(blockHandoff)
+    if (manage && typeof handed === 'string') openBlock(handed)
+  }, [])
   const submit = () => {
     if (!subject.trim() || !reason.trim()) return
     setBlocking(false)

@@ -2,6 +2,7 @@ import { lazy, Suspense, useContext, useEffect, useRef, useState } from 'react'
 import { type Admin } from '../shared/http'
 import type { Permission, SessionInfo, Status } from '../shared/api'
 import {
+  Can,
   GatewayState,
   inactive,
   Navigate,
@@ -28,7 +29,7 @@ import { Account } from '../admin/account'
 import { AccountsView } from '../access/blocking'
 import { ApisView } from '../policy/catalog'
 import { LiveTraffic } from '../monitor/traffic'
-import { RequestLookup } from '../monitor/lookup'
+import { RequestDrawer } from '../monitor/drawer'
 import { TeamView } from '../admin/team'
 import { AccessCheckView } from '../access/checker'
 import { AdviceView, LimitsView } from '../policy/tools'
@@ -44,7 +45,6 @@ const Designer = lazy(() => import('../policy/designer/designer').then((module) 
 const titles: Record<View, string> = {
   overview: 'Overview',
   'live-traffic': 'Live Traffic',
-  'request-lookup': 'Request Lookup',
   'security-log': 'Security Log',
   'access-checker': 'Access Checker',
   limits: 'Limits',
@@ -65,7 +65,8 @@ const moved: Record<string, View> = { provisional: 'changes', roles: 'versions',
 
 // The open view is kept in the address fragment, so a reload or the
 // browser's back button returns to it. The fragment is never sent to the
-// server; a view may keep its search there (#/request-lookup?ref=...).
+// server; a view may keep its search there, and ?ref= opens a request's
+// drawer over it (#/live-traffic?ref=...).
 function viewFromHash(): View {
   const id = window.location.hash.replace(/^#\/?/, '').split('?')[0]
   if (Object.hasOwn(moved, id)) return moved[id]
@@ -174,6 +175,7 @@ export function Shell(props: {
     <GatewayState.Provider value={gateway}>
     <ViewMemory.Provider value={memory}>
     <Navigate.Provider value={open}>
+    <Can.Provider value={can}>
       <a className="visually-hidden" href="#content">
         Skip to Content
       </a>
@@ -223,7 +225,6 @@ export function Shell(props: {
           {outcomes ? <UnresolvedChanges admin={admin} name={session.name} register={outcomes} canReadHistory={can('read_history')} /> : null}
           {view === 'overview' ? <Overview {...viewProps} /> : null}
           {view === 'live-traffic' ? <LiveTraffic {...viewProps} /> : null}
-          {view === 'request-lookup' ? <RequestLookup key={window.location.hash} {...viewProps} /> : null}
           {view === 'apis' ? <ApisView {...viewProps} /> : null}
           {view === 'policy' ? (
             <Suspense fallback={<p role="status" className="hint">Loading the Policy Page…</p>}>
@@ -250,7 +251,9 @@ export function Shell(props: {
               }}
             /> : null}
         </main>
+        <RequestDrawer admin={admin} />
       </div>
+    </Can.Provider>
     </Navigate.Provider>
     </ViewMemory.Provider>
     </GatewayState.Provider>

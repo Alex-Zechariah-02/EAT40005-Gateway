@@ -4,7 +4,6 @@ import {
   ShieldCheck,
   SquaresFour,
   Pulse,
-  MagnifyingGlass,
   Plugs,
   GitDiff,
   UserMinus,
@@ -21,7 +20,6 @@ import {
 const icons = {
   overview: SquaresFour,
   traffic: Pulse,
-  lookup: MagnifyingGlass,
   apis: Plugs,
   accounts: UserMinus,
   candidates: GitDiff,

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Admin } from './http'
-import type { MutationRequest, Outcome, Reply, Status } from './api'
+import type { MutationRequest, Outcome, Permission, Reply, Status } from './api'
 import type { Handoff, View } from '../app/views'
 
 // useResource loads one server read when the view opens and on refresh. A
@@ -242,6 +242,11 @@ export const ViewMemory = createContext<Map<string, unknown> | null>(null)
 // Navigate opens a view from a part of the page that is not a view itself,
 // such as the header's search.
 export const Navigate = createContext<((view: View, handoff?: Handoff) => void) | null>(null)
+
+// Can gives parts of the page that are not views, such as the header's search
+// and account links, the signed-in administrator's permissions. Like a view's
+// can(), it only decides what to offer; the server decides what is allowed.
+export const Can = createContext<(permission: Permission) => boolean>(() => false)
 
 export function useRemembered<T>(key: string, initial: T): [T, (value: T) => void] {
   const memory = useContext(ViewMemory)
