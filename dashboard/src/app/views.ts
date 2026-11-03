@@ -60,3 +60,7 @@ export function refAddress(ref: string | null, hash = window.location.hash): str
 export function focusParam(name: string): string | null {
   return new URLSearchParams(window.location.hash.split('?')[1] ?? '').get(name)
 }
+
+// connectHandoff is the page memory's key another page sets to open the
+// Policy page with Connect an API open; the Policy page clears it on use.
+export const connectHandoff = 'policy.connect'

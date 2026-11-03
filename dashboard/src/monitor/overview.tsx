@@ -1,5 +1,6 @@
 import type { Activation, OverridesView, Page, Revision, Status } from '../shared/api'
-import { useGatewayState, useRemembered, useResource } from '../shared/hooks'
+import { useContext } from 'react'
+import { useGatewayState, useRemembered, useResource, ViewMemory } from '../shared/hooks'
 import { Alerts } from '../policy/tools'
 import { overrideChange } from '../deploy/rule'
 import { OverviewLive } from './activity'
@@ -9,7 +10,7 @@ import { Badge, MoreDetails } from '../shared/ui'
 import { PageHeader } from '../app/header'
 import { Problem } from '../shared/replies'
 import { ReadStamp, Time } from '../shared/time'
-import type { ViewProps } from '../app/views'
+import { connectHandoff, type ViewProps } from '../app/views'
 
 // Overview answers "is the gateway healthy and what is it enforcing?" at a
 // glance: the active policy, any change on trial, temporary rules, then
@@ -31,7 +32,7 @@ export function Overview({ admin, can, open }: ViewProps) {
       {status && (status.admission === 'bootstrap_locked' || status.admission === 'recovery_required') ? (
         <FirstBase recovery={status.admission === 'recovery_required'} manage={can('manage_policy')} goChanges={() => open('changes')} />
       ) : status ? (
-        <GettingStarted admin={admin} status={status} open={open} />
+        <GettingStarted admin={admin} can={can} status={status} open={open} />
       ) : null}
       {status ? <StatusStrip {...{ admin, can, status }} /> : null}
       <OverviewLive admin={admin} history={can('read_history')} />
@@ -129,9 +130,11 @@ export const guideHidden = 'overview.guide.hidden'
 
 // GettingStarted is the first-time guide once a policy is active: three
 // steps to a first kept or undone change, each ticked from what the gateway
-// reports. It links to the pages that do each step and changes nothing itself.
-function GettingStarted({ admin, status, open }: Pick<ViewProps, 'admin' | 'open'> & { status: Status }) {
+// reports. It links to the pages that do each step and changes nothing itself,
+// and to Connect an API for putting another service behind the gateway.
+function GettingStarted({ admin, can, status, open }: ViewProps & { status: Status }) {
   const [hidden, setHidden] = useRemembered(guideHidden, false)
+  const memory = useContext(ViewMemory)
   const trials = useResource<Page<Activation>>((signal) => admin.get('/admin/activations?limit=1', signal), [status.revision])
   if (hidden) return null
   // The first trial ever is listed first; only one runs at a time, so once it
@@ -159,6 +162,22 @@ function GettingStarted({ admin, status, open }: Pick<ViewProps, 'admin' | 'open
         ))}
       </ol>
       <p className="hint">Changes go live on trial and are undone at the deadline unless kept. Temporary rules end automatically.</p>
+      {can('manage_policy') ? (
+        <p>
+          To put another service behind the gateway,{' '}
+          <button
+            type="button"
+            className="btn-link"
+            onClick={() => {
+              memory?.set(connectHandoff, true)
+              open('policy')
+            }}
+          >
+            Connect an API
+          </button>
+          . It edits the Policy page's draft, which you then save and try as any change.
+        </p>
+      ) : null}
       <button type="button" className="btn btn-small" onClick={() => setHidden(true)}>
         Hide This Guide
       </button>

@@ -1,13 +1,13 @@
-import { useState } from 'react'
+import { useContext, useState } from 'react'
 import type { Policy, Revision } from '../shared/api'
-import { useGatewayState, liveMs, usePoll, useResource } from '../shared/hooks'
+import { useGatewayState, liveMs, usePoll, useResource, ViewMemory } from '../shared/hooks'
 import { RequestRules } from './request-rules'
 import { Badge, Empty, ListToolbar, matches, MoreDetails, TableScroll } from '../shared/ui'
 import { PageHeader } from '../app/header'
 import { Problem, ReplyView } from '../shared/replies'
 import { ReadStamp } from '../shared/time'
 import { useFocus, useTarget, XRef } from '../shared/links'
-import type { ViewProps } from '../app/views'
+import { connectHandoff, type ViewProps } from '../app/views'
 import type { Traffic } from '../monitor/summary'
 
 // The APIs page: each API's endpoints, who may call them, limits and health.
@@ -36,8 +36,9 @@ function bytesShort(bytes: number): string {
 
 // ApisView shows one block per API: its operations, who may call them, their
 // limits and how the API is answering now.
-export function ApisView({ admin, can }: ViewProps) {
+export function ApisView({ admin, can, open }: ViewProps) {
   const state = useGatewayState()
+  const memory = useContext(ViewMemory)
   const [query, setQuery] = useState('')
   const policy = useResource<Revision>((signal) => admin.get('/admin/policy', signal), [])
   const traffic = useResource<Traffic>((signal) => admin.get('/admin/traffic?window=300', signal), [])
@@ -91,9 +92,21 @@ export function ApisView({ admin, can }: ViewProps) {
                 noun={['endpoint', 'endpoints']}
               >
                 {can('manage_policy') ? (
-                  <a className="btn btn-primary" href="#/policy">
-                    Edit Endpoints in Policy
-                  </a>
+                  <>
+                    <a className="btn" href="#/policy">
+                      Edit Endpoints in Policy
+                    </a>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => {
+                        memory?.set(connectHandoff, true)
+                        open('policy')
+                      }}
+                    >
+                      Connect an API
+                    </button>
+                  </>
                 ) : null}
               </ListToolbar>
               {shown === 0 ? <p className="hint">No API or endpoint matches the filter.</p> : null}

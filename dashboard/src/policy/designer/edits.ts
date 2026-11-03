@@ -67,7 +67,7 @@ export function setRate(policy: Policy, endpoint: string, count: number, windowS
   return next
 }
 
-interface NewEndpoint {
+export interface NewEndpoint {
   id: string
   api: string
   method: string
@@ -76,6 +76,7 @@ interface NewEndpoint {
   roles: string[]
   count: number
   windowSeconds: number
+  body?: { max_bytes: number; schema: unknown }
 }
 
 export function addEndpoint(policy: Policy, endpoint: NewEndpoint): Policy {
@@ -93,7 +94,18 @@ export function addEndpoint(policy: Policy, endpoint: NewEndpoint): Policy {
       window_seconds: endpoint.windowSeconds,
       key: endpoint.open ? 'client_address' : 'subject',
     },
+    ...(endpoint.body ? { body: endpoint.body } : {}),
   })
   if (!endpoint.open) for (const role of endpoint.roles) next.permits.push({ role, operation: endpoint.id })
+  return next
+}
+
+// connectApi adds an API with its endpoints, forwarding to an existing service
+// address or, when dial is given, to a new one.
+export function connectApi(policy: Policy, upstream: { id: string; dial?: string }, api: string, endpoints: NewEndpoint[]): Policy {
+  let next = copy(policy)
+  if (upstream.dial !== undefined) next.upstreams.push({ id: upstream.id, dial: upstream.dial })
+  next.apis.push({ id: api, upstream: upstream.id })
+  for (const endpoint of endpoints) next = addEndpoint(next, endpoint)
   return next
 }

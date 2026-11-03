@@ -1,6 +1,7 @@
 import { useId, useState } from 'react'
 import { addEndpoint } from './edits'
 import { Wizard } from '../../shared/dialogs'
+import { suggestedId } from './inputs'
 import { Choice, methods, Review, Whole, wholeNumber, withBody, type WizardProps } from './wizards'
 
 // The new-endpoint wizard: where it is, who may call it, its rate limit, then a review.
@@ -16,12 +17,7 @@ export function EndpointWizard({ policy, api: start, apply, close }: WizardProps
   const [count, setCount] = useState('100')
   const [seconds, setSeconds] = useState('60')
   // Until an ID is typed, it follows the API and the path's last fixed part.
-  const segment =
-    target
-      .split('/')
-      .filter((part) => part && !part.startsWith('{'))
-      .pop() ?? ''
-  const endpointId = name ?? (segment ? `${api}.${segment}` : '')
+  const endpointId = name ?? suggestedId(api, target)
   const requests = wholeNumber(count)
   const span = wholeNumber(seconds)
   const where = !policy.apis.length

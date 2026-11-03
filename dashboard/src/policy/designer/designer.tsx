@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import type { Candidate, OverridesView, Page, Policy, ProvisionalView, Revision } from '../../shared/api'
-import { useGatewayState, useMutation, useResource } from '../../shared/hooks'
+import { useGatewayState, useMutation, useResource, ViewMemory } from '../../shared/hooks'
 import { DesignerCanvas } from './canvas'
 import type { TracePath } from './graph'
 import { FormView, Issues } from './form'
@@ -27,7 +27,7 @@ import { PageHeader } from '../../app/header'
 import { ReadStamp, Remaining, Time } from '../../shared/time'
 import { permissionWords } from '../../shared/checks'
 import { useFocus } from '../../shared/links'
-import type { ViewProps } from '../../app/views'
+import { connectHandoff, type ViewProps } from '../../app/views'
 import { DesignerBar, type Mode, SidePanel, type Staged, StaleNotice, type Tab } from './panels'
 import { JsonView } from './json'
 import { DeleteDialog, DiscardDialog, SaveDialog } from './prompts'
@@ -187,6 +187,13 @@ export function Designer({
     setShowTrace(false)
     select(linked as BoxKey)
   }, [linked, linkedReady])
+  // Another page asks for Connect an API once the draft can be edited.
+  const memory = useContext(ViewMemory)
+  useEffect(() => {
+    if (!draft || !editable || !memory?.get(connectHandoff)) return
+    memory.delete(connectHandoff)
+    setWizard({ task: 'connect' })
+  }, [draft, editable, memory])
   function update(next: Policy) {
     if (editable) {
       setDraft((previous) => (previous ? { ...previous, document: next } : previous))
@@ -376,6 +383,7 @@ export function Designer({
             changeMode={changeMode}
             canStage={canStage}
             canDiscard={canDiscard}
+            onConnect={editable ? () => setWizard({ task: 'connect' }) : undefined}
           />
           {wizard && editable && document ? (
             <GuidedChange
@@ -464,6 +472,14 @@ export function Designer({
             {tab === 'canvas' ? (
               <div className={`designer-workspace${expanded ? ' is-expanded' : ''}`}>
                 <div className="designer-canvas-area">
+                  {editable && !document.apis.length ? (
+                    <Empty title="This draft has no APIs yet.">
+                      <p>Connect one to choose where its requests go, who may call each endpoint and how often.</p>
+                      <button className="btn btn-primary" type="button" onClick={() => setWizard({ task: 'connect' })}>
+                        Connect an API
+                      </button>
+                    </Empty>
+                  ) : null}
                   <DesignerCanvas
                     policy={document}
                     editable={editable}

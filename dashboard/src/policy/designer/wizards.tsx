@@ -5,10 +5,12 @@ import { differences } from '../../shared/diff'
 import { ChangeSet } from '../../shared/review'
 import { Wizard } from '../../shared/dialogs'
 import { EndpointWizard } from './endpoint'
+import { ConnectWizard } from './connect'
+import { describedBy, Field } from '../../shared/ui'
 
-// The Designer's guided tasks: give access and set a rate limit, step by step.
+// The Designer's guided tasks: give access, set a rate limit, add an endpoint or connect an API, step by step.
 
-export type GuidedTask = 'access' | 'rate' | 'endpoint'
+export type GuidedTask = 'access' | 'rate' | 'endpoint' | 'connect'
 // api, when given, is the API whose group the wizard was opened from: a new
 // endpoint starts there, and a rate limit is chosen among its endpoints.
 export type WizardProps = { policy: Policy; api?: string; apply: (document: Policy, summary: string) => void; close: () => void }
@@ -23,6 +25,7 @@ export const withBody = new Set(['POST', 'PUT', 'PATCH'])
 export function GuidedChange(props: WizardProps & { task: GuidedTask }) {
   if (props.task === 'access') return <AccessWizard {...props} />
   if (props.task === 'rate') return <RateWizard {...props} />
+  if (props.task === 'connect') return <ConnectWizard {...props} />
   return <EndpointWizard {...props} />
 }
 
@@ -33,8 +36,8 @@ export function Review(props: { before: Policy; after: Policy; children?: ReactN
       {changes.length > 0 ? <ChangeSet changes={changes} /> : <p>This makes no difference to the draft.</p>}
       {props.children}
       <p className="hint">
-        Applying changes only this draft. Nothing is saved until you choose Save draft change; the gateway then checks it, and it goes live only
-        through a trial you keep.
+        Applying changes only this draft. Nothing is saved until you choose Save Changes; the gateway then checks it, and it goes live only through
+        a trial you keep.
       </p>
     </>
   )
@@ -55,10 +58,9 @@ export function Choice(props: { id: string; label: string; value: string; option
   )
 }
 
-export function Whole(props: { id: string; label: string; value: string; onChange: (value: string) => void; hint?: string }) {
+export function Whole(props: { id: string; label: string; value: string; onChange: (value: string) => void; hint?: string; error?: string }) {
   return (
-    <div className="field">
-      <label htmlFor={props.id}>{props.label}</label>
+    <Field id={props.id} label={props.label} hint={props.hint} error={props.error}>
       <input
         id={props.id}
         className="input input-number"
@@ -67,15 +69,11 @@ export function Whole(props: { id: string; label: string; value: string; onChang
         min={1}
         step={1}
         value={props.value}
-        aria-describedby={props.hint ? `${props.id}-hint` : undefined}
+        aria-invalid={props.error ? true : undefined}
+        aria-describedby={describedBy(props.id, props.hint, props.error)}
         onChange={(event) => props.onChange(event.target.value)}
       />
-      {props.hint ? (
-        <p id={`${props.id}-hint`} className="hint">
-          {props.hint}
-        </p>
-      ) : null}
-    </div>
+    </Field>
   )
 }
 

@@ -48,6 +48,8 @@ Edit one draft in Canvas, Form or JSON. Boxes show roles, endpoints, APIs and se
 
 **Step by step** walks through three common edits in a short dialog: give a role access, change a rate limit, or add an endpoint. Each ends on a review listing what the draft gains, changes and loses, and **Apply to the draft** only edits the unsaved draft.
 
+**Connect an API** opens in a side drawer from the Policy page, its empty canvas, the APIs page or the Getting Started guide on the Overview. Its steps set the service address, the API, its endpoints, which roles may call them, their rate limits and, optionally, a JSON Schema for each write endpoint's request body; the review lists what the draft gains, and **Add to the Draft** only edits the unsaved draft. The gateway's compiler checks the result, schemas included, when the draft is saved.
+
 The draft stays in the signed-in page's memory while you change pages and ends with the session. **Save draft change** asks the gateway to check and store the whole document; the change then continues on the Changes page. A save with no answer remains an unknown outcome; only an explicit identical resend reuses its request key.
 
 The in-force and on-trial modes are read-only. Live markers show temporary permissions, removals, rates, endpoint denial and changes on trial without rewriting the draft. Trace explains the selected document and sends no request; it does not apply temporary rules or decide actual access. **Reset layout** removes the stored box positions.

@@ -93,3 +93,62 @@ dialog.wizard {
 .wizard-choices .check {
   margin-right: 0;
 }
+
+/* What a step decides, in plain words, then the policy field it writes. */
+.wizard-plain {
+  margin: 0 0 4px;
+  color: var(--ink);
+}
+
+.wizard-technical {
+  margin: 0 0 14px;
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}
+
+.wizard-technical code {
+  overflow-wrap: anywhere;
+}
+
+/* A wizard as a drawer: title bar and actions stay put while the step scrolls. */
+dialog.wizard.drawer {
+  width: min(40rem, 100%);
+  margin: 0 0 0 auto;
+  overflow: hidden;
+}
+
+dialog.wizard.drawer[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.wizard.drawer .wizard-steps {
+  flex: none;
+}
+
+.wizard.drawer .dialog-body {
+  flex: 1 1 auto;
+  max-height: none;
+  padding-bottom: 20px;
+}
+
+.wizard.drawer .dialog-actions {
+  flex: none;
+  margin: 0;
+  border-radius: 0;
+}
+
+/* One endpoint of a flow: its fields grouped under its name. */
+.wizard-group {
+  margin: 0 0 12px;
+  padding: 12px 14px 4px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-md);
+}
+
+.wizard-group legend {
+  padding: 0 4px;
+  color: var(--ink);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}

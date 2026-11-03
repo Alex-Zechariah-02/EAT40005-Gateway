@@ -1,3 +1,4 @@
+import { Plus } from '@phosphor-icons/react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { Candidate, Operation, Outcome, Policy, Revision } from '../../shared/api'
 import { differences } from '../../shared/diff'
@@ -111,8 +112,10 @@ export function DesignerBar(props: {
   changeMode: (next: Mode) => void
   canStage: boolean
   canDiscard: boolean
+  // onConnect, given while the draft can be edited, opens Connect an API.
+  onConnect?: () => void
 }) {
-  const { can, draft, pendingId, mode, tab, setStageConfirm, setDiscardConfirm, current, dirty, changed, issues, mutation, changeTab, changeMode, canStage, canDiscard } = props
+  const { can, draft, pendingId, mode, tab, setStageConfirm, setDiscardConfirm, current, dirty, changed, issues, mutation, changeTab, changeMode, canStage, canDiscard, onConnect } = props
   return (
     <div className="designer-bar">
       <div className="designer-views">
@@ -155,6 +158,11 @@ export function DesignerBar(props: {
           </select>
         </label>
         <Badge tone={issues.length ? 'pending' : 'ok'}>{issues.length ? `${issues.length} ${issues.length === 1 ? 'Issue' : 'Issues'}` : 'No Issues'}</Badge>
+        {onConnect ? (
+          <button className="btn" type="button" onClick={onConnect}>
+            <Plus size={14} aria-hidden="true" /> Connect an API
+          </button>
+        ) : null}
         {can('manage_policy') ? (
           <>
             <p className={`designer-draft-state${dirty ? ' is-dirty' : ''}`} role="status">
