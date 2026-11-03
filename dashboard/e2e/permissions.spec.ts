@@ -1,33 +1,22 @@
-import { expect, test, type BrowserContext, type Page } from '@playwright/test'
-import { adminURL, build, Demo, webRoot } from './env'
-import { enrol, go, signIn } from './pages'
+import { expect, test, type Page } from '@playwright/test'
+import { go } from './pages'
+import { admin, enrolled, finish, open } from './setup'
 
 // Administrator permissions read the same on every page: one set of words,
 // with the exact permission name beside or behind it.
 
-const password = 'correct horse battery staple 42'
 const words = ['View Status', 'View History', 'Block Accounts', 'Change Policy']
 
-let demo: Demo
-let context: BrowserContext
 let page: Page
 
 test.describe.serial('Permission words', () => {
   test.beforeAll(async ({ browser }) => {
-    demo = new Demo(build(), webRoot())
-    const enrolment = demo.setup()
-    await demo.start()
-    context = await browser.newContext({ viewport: { width: 1280, height: 860 } })
-    page = await context.newPage()
-    await page.goto(adminURL + '/')
-    await enrol(page, 'admin', enrolment, password)
-    await signIn(page, 'admin', password)
+    await open(browser)
+    await enrolled()
+    page = admin
   })
 
-  test.afterAll(async () => {
-    await context?.close()
-    await demo?.stop()
-  })
+  test.afterAll(finish)
 
   test('My Account and Team name each permission with the same words', async () => {
     await go(page, 'My Account')

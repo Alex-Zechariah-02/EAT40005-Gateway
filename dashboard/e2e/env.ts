@@ -2,7 +2,7 @@ import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { request as httpRequest } from 'node:http'
 import { join, resolve } from 'node:path'
-import { buildApplication, temporaryDir, httpOrigin, offsetPort } from '../../e2e/backend'
+import { build, buildApplication, temporaryDir, httpOrigin, offsetPort } from '../../e2e/backend'
 import { Demo as SharedDemo, enrolmentSecret } from '../../e2e/demo'
 export type { Receipt } from '../../e2e/demo'
 export { adminURL, build, controls, gatewayIdentity, siteURL } from '../../e2e/backend'
@@ -28,6 +28,15 @@ export function webRoot(): string {
   cpSync(dashboard, join(root, 'admin'), { recursive: true })
   cpSync(process.env.WEBSITE_DIST ?? buildApplication('client'), join(root, 'demo'), { recursive: true })
   return root
+}
+
+// deployment returns a new, not yet set up demonstration. The backend
+// snapshot and the web root are built once per test run and shared by every
+// suite file; each file still gets its own directory, database and processes.
+let built: { bin: string; web: string } | undefined
+export function deployment(): Demo {
+  built ??= { bin: build(), web: webRoot() }
+  return new Demo(built.bin, built.web)
 }
 
 export class Demo extends SharedDemo {
