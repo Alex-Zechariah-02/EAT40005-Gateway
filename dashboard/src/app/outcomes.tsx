@@ -3,7 +3,7 @@ import { committedAnyway, committedMessage, describe, explain, type HistoryEntry
 import type { Admin } from '../shared/http'
 import { useGatewayState, type OutcomeRegister, type Unresolved } from '../shared/hooks'
 import { Glyph } from '../shared/ui'
-import { clock } from '../shared/time'
+import { Time } from '../shared/time'
 
 // transitionOf names the transition the gateway records a keyed request
 // under: the administrator's name and the request key.
@@ -87,15 +87,24 @@ export function UnresolvedChanges(props: { admin: Admin; name: string; register:
       setBusy(null)
       if (reply.kind === 'ok') {
         const entry = reply.body
-        const at = clock(entry.recorded_at, true)
+        const at = <Time value={entry.recorded_at} />
         if (entry.outcome === 'committed') {
           register.update(item.id, {
             settled: entry.audited_at
-              ? { tone: 'ok', text: `Applied: the gateway recorded it at ${at}.` }
-              : { tone: 'pending', text: `Applied at ${at}, but the security log has not recorded it yet, so the gateway refuses every request until it restarts.` },
+              ? { tone: 'ok', text: <>Applied: the gateway recorded it at {at}.</> }
+              : { tone: 'pending', text: <>Applied at {at}, but the security log has not recorded it yet, so the gateway refuses every request until it restarts.</> },
           })
         } else {
-          register.update(item.id, { settled: { tone: 'refused', text: `Not applied: the gateway refused it at ${at} (${entry.reason}). ${explain(entry.reason ?? '')}` } })
+          register.update(item.id, {
+            settled: {
+              tone: 'refused',
+              text: (
+                <>
+                  Not applied: the gateway refused it at {at} ({entry.reason}). {explain(entry.reason ?? '')}
+                </>
+              ),
+            },
+          })
         }
         state.refresh()
       } else if (reply.kind === 'refused' && reply.status === 404) {
@@ -148,7 +157,9 @@ export function UnresolvedChanges(props: { admin: Admin; name: string; register:
         {items.map((item) => (
           <li key={item.id} className="unresolved-item">
             <p>
-              <strong>{item.label}</strong> <span className="muted">sent {clock(item.sentAt.toISOString(), true)}, no answer arrived</span>
+              <strong>{item.label}</strong> <span className="muted">
+                sent <Time value={item.sentAt.toISOString()} />, no answer arrived
+              </span>
             </p>
             {item.settled ? (
               <p className={`unresolved-result tone-${item.settled.tone}`} role="status">
@@ -156,7 +167,15 @@ export function UnresolvedChanges(props: { admin: Admin; name: string; register:
               </p>
             ) : (
               <p className="hint" role="status">
-                {busy === item.id ? 'Asking the gateway…' : item.checked ? `${item.checked.text} Checked ${clock(item.checked.at.toISOString(), true)}.` : ''}
+                {busy === item.id ? (
+                  'Asking the gateway…'
+                ) : item.checked ? (
+                  <>
+                    {item.checked.text} Checked <Time value={item.checked.at.toISOString()} />.
+                  </>
+                ) : (
+                  ''
+                )}
               </p>
             )}
             <div className="actions">

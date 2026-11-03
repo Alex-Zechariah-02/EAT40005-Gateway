@@ -5,7 +5,7 @@ import { useMutation } from '../shared/hooks'
 import { MutationResult, Problem, Receipt } from '../shared/replies'
 import { Badge, fieldError, MoreDetails } from '../shared/ui'
 import { Wizard } from '../shared/dialogs'
-import { duration, time } from '../shared/time'
+import { duration, Time } from '../shared/time'
 import type { ViewProps } from '../app/views'
 import { kinds, type Kind, type Preset, RuleAction, RuleLifetime, RuleTarget } from './rule-steps'
 
@@ -121,7 +121,9 @@ export function AddRule(props: {
     check?.kind === 'ok' ? (
       <div className="notice tone-ok">
         <p className="notice-title">The gateway would accept it now. Nothing has been created.</p>
-        <p>If added now, it ends at {time(check.body.expires_at)}.</p>
+        <p>
+          If added now, it ends at <Time value={check.body.expires_at} />.
+        </p>
         <MoreDetails
           facts={[
             ['Target', check.body.target],
@@ -164,7 +166,7 @@ export function AddRule(props: {
         success={(o) => (
           <>
             <p className="notice-title">
-              Rule {o.override} added. It ends at {time(o.expires_at)} unless revoked earlier.
+              Rule {o.override} added. It ends at <Time value={o.expires_at} /> unless revoked earlier.
             </p>
             <p>The policy is unchanged. Active Rules shows whether the rule still applies.</p>
             <Receipt outcome={o} />

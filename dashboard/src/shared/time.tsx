@@ -1,7 +1,9 @@
 import { ArrowsClockwise } from '@phosphor-icons/react'
 import { useEffect, useRef, useState } from 'react'
+import { activeZone, useZone } from './zone'
 
-// Times on screen: read stamps, dates, times of day, durations and countdowns.
+// Times on screen: one format for instants, read stamps, ages, durations
+// and countdowns.
 
 // staleAfterMs is when a reading counts as out of date on screen and before
 // a trial is confirmed.
@@ -33,13 +35,21 @@ export function ReadStamp(props: { okAt: Date | null; loading: boolean; failed?:
   const now = useNow()
   const old = props.okAt !== null && now - props.okAt.getTime() > staleAfterMs
   const text =
-    props.okAt === null
-      ? props.loading
-        ? 'Reading…'
-        : props.failed
-          ? 'Not read'
-          : ''
-      : `Updated ${clock(props.okAt.toISOString(), true)}${old ? ` · ${age(props.okAt, now)}` : ''}${props.failed ? ' · latest read failed' : ''}`
+    props.okAt === null ? (
+      props.loading ? (
+        'Reading…'
+      ) : props.failed ? (
+        'Not read'
+      ) : (
+        ''
+      )
+    ) : (
+      <>
+        Updated <Time value={props.okAt.toISOString()} />
+        {old ? ` · ${age(props.okAt, now)}` : ''}
+        {props.failed ? ' · latest read failed' : ''}
+      </>
+    )
   return (
     <p className={props.failed ? 'read-stamp read-stamp-failed' : 'read-stamp'}>
       <span>{text}</span>
@@ -51,38 +61,115 @@ export function ReadStamp(props: { okAt: Date | null; loading: boolean; failed?:
   )
 }
 
-const timeFormat: Intl.DateTimeFormatOptions = {
-  year: 'numeric',
-  month: 'short',
-  day: 'numeric',
-  hour: '2-digit',
-  minute: '2-digit',
-  second: '2-digit',
+const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const formats = new Map<string, Intl.DateTimeFormat>()
+
+interface Parts {
+  year: number
+  month: number
+  day: number
+  hour: number
+  minute: number
+  second: number
+  // offset is the zone's distance from UTC at that instant, in minutes.
+  offset: number
 }
 
-// time formats a server instant in the browser's locale and time zone.
-export function time(iso: string | undefined): string {
-  if (!iso) return ''
+// parts reads an instant's calendar and clock fields in one zone. Formats
+// are cached per zone, as every table row asks on each refresh; a list of
+// every zone passes keep = false so the cache holds only zones in use.
+function parts(date: Date, zone: string, keep = true): Parts {
+  let format = formats.get(zone)
+  if (!format) {
+    format = new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' })
+    if (keep) formats.set(zone, format)
+  }
+  const field: Record<string, number> = {}
+  for (const part of format.formatToParts(date)) field[part.type] = Number(part.value)
+  const wall = Date.UTC(field.year, field.month - 1, field.day, field.hour, field.minute, field.second)
+  const offset = Math.round((wall - Math.floor(date.getTime() / 1000) * 1000) / 60_000)
+  return { year: field.year, month: field.month, day: field.day, hour: field.hour, minute: field.minute, second: field.second, offset }
+}
+
+const pad = (n: number) => String(n).padStart(2, '0')
+
+function dateText(p: Parts): string {
+  return `${p.day} ${months[p.month - 1]} ${p.year}`
+}
+
+function clockText(p: Parts, seconds = true): string {
+  return seconds ? `${pad(p.hour)}:${pad(p.minute)}:${pad(p.second)}` : `${pad(p.hour)}:${pad(p.minute)}`
+}
+
+function offsetText(offset: number): string {
+  const size = Math.abs(offset)
+  return `UTC${offset < 0 ? '-' : '+'}${pad(Math.floor(size / 60))}:${pad(size % 60)}`
+}
+
+function valid(iso: string | undefined): Date | null {
+  if (!iso) return null
   const date = new Date(iso)
-  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString(undefined, timeFormat)
+  return Number.isNaN(date.getTime()) ? null : date
 }
 
-export function Time({ value }: { value: string | undefined }) {
-  if (!value) return null
-  return <time dateTime={value}>{time(value)}</time>
+// The one time format: 24-hour, day first, with the zone, for example
+// "3 Nov 2026, 20:08:12 UTC+08:00". Text that is not a time is shown as it is.
+export function time(iso: string | undefined, zone = activeZone()): string {
+  const date = valid(iso)
+  if (!date) return iso ?? ''
+  const p = parts(date, zone)
+  return `${dateText(p)}, ${clockText(p)} ${offsetText(p.offset)}`
 }
 
-// clock gives the time of day of an instant, with the date only when it is
-// not today: "13:02", "13:02:41", "27 Oct 13:02".
-export function clock(iso: string, seconds = false): string {
-  const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return iso
-  const hm = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: seconds ? '2-digit' : undefined, hourCycle: 'h23' })
-  return date.toDateString() === new Date().toDateString() ? hm : `${date.toLocaleDateString([], { day: 'numeric', month: 'short' })} ${hm}`
+// compact is the full form without the zone, and without the date when it
+// is today, for dense tables whose column header names the zone once.
+export function compact(iso: string, zone = activeZone()): string {
+  const date = valid(iso)
+  if (!date) return iso
+  const p = parts(date, zone)
+  return dateText(p) === dateText(parts(new Date(), zone)) ? clockText(p) : `${dateText(p)}, ${clockText(p)}`
 }
 
-export function TimeOfDay(props: { value: string; seconds?: boolean }) {
-  return <time dateTime={props.value}>{clock(props.value, props.seconds)}</time>
+// axis is only the clock, for chart axis labels; the chart names the zone.
+export function axis(iso: string, seconds: boolean, zone = activeZone()): string {
+  const date = valid(iso)
+  return date ? clockText(parts(date, zone), seconds) : iso
+}
+
+// zoneLabel is a zone's distance from UTC now, as "UTC+08:00".
+export function zoneLabel(zone = activeZone(), keep = true): string {
+  return offsetText(parts(new Date(), zone, keep).offset)
+}
+
+// instant reads a wall time typed in a zone ("2026-11-03T10:00") as an
+// RFC 3339 instant. Reading the offset twice settles a wall time near a
+// clock change.
+export function instant(local: string, zone = activeZone()): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(local)
+  if (!match) return ''
+  const [year, month, day, hour, minute, second] = match.slice(1).map((n) => Number(n ?? 0))
+  const wall = Date.UTC(year, month - 1, day, hour, minute, second)
+  const guess = parts(new Date(wall), zone).offset
+  const settled = parts(new Date(wall - guess * 60_000), zone).offset
+  return new Date(wall - settled * 60_000).toISOString()
+}
+
+// Time shows a server instant in the chosen zone. Pointing at it or
+// focusing it shows the same moment in UTC.
+export function Time(props: { value: string | undefined; compact?: boolean }) {
+  const zone = useZone()
+  if (!props.value) return null
+  if (!valid(props.value)) return <>{props.value}</>
+  return (
+    <time dateTime={props.value} tabIndex={0} data-tip={time(props.value, 'UTC')} className={props.compact ? 'compact' : undefined}>
+      {props.compact ? compact(props.value, zone) : time(props.value, zone)}
+    </time>
+  )
+}
+
+// Zone names the zone times are shown in, for a column header or a hint.
+export function Zone() {
+  return <>{zoneLabel(useZone())}</>
 }
 
 export function duration(seconds: number): string {

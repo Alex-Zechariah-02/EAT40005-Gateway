@@ -2,6 +2,8 @@ import { useId, useState, type FormEvent } from 'react'
 import type { Reply } from '../shared/api'
 import { EventDetail, EventRows, type RequestEvent } from './requests'
 import { Empty, Field } from '../shared/ui'
+import { instant, zoneLabel } from '../shared/time'
+import { useZone } from '../shared/zone'
 import { PageHeader } from '../app/header'
 import { Problem } from '../shared/replies'
 import type { ViewProps } from '../app/views'
@@ -20,20 +22,21 @@ interface LogPage {
 const blankLogForm = { ref: '', subject: '', operation: '', decision: '', from: '', to: '' }
 
 // logQuery turns the form into the search's query string; times entered in
-// local time are sent as instants.
-function logQuery(form: typeof blankLogForm): URLSearchParams {
+// the chosen zone are sent as instants.
+function logQuery(form: typeof blankLogForm, zone: string): URLSearchParams {
   const query = new URLSearchParams()
   for (const name of ['ref', 'subject', 'operation', 'decision'] as const) {
     if (form[name].trim()) query.set(name, form[name].trim())
   }
   for (const name of ['from', 'to'] as const) {
-    if (form[name]) query.set(name, new Date(form[name]).toISOString())
+    if (form[name]) query.set(name, instant(form[name], zone))
   }
   return query
 }
 
 export function SecurityLogView({ admin }: ViewProps) {
   const id = useId()
+  const zone = useZone()
   const [form, setForm] = useState(blankLogForm)
   const [query, setQuery] = useState<URLSearchParams | null>(null)
   const [pages, setPages] = useState<LogPage[]>([])
@@ -50,7 +53,7 @@ export function SecurityLogView({ admin }: ViewProps) {
   }
   function search(event: FormEvent) {
     event.preventDefault()
-    const next = logQuery(form)
+    const next = logQuery(form, zone)
     setQuery(next)
     setSelected(null)
     void read(next, false)
@@ -82,11 +85,11 @@ export function SecurityLogView({ admin }: ViewProps) {
             <option value="failed">Outcome Unknown</option>
           </select>
         </Field>
-        <Field id={`${id}-from`} label="From">
-          <input id={`${id}-from`} type="datetime-local" className="input" value={form.from} onChange={set('from')} />
+        <Field id={`${id}-from`} label="From" hint={`Times are in ${zoneLabel(zone)}, the zone set on My Account.`}>
+          <input id={`${id}-from`} type="datetime-local" className="input" aria-describedby={`${id}-from-hint`} value={form.from} onChange={set('from')} />
         </Field>
         <Field id={`${id}-to`} label="Until">
-          <input id={`${id}-to`} type="datetime-local" className="input" value={form.to} onChange={set('to')} />
+          <input id={`${id}-to`} type="datetime-local" className="input" aria-describedby={`${id}-from-hint`} value={form.to} onChange={set('to')} />
         </Field>
         <div className="log-form-actions">
           <button type="submit" className="btn btn-primary" disabled={loading}>

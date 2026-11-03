@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import type { Resource } from '../shared/hooks'
 import { AccountLink, XRef } from '../shared/links'
-import { TimeOfDay } from '../shared/time'
+import { Time } from '../shared/time'
 import { reasonOf } from './requests'
 import { TrafficChart } from './chart'
 
@@ -236,7 +236,7 @@ export function TrafficCards(props: {
               </div>
               {resource.failed ? (
                 <p className="notice tone-pending card-notice">
-                  Not current: these figures were read at <TimeOfDay value={reading.at.toISOString()} seconds /> and the latest read failed.
+                  Not current: these figures were read at <Time value={reading.at.toISOString()} /> and the latest read failed.
                 </p>
               ) : null}
               <Figures traffic={traffic} />

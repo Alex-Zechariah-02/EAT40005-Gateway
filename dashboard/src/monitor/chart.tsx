@@ -1,6 +1,7 @@
 import { useId, useMemo, useState } from 'react'
 import { Empty, TableScroll } from '../shared/ui'
-import { TimeOfDay } from '../shared/time'
+import { axis, Time, Zone } from '../shared/time'
+import { useZone } from '../shared/zone'
 import type { Traffic } from './summary'
 
 // The traffic chart: requests per interval with response times under the bars.
@@ -51,6 +52,7 @@ export function TrafficChart({ traffic, end }: { traffic: Traffic; end: number }
   const [active, setActive] = useState<number | null>(null)
   const id = useId()
   const { bars, step } = useMemo(() => intervals(traffic, end), [traffic, end])
+  const zone = useZone()
   if (traffic.per_second.length === 0) return <Empty title="No requests in this window yet." />
   const peak = Math.max(1, ...bars.map((p) => p.allowed + p.refused))
   const width = 600
@@ -59,7 +61,7 @@ export function TrafficChart({ traffic, end }: { traffic: Traffic; end: number }
   const bar = Math.max(2, Math.min(9, band * 0.7))
   const shown = active !== null ? bars[active] : null
   const seconds = traffic.window_seconds <= 300
-  const label = (iso: string) => <TimeOfDay value={iso} seconds={seconds} />
+  const label = (iso: string) => axis(iso, seconds, zone)
   const tip =
     shown && active !== null ? (
       <div
@@ -69,7 +71,7 @@ export function TrafficChart({ traffic, end }: { traffic: Traffic; end: number }
         data-side={active > bars.length * 0.7 ? 'left' : 'right'}
       >
         <p className="chart-tip-time">
-          {label(shown.at)} – {label(shown.to)}
+          {label(shown.at)} – {label(shown.to)} <Zone />
         </p>
         <dl>
           <div>
@@ -103,7 +105,9 @@ export function TrafficChart({ traffic, end }: { traffic: Traffic; end: number }
   return (
     <figure className="traffic-chart">
       <figcaption className="chart-scale">
-        <span>Requests every {intervalWords(step)}</span>
+        <span>
+          Requests every {intervalWords(step)}, times in <Zone />
+        </span>
         <span className="muted">Peak {peak}</span>
       </figcaption>
       <div
@@ -151,8 +155,8 @@ export function TrafficChart({ traffic, end }: { traffic: Traffic; end: number }
         {tip}
       </div>
       <div className="chart-axis" aria-hidden="true">
-        {label(bars[0].at)}
-        {label(bars[bars.length / 2].at)}
+        <span>{label(bars[0].at)}</span>
+        <span>{label(bars[bars.length / 2].at)}</span>
         <span>now</span>
       </div>
       <details className="chart-table">
@@ -161,7 +165,9 @@ export function TrafficChart({ traffic, end }: { traffic: Traffic; end: number }
           <table>
             <thead>
               <tr>
-                <th scope="col">Time</th>
+                <th scope="col">
+                  Time (<Zone />)
+                </th>
                 <th scope="col" className="num end">
                   Allowed
                 </th>
@@ -174,7 +180,7 @@ export function TrafficChart({ traffic, end }: { traffic: Traffic; end: number }
               {traffic.per_second.map((p) => (
                 <tr key={p.at}>
                   <td>
-                    <TimeOfDay value={p.at} seconds />
+                    <Time value={p.at} compact />
                   </td>
                   <td className="num end">{p.allowed}</td>
                   <td className="num end">{p.refused}</td>

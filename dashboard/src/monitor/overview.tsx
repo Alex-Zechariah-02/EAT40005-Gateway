@@ -8,7 +8,7 @@ import { admissionText, AdmissionBadge } from '../app/state'
 import { Badge, MoreDetails } from '../shared/ui'
 import { PageHeader } from '../app/header'
 import { Problem } from '../shared/replies'
-import { ReadStamp, TimeOfDay } from '../shared/time'
+import { ReadStamp, Time } from '../shared/time'
 import type { ViewProps } from '../app/views'
 
 // Overview answers "is the gateway healthy and what is it enforcing?" at a
@@ -58,7 +58,7 @@ function StatusStrip({ admin, can, status }: Pick<ViewProps, 'admin' | 'can'> & 
                 <>On trial; version {status.confirmed} returns if it is undone</>
               ) : revision ? (
                 <>
-                  Since <TimeOfDay value={revision.created_at} /> · by {revision.actor}
+                  Since <Time value={revision.created_at} /> · by {revision.actor}
                 </>
               ) : null}
             </p>
@@ -94,7 +94,7 @@ function StatusStrip({ admin, can, status }: Pick<ViewProps, 'admin' | 'can'> & 
             <>
               <p className="tile-value">{rules.length} active</p>
               <p className="tile-note">
-                {overrideChange(rules[0])} · ends <TimeOfDay value={rules[0].expires_at} />
+                {overrideChange(rules[0])} · ends <Time value={rules[0].expires_at} />
                 {rules.length > 1 ? ` · and ${rules.length - 1} more` : null}
               </p>
             </>

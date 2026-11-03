@@ -4,7 +4,7 @@ import type { HistoryEntry, Page } from '../shared/api'
 import { useGatewayState, liveMs, usePoll, useRereadWhen, useResource } from '../shared/hooks'
 import { actorName, Problem, ReplyView } from '../shared/replies'
 import { TableScroll, type Tone } from '../shared/ui'
-import { TimeOfDay } from '../shared/time'
+import { Time } from '../shared/time'
 import { EventRows, type RequestEvent } from './requests'
 import { type Traffic, TrafficCards } from './summary'
 import { lookupRef } from './lookup'
@@ -182,7 +182,7 @@ function PolicyTimeline({ admin }: { admin: Admin }) {
                         <span>
                           <strong>{timelineName(e, kind)}</strong> <span className="timeline-word">{kind.word}</span>
                         </span>
-                        <TimeOfDay value={e.recorded_at} />
+                        <Time value={e.recorded_at} />
                       </p>
                       <p className="timeline-note">by {actorName(e.actor)}</p>
                     </div>

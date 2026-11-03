@@ -24,7 +24,7 @@ import { trace } from './trace'
 import { Badge, Empty } from '../../shared/ui'
 import { MutationResult, Problem } from '../../shared/replies'
 import { PageHeader } from '../../app/header'
-import { ReadStamp, Remaining, TimeOfDay } from '../../shared/time'
+import { ReadStamp, Remaining, Time } from '../../shared/time'
 import { useFocus } from '../../shared/links'
 import type { ViewProps } from '../../app/views'
 import { DesignerBar, type Mode, SidePanel, type Staged, StaleNotice, type Tab } from './panels'
@@ -332,7 +332,7 @@ export function Designer({
         <>
           {pending ? (
             <div className="notice tone-pending">
-              Version {pending.activation.revision} is on trial until <TimeOfDay value={pending.activation.deadline} seconds /> (
+              Version {pending.activation.revision} is on trial until <Time value={pending.activation.deadline} /> (
               <Remaining until={pending.activation.deadline} onPassed={refresh} />
               ). Another change can go on trial once it is kept or undone.
             </div>
@@ -453,7 +453,7 @@ export function Designer({
                 <li key={override.id}>
                   <Badge tone={override.type === 'containment' ? 'refused' : 'pending'}>Temporary</Badge>{' '}
                   {override.type === 'containment' ? 'Restricts' : 'Allows'} {override.role ? `${override.role} · ` : ''}
-                  <code>{override.operation}</code> until {new Date(override.expires_at).toLocaleTimeString()} ·{' '}
+                  <code>{override.operation}</code> until <Time value={override.expires_at} /> ·{' '}
                   <Remaining until={override.expires_at} onPassed={refresh} />
                 </li>
               ))}

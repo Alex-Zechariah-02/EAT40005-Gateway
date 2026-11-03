@@ -1,11 +1,12 @@
-import { useEffect, useId, useState, type FormEvent } from 'react'
+import { useEffect, useId, useMemo, useState, type FormEvent } from 'react'
 import type { Admin } from '../shared/http'
 import type { SessionInfo } from '../shared/api'
 import { useMutation } from '../shared/hooks'
 import { describedBy, Field, fieldError } from '../shared/ui'
 import { MutationResult } from '../shared/replies'
 import { PageHeader } from '../app/header'
-import { Time } from '../shared/time'
+import { Time, zoneLabel } from '../shared/time'
+import { automatic, browserZone, setZone, useZoneChoice } from '../shared/zone'
 
 // The administrator permissions in plain words; the exact names stay beside them.
 const permissionWords: Record<string, string> = {
@@ -50,7 +51,7 @@ export function Account(props: { admin: Admin; session: SessionInfo; signedOut: 
 
   return (
     <>
-      <PageHeader title="My Account" lede="Your session, when it expires, and your password." />
+      <PageHeader title="My Account" lede="Your session, when it expires, the time zone times are shown in, and your password." />
       <section className="section" aria-labelledby={`${id}-session`}>
         <h2 id={`${id}-session`}>Session</h2>
         <dl className="facts">
@@ -88,6 +89,7 @@ export function Account(props: { admin: Admin; session: SessionInfo; signedOut: 
           Show the Getting Started Guide
         </button>
       </section>
+      <ZoneSetting />
       <section className="section panel narrow" aria-labelledby={`${id}-password`}>
         <h2 id={`${id}-password`}>Change Password</h2>
         <p className="hint form-intro">Changing the password ends every session of this administrator, including this one.</p>
@@ -147,5 +149,38 @@ export function Account(props: { admin: Admin; session: SessionInfo; signedOut: 
         )}
       </section>
     </>
+  )
+}
+
+// ZoneSetting chooses the zone every time on these pages is shown in:
+// Automatic (this browser's zone), UTC or any IANA zone. The choice is kept
+// in this browser only and takes effect at once.
+function ZoneSetting() {
+  const id = useId()
+  const choice = useZoneChoice()
+  const zones = useMemo(() => {
+    const names = Intl.supportedValuesOf('timeZone').filter((name) => name !== 'UTC')
+    // A valid stored alias the list leaves out still shows as chosen.
+    if (choice !== automatic && choice !== 'UTC' && !names.includes(choice)) names.push(choice)
+    return names.map((name) => ({ name, label: `${name} (${zoneLabel(name, false)})` }))
+  }, [choice])
+  const local = browserZone()
+  return (
+    <section className="section panel narrow" aria-labelledby={`${id}-title`}>
+      <h2 id={`${id}-title`}>Preferences</h2>
+      <Field id={`${id}-zone`} label="Time Zone" hint="Every time on these pages uses this zone. Point at or focus a time to see it in UTC. Kept in this browser only.">
+        <select id={`${id}-zone`} className="input" aria-describedby={`${id}-zone-hint`} value={choice} onChange={(e) => setZone(e.target.value)}>
+          <option value={automatic}>{`Automatic: ${local} (${zoneLabel(local)})`}</option>
+          <option value="UTC">UTC</option>
+          <optgroup label="Other Zones">
+            {zones.map((zone) => (
+              <option key={zone.name} value={zone.name}>
+                {zone.label}
+              </option>
+            ))}
+          </optgroup>
+        </select>
+      </Field>
+    </section>
   )
 }

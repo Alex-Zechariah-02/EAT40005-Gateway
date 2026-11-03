@@ -2,7 +2,8 @@ import type { ReactNode } from 'react'
 import { MarkerType, type Edge } from '@xyflow/react'
 import type { ControlChange, Operation, Override, Policy } from '../../shared/api'
 import { capital, splitKey, type BoxKey, type BoxKind, type GroupAction, type Issue } from './model'
-import { type CardSpec, type Row, until } from './card'
+import { type CardSpec, type Row } from './card'
+import { time } from '../../shared/time'
 
 // What the canvas draws: its cards and connections, built from the draft and what overlays it.
 
@@ -35,7 +36,7 @@ export interface CanvasProps {
 
 // buildGraph turns the draft and what overlays it into the canvas cards and
 // their connections.
-export function buildGraph(props: CanvasProps): { cards: CardSpec[]; edges: Edge[] } {
+export function buildGraph(props: CanvasProps, zone: string): { cards: CardSpec[]; edges: Edge[] } {
   const { policy } = props
   const selectedRole = props.selection?.startsWith('role:') ? splitKey(props.selection)[1] : undefined
   const changed = (control: string, target: string) =>
@@ -86,13 +87,13 @@ export function buildGraph(props: CanvasProps): { cards: CardSpec[]; edges: Edge
     if (operation.auth === 'none') badges.push({ tone: 'neutral', text: 'Public' })
     if (operation.access === 'deny') badges.push({ tone: 'refused', text: 'Access: Deny' })
     const denied = props.overlays.find((override) => override.control === 'operation' && override.operation === operation.id)
-    if (denied) badges.push({ tone: 'refused', text: `Access: Deny until ${until(denied.expires_at)}` })
+    if (denied) badges.push({ tone: 'refused', text: `Access: Deny until ${time(denied.expires_at, zone)}` })
     const rate = props.overlays.find((override) => override.control === 'rate' && override.operation === operation.id)
-    if (rate) badges.push({ tone: 'pending', text: `Limit ${rate.count} until ${until(rate.expires_at)}` })
+    if (rate) badges.push({ tone: 'pending', text: `Limit ${rate.count} until ${time(rate.expires_at, zone)}` })
     for (const override of props.overlays.filter((item) => item.control === 'permit' && item.operation === operation.id))
       badges.push({
         tone: override.type === 'containment' ? 'refused' : 'pending',
-        text: `${override.role ?? 'All roles'} ${override.type === 'containment' ? 'removed' : 'allowed'} until ${until(override.expires_at)}`,
+        text: `${override.role ?? 'All roles'} ${override.type === 'containment' ? 'removed' : 'allowed'} until ${time(override.expires_at, zone)}`,
       })
     if (changed('operation', operation.id) || changed('rate', operation.id)) badges.push({ tone: 'pending', text: trial })
     return {

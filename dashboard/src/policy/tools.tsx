@@ -4,7 +4,7 @@ import { usePoll, useResource } from '../shared/hooks'
 import { Badge, Field, TableScroll } from '../shared/ui'
 import { PageHeader } from '../app/header'
 import { ReplyView } from '../shared/replies'
-import { ReadStamp } from '../shared/time'
+import { ReadStamp, Time } from '../shared/time'
 import type { ViewProps } from '../app/views'
 
 // The limits page, the advice page and the Overview's alerts: reads the
@@ -176,7 +176,15 @@ export function AdviceView({ admin }: ViewProps) {
                 <h2 id="unused-title">Unused Permissions</h2>
                 <span className="muted">
                   Based on {body.unused_permits.requests.toLocaleString()} requests in the security log
-                  {body.unused_permits.since ? ` since ${new Date(body.unused_permits.since).toLocaleString()}` : ''}.
+                  {body.unused_permits.since ? (
+                    <>
+                      {' '}
+                      since <Time value={body.unused_permits.since} />
+                    </>
+                  ) : (
+                    ''
+                  )}
+                  .
                 </span>
               </div>
               <div className="card-body">

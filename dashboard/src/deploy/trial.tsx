@@ -2,7 +2,7 @@ import type { ProvisionalView } from '../shared/api'
 import { useResource } from '../shared/hooks'
 import { reasonOf } from '../monitor/requests'
 import type { Traffic } from '../monitor/summary'
-import { age, clock, staleAfterMs, Time } from '../shared/time'
+import { age, staleAfterMs, Time } from '../shared/time'
 import { Confirm } from '../shared/dialogs'
 import { controls } from './activation'
 
@@ -50,7 +50,13 @@ export function TrialTraffic(props: { traffic: ReturnType<typeof useResource<Tra
       <h3 id="trial-traffic-title">Requests Since the Trial Started</h3>
       {last ? <TrafficFigures traffic={last.body} activatedAt={activatedAt} /> : <p className="hint">{traffic.failed ? 'Not read.' : 'Reading…'}</p>}
       <p className={traffic.failed ? 'hint read-stamp-failed' : 'hint'}>
-        {last ? `Updated ${clock(last.at.toISOString(), true)}` : ''}
+        {last ? (
+          <>
+            Updated <Time value={last.at.toISOString()} />
+          </>
+        ) : (
+          ''
+        )}
         {last && Date.now() - last.at.getTime() > staleAfterMs ? ` · ${age(last.at)}` : ''}
         {traffic.failed ? `${last ? ' · ' : ''}latest read failed` : ''}
       </p>
@@ -139,7 +145,13 @@ export function KeepDialog(props: {
         </div>
       ) : null}
         <p className="hint" role="status">
-          {check.phase === 'reading' ? "Reading the gateway's current state…" : ready ? `Read again at ${clock(ready.at.toISOString(), true)}.` : ''}
+          {check.phase === 'reading' ? "Reading the gateway's current state…" : ready ? (
+            <>
+              Read again at <Time value={ready.at.toISOString()} />.
+            </>
+          ) : (
+            ''
+          )}
         </p>
         {ready ? <CheckedFacts check={ready} /> : null}
         {check.phase === 'blocked' ? <p className="notice tone-refused">{check.why}</p> : null}

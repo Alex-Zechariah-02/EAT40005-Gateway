@@ -226,7 +226,8 @@ export async function shot(page: Page, name: string) {
 }
 
 // The dashboard's only browser storage: the Designer's box positions (finite
-// numbers only) and, when the administrator chose one, the appearance. Report
+// numbers only) and, when the administrator chose them, the appearance and
+// the time zone (a zone name only). Report
 // locations of leaks without putting
 // a credential into an assertion failure or the test output.
 export async function expectLayoutOnlyStorage(page: Page, secrets: string[] = []) {
@@ -240,6 +241,15 @@ export async function expectLayoutOnlyStorage(page: Page, secrets: string[] = []
     if (secrets.some((secret) => secret && text.includes(secret))) problems.push('secret in storage')
     if (key === 'gateway.theme') {
       if (text !== 'light' && text !== 'dark') problems.push('invalid appearance value')
+      continue
+    }
+    if (key === 'gateway.timezone') {
+      try {
+        if (text.length > 64) throw new RangeError('long')
+        new Intl.DateTimeFormat('en-US', { timeZone: text })
+      } catch {
+        problems.push('invalid time zone value')
+      }
       continue
     }
     if (key !== 'eat40005.policy-designer.layout.v1') {

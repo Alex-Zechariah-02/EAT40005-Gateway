@@ -4,7 +4,7 @@ import type { Outcome, ProvisionalView, Reply, Status } from '../shared/api'
 import { useGatewayState, useMutation, liveMs, usePoll, useRereadWhen, useResource } from '../shared/hooks'
 import type { Traffic } from '../monitor/summary'
 import { MutationResult, Problem, Receipt } from '../shared/replies'
-import { age, Remaining, staleAfterMs, Time, TimeOfDay } from '../shared/time'
+import { age, Remaining, staleAfterMs, Time } from '../shared/time'
 import { Confirm } from '../shared/dialogs'
 import { type Asking, type Check, KeepDialog, sinceStart, trafficWindow, TrialTraffic } from './trial'
 import { DeadlineBar, TrialSide, TrialTile } from './activation'
@@ -219,7 +219,7 @@ export function TrialDecision(props: { admin: Admin; manage: boolean; variant: '
 
   const stale = current.failed && !none && view ? (
     <p className="notice tone-pending">
-      Not current: this trial was read at {current.last ? <TimeOfDay value={current.last.at.toISOString()} seconds /> : null} and the latest read
+      Not current: this trial was read at {current.last ? <Time value={current.last.at.toISOString()} /> : null} and the latest read
       failed.
     </p>
   ) : null

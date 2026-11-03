@@ -7,7 +7,7 @@ import { Badge, Field, ListToolbar, matches, TableScroll } from '../shared/ui'
 import { Confirm } from '../shared/dialogs'
 import { MutationResult, Problem } from '../shared/replies'
 import { PageHeader } from '../app/header'
-import { ReadStamp, TimeOfDay } from '../shared/time'
+import { ReadStamp, Time, Zone } from '../shared/time'
 import type { ViewProps } from '../app/views'
 import { reasonOf, type RequestEvent } from '../monitor/requests'
 
@@ -138,7 +138,9 @@ export function AccountsView({ admin, can }: ViewProps) {
                     <th scope="col">Status</th>
                     <th scope="col">Roles</th>
                     <th scope="col">Last Request</th>
-                    <th scope="col">Seen</th>
+                    <th scope="col">
+                      Seen (<Zone />)
+                    </th>
                     {manage ? (
                       <th scope="col">
                         <span className="visually-hidden">Actions</span>
@@ -158,7 +160,7 @@ export function AccountsView({ admin, can }: ViewProps) {
                           </AccountLink>
                           {b ? (
                             <span className="cell-sub">
-                              {b.reason} · by {b.blocked_by} · <TimeOfDay value={b.blocked_at} />
+                              {b.reason} · by {b.blocked_by} · <Time value={b.blocked_at} />
                             </span>
                           ) : null}
                         </td>
@@ -194,7 +196,7 @@ export function AccountsView({ admin, can }: ViewProps) {
                             <span className="muted">Not in the latest 100 requests</span>
                           )}
                         </td>
-                        <td className="nowrap muted">{e ? <TimeOfDay value={e.time} seconds /> : '—'}</td>
+                        <td className="nowrap muted">{e ? <Time value={e.time} compact /> : '—'}</td>
                         {manage ? (
                           <td className="row-actions">
                             {b ? (

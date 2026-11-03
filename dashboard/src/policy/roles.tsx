@@ -4,7 +4,7 @@ import { capital } from './designer/model'
 import type { RequestEvent } from '../monitor/requests'
 import { overrideChange } from '../deploy/rule'
 import { Badge, ListToolbar, matches, TableScroll } from '../shared/ui'
-import { time } from '../shared/time'
+import { Time } from '../shared/time'
 import { XRef } from '../shared/links'
 import { limitWords, publicTab, recentRequests, sharedLimit } from './policy'
 import { PermitMatrix } from './revision'
@@ -124,7 +124,7 @@ export function RolesSection(props: { policy: Policy; active: Override[]; recent
             <ul>
               {temporary.map((rule) => (
                 <li key={rule.id}>
-                  Rule {rule.id}: {overrideChange(rule, doc)}, until {time(rule.expires_at)}
+                  Rule {rule.id}: {overrideChange(rule, doc)}, until <Time value={rule.expires_at} />
                 </li>
               ))}
             </ul>

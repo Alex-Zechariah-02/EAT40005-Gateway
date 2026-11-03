@@ -15,6 +15,7 @@ import '@xyflow/react/dist/base.css'
 import { deleteReason, splitKey, type BoxKind } from './model'
 import { type CardNode, edgeTypes, nodeTypes } from './card'
 import { buildGraph, type CanvasProps } from './graph'
+import { useZone } from '../../shared/zone'
 import { allReadable, ease, fitTo, focusOn, motion, useCanvasHeight } from './camera'
 
 // The Designer's canvas: the draft's boxes and links, moved and fitted to the window.
@@ -46,7 +47,8 @@ function CanvasGraph(props: CanvasProps) {
     if (!open.has(group)) setOpen((previous) => new Set(previous).add(group))
   }, [focusedApi, focusedOperation])
 
-  const graph = useMemo(() => buildGraph(props), [props.policy, props.selection, props.issues, props.overlays, props.provisional, props.refused, props.trace])
+  const zone = useZone()
+  const graph = useMemo(() => buildGraph(props, zone), [props.policy, props.selection, props.issues, props.overlays, props.provisional, props.refused, props.trace, zone])
 
   // Cards stand in four columns, each centred on one line as in a pipeline
   // diagram, and restack as groups open and close.

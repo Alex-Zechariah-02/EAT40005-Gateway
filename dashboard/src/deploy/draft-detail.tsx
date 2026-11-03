@@ -7,7 +7,7 @@ import { ImpactPreview } from './impact'
 import { Badge, describedBy, Field, fieldError } from '../shared/ui'
 import { ChangeSet } from '../shared/review'
 import { Confirm, TypedConfirmation } from '../shared/dialogs'
-import { duration, time } from '../shared/time'
+import { duration, Time } from '../shared/time'
 import { MutationResult, Problem, Receipt } from '../shared/replies'
 import type { ViewProps } from '../app/views'
 import { CandidateFacts, CandidateStatus, Stepper } from './draft'
@@ -203,7 +203,7 @@ export function CandidateDetail(props: {
           <>
             {o.provisional ? (
               <p className="notice-title">
-                Version {o.provisional} is on trial and active. Keep it before {time(o.deadline)}, at the top of this page, or it is undone.
+                Version {o.provisional} is on trial and active. Keep it before <Time value={o.deadline} />, at the top of this page, or it is undone.
               </p>
             ) : o.revision ? (
               <p className="notice-title">Established: version {o.revision} is the active policy.</p>

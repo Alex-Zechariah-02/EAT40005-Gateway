@@ -1,6 +1,6 @@
 import { AccountLink, XRef } from '../shared/links'
 import { Badge, TableScroll, type Tone } from '../shared/ui'
-import { Time, TimeOfDay } from '../shared/time'
+import { Time, Zone } from '../shared/time'
 import { decisionWords, stages, stepWords, type Stage, type StepState } from '../shared/checks'
 import { Explain } from '../shared/explain'
 
@@ -99,7 +99,9 @@ export function EventRows({ events, open, label }: { events: RequestEvent[]; ope
       <table className="events">
         <thead>
           <tr>
-            <th scope="col">Time</th>
+            <th scope="col">
+              Time (<Zone />)
+            </th>
             <th scope="col">Request</th>
             <th scope="col">Account</th>
             <th scope="col">Result</th>
@@ -113,7 +115,7 @@ export function EventRows({ events, open, label }: { events: RequestEvent[]; ope
           {events.map((e) => (
             <tr key={e.request_id}>
               <td className="num nowrap muted">
-                <TimeOfDay value={e.time} seconds />
+                <Time value={e.time} compact />
               </td>
               <td className="nowrap">
                 {e.operation ? (

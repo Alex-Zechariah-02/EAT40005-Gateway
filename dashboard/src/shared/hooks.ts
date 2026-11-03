@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Admin } from './http'
 import type { MutationRequest, Outcome, Reply, Status } from './api'
 import type { Handoff, View } from '../app/views'
@@ -195,7 +195,7 @@ export interface Unresolved {
   sentAt: Date
   // checked is the latest look-up that could not settle it.
   checked?: { at: Date; text: string }
-  settled?: { tone: 'ok' | 'pending' | 'refused'; text: string }
+  settled?: { tone: 'ok' | 'pending' | 'refused'; text: ReactNode }
 }
 
 export interface OutcomeRegister {

@@ -14,7 +14,7 @@ import {
   type Gateway,
 } from '../shared/hooks'
 import { UnresolvedChanges } from './outcomes'
-import { TimeOfDay } from '../shared/time'
+import { Time } from '../shared/time'
 import { TooltipLayer } from '../shared/overlays'
 import { usePageScrollbar } from '../shared/ui'
 import { admissionText } from './state'
@@ -210,7 +210,7 @@ export function Shell(props: {
           ) : null}
           {trialOutlivesSession ? (
             <p className="banner tone-pending">
-              <strong>Your session ends at <TimeOfDay value={session.expires_at} />, before version {facts?.provisional}'s trial deadline.</strong>{' '}
+              <strong>Your session ends at <Time value={session.expires_at} />, before version {facts?.provisional}'s trial deadline.</strong>{' '}
               Sign in again before then to keep or undo it; otherwise the gateway undoes it by itself at the deadline.
             </p>
           ) : null}

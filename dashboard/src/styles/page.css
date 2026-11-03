@@ -31,8 +31,10 @@
   background: var(--ground);
 }
 
+/* The description wraps before the actions and search leave the title's row. */
 .page-title {
   display: flex;
+  flex: 1 1 14rem;
   align-items: center;
   gap: 4px;
   min-width: 0;

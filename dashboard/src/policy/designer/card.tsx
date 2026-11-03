@@ -39,10 +39,6 @@ export interface CardSpec {
   data: Pick<CardData, 'kind' | 'title' | 'count' | 'rows' | 'collapsible' | 'dim'>
 }
 
-export function until(iso: string): string {
-  return new Date(iso).toLocaleTimeString('en-GB', { hour12: false })
-}
-
 // Card is one group of boxes: the roles, the endpoints of one API, the APIs
 // or the service addresses. A long group opens on demand, so the whole
 // policy fits on screen and its connections stay few and readable.
