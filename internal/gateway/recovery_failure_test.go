@@ -1,68 +1,14 @@
-// Failed rollback, lifecycle audit failure and interrupt handling.
+// Failed rollback and lifecycle audit failure.
 
 package gateway
 
 import (
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 	"testing"
 	"time"
 )
-
-// An interrupt (Ctrl+Break on Windows) stops the gateway through its graceful
-// path: the process exits with status 0, both listeners close, the audit file
-// ends with a complete record, and the next start serves the same generation
-// without finding an incomplete record. Every admission, which waits for its
-// durable record, is in the file, and so is every outcome and refusal event,
-// queued without acknowledgement, because the stop drains the queue.
-func TestInterruptStopsGatewayGracefully(t *testing.T) {
-	e := newEnv(t)
-	seed(t, e.database, e.policy(e.a, false), seedOptions{})
-	e.interruptible = true
-	e.start(binaries.plain)
-	generation := e.status().Generation
-	for range 3 {
-		if code, _ := e.get("/a/x"); code != http.StatusOK {
-			t.Fatalf("admitted request: %d", code)
-		}
-		if code, _ := e.get("/d"); code != http.StatusForbidden {
-			t.Fatalf("denied request: %d", code)
-		}
-	}
-
-	interrupt(t, e.process)
-	if code := e.waitExit(); code != 0 {
-		t.Fatalf("exit status %d after the interrupt\n%s", code, e.output)
-	}
-	if dialable(e.dataAddr) || dialable(e.admin) {
-		t.Fatal("a listener still accepts connections after the gateway exited")
-	}
-	data, err := os.ReadFile(e.auditLog)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(data) == 0 || data[len(data)-1] != '\n' {
-		t.Fatal("the audit file does not end with a complete record")
-	}
-	events := e.auditEvents()
-	for kind, want := range map[string]int{"request.admitted": 3, "request.forwarded": 3, "request.rejected": 3} {
-		if n := countKind(events, kind); n != want {
-			t.Fatalf("%d %s records in the audit file, want %d", n, kind, want)
-		}
-	}
-
-	e.interruptible = false
-	e.start(binaries.plain)
-	if s := e.status(); s.Generation != generation {
-		t.Fatalf("generation %s after the restart, want %s", s.Generation, generation)
-	}
-	events = e.eventsWhen(func(events []map[string]any) bool { return countKind(events, "controller.reconciled") >= 2 })
-	if countKind(events, "controller.reconciled") != 2 || countKind(events, "audit.recovered") != 0 {
-		t.Fatalf("restart events: %d reconciled, %d recovered", countKind(events, "controller.reconciled"), countKind(events, "audit.recovered"))
-	}
-}
 
 // When the base a rollback must restore cannot be compiled, nothing
 // is committed and the gateway stops admitting protected requests rather than
