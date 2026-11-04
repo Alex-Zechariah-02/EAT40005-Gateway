@@ -431,6 +431,11 @@ test.describe.serial('Fetch roles on the real services', () => {
     // shared Customer 3 page the other tests use.
     const customer3 = await person(browser, null)
     await signIn(customer3, siteURL, 'customer3@fetch.test')
+    // The account button is named by its visible text, at any width.
+    for (const width of [375, 1440]) {
+      await customer3.setViewportSize({ width, height: 900 })
+      await expect(customer3.getByRole('button', { name: 'Account: Customer 3, Customer', exact: true })).toBeVisible()
+    }
     await customer3.getByRole('button', { name: /^Account: Customer 3/ }).click()
     await customer3.getByRole('menuitem', { name: 'Your account' }).click()
     await expect(customer3).toHaveURL(/\/account$/)

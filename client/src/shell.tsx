@@ -136,12 +136,16 @@ const menuItem = 'flex h-9 cursor-default items-center gap-2.5 rounded-lg px-2.5
 
 function AccountMenu({ user }: { user: User }) {
   const { choice } = useTheme()
+  const [first, ...rest] = user.name.split(' ')
+  // The button's name is its visible text plus hidden words, so it reads as
+  // "Account: Customer 3, Customer" and still contains what is shown.
   return (
     <Menu.Root>
-      <Menu.Trigger className="flex items-center gap-2 rounded-full py-1 pr-2.5 pl-1 text-left hover:bg-sunken data-[popup-open]:bg-sunken" aria-label={`Account: ${user.name}, ${user.roles.map((r) => roleNames[r]).join(' and ')}`}>
-        <span className="flex size-9 items-center justify-center rounded-full bg-brand-soft text-sm font-bold text-brand-strong">{initials(user.name)}</span>
-        <span className="hidden flex-col leading-tight sm:flex">
-          <span className="text-sm font-bold text-ink">{user.name.split(' ')[0]}</span>
+      <Menu.Trigger className="flex items-center gap-2 rounded-full py-1 pr-2.5 pl-1 text-left hover:bg-sunken data-[popup-open]:bg-sunken">
+        <span className="sr-only">Account: </span>
+        <span aria-hidden="true" className="flex size-9 items-center justify-center rounded-full bg-brand-soft text-sm font-bold text-brand-strong">{initials(user.name)}</span>
+        <span className="sr-only leading-tight sm:not-sr-only sm:flex sm:flex-col">
+          <span className="text-sm font-bold text-ink">{first}<span className="sr-only">{rest.length ? ` ${rest.join(' ')}` : ''}, </span></span>
           <span className="text-[11px] font-semibold text-ink-3">{user.roles.map((r) => roleNames[r]).join(' · ')}</span>
         </span>
         <CaretDown size={14} className="text-ink-3" />
