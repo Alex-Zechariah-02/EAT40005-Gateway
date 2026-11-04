@@ -1,138 +1,16 @@
+// Admin sessions and session tokens.
+
 package gateway
 
 import (
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
-	"fmt"
-	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
-
-	"golang.org/x/crypto/argon2"
 )
-
-// permission is a set of administrator rights. Each admin route requires
-// exactly one; holding read never implies the right to change anything.
-type permission int
-
-const (
-	permRead permission = 1 << iota
-	permReadHistory
-	permManageSubjects
-	permManagePolicy
-
-	permAll = permRead | permReadHistory | permManageSubjects | permManagePolicy
-)
-
-var permissionNames = []struct {
-	bit  permission
-	name string
-}{
-	{permRead, "read"},
-	{permReadHistory, "read_history"},
-	{permManageSubjects, "manage_subjects"},
-	{permManagePolicy, "manage_policy"},
-}
-
-func (p permission) names() []string {
-	names := []string{}
-	for _, entry := range permissionNames {
-		if p&entry.bit != 0 {
-			names = append(names, entry.name)
-		}
-	}
-	return names
-}
-
-// parsePermissions reads a comma-separated list of permission names.
-func parsePermissions(list string) (permission, error) {
-	var p permission
-	for name := range strings.SplitSeq(list, ",") {
-		found := false
-		for _, entry := range permissionNames {
-			if strings.TrimSpace(name) == entry.name {
-				p |= entry.bit
-				found = true
-			}
-		}
-		if !found {
-			return 0, fmt.Errorf("unknown permission %q", name)
-		}
-	}
-	return p, nil
-}
-
-// Administrator names are short lowercase identifiers, safe to log.
-func isAdminName(name string) bool {
-	if name == "" || len(name) > maxIDLength {
-		return false
-	}
-	for i := 0; i < len(name); i++ {
-		c := name[i]
-		alphanumeric := (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
-		if alphanumeric {
-			continue
-		}
-		if i == 0 || (c != '.' && c != '_' && c != '-') {
-			return false
-		}
-	}
-	return true
-}
-
-// Password hashing uses argon2id with the OWASP minimum configuration. Only
-// hashes with exactly these parameters are accepted, so a stored value can
-// never make the gateway compute an attacker-chosen cost.
-const (
-	argonMemory      = 19 * 1024 // KiB
-	argonTime        = 2
-	argonThreads     = 1
-	argonSaltBytes   = 16
-	argonKeyBytes    = 32
-	minPasswordBytes = 15
-	maxPasswordBytes = 256
-)
-
-var argonPrefix = fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$", argon2.Version, argonMemory, argonTime, argonThreads)
-
-func validPassword(password string) bool {
-	return len(password) >= minPasswordBytes && len(password) <= maxPasswordBytes && utf8.ValidString(password)
-}
-
-func hashPassword(password string) string {
-	salt := make([]byte, argonSaltBytes)
-	rand.Read(salt)
-	key := argon2.IDKey([]byte(password), salt, argonTime, argonMemory, argonThreads, argonKeyBytes)
-	encoding := base64.RawStdEncoding
-	return argonPrefix + encoding.EncodeToString(salt) + "$" + encoding.EncodeToString(key)
-}
-
-func verifyPassword(encoded, password string) bool {
-	rest, ok := strings.CutPrefix(encoded, argonPrefix)
-	if !ok {
-		return false
-	}
-	saltText, keyText, ok := strings.Cut(rest, "$")
-	if !ok {
-		return false
-	}
-	salt, saltErr := base64.RawStdEncoding.DecodeString(saltText)
-	key, keyErr := base64.RawStdEncoding.DecodeString(keyText)
-	if saltErr != nil || keyErr != nil || len(salt) != argonSaltBytes || len(key) != argonKeyBytes {
-		return false
-	}
-	computed := argon2.IDKey([]byte(password), salt, argonTime, argonMemory, argonThreads, argonKeyBytes)
-	return subtle.ConstantTimeCompare(computed, key) == 1
-}
-
-// dummyHash is verified against when the named administrator does not exist,
-// so the response time does not reveal which names exist.
-var dummyHash = sync.OnceValue(func() string { return hashPassword(newToken()) })
 
 // newToken returns 32 random bytes in URL-safe base64.
 func newToken() string {
@@ -257,74 +135,4 @@ func (s *sessions) revokeAdmin(name string) {
 			s.end(hash)
 		}
 	}
-}
-
-// Failed-attempt limits for logins and enrolments.
-const (
-	maxNameFailures   = 5
-	lockoutPeriod     = 15 * time.Minute
-	failureWindow     = 15 * time.Minute
-	maxWindowFailures = 50
-	maxHashing        = 2
-)
-
-// throttle limits password guessing. Each existing administrator is locked
-// after maxNameFailures consecutive failures, even against the correct
-// password, and all attempts stop once maxWindowFailures failures occurred in
-// the current window. Counters are in memory and only a restart clears them.
-type throttle struct {
-	mu          sync.Mutex
-	names       map[string]*nameFailures
-	windowStart time.Time
-	failures    int
-}
-
-type nameFailures struct {
-	count       int
-	lockedUntil time.Time
-}
-
-func newThrottle() *throttle { return &throttle{names: map[string]*nameFailures{}} }
-
-// check returns the refusal reason for an attempt on the name, if any.
-func (t *throttle) check(name string, now time.Time) string {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if now.Sub(t.windowStart) >= failureWindow {
-		t.windowStart, t.failures = now, 0
-	}
-	if t.failures >= maxWindowFailures {
-		return "throttled"
-	}
-	if entry := t.names[name]; entry != nil && now.Before(entry.lockedUntil) {
-		return "locked"
-	}
-	return ""
-}
-
-// failed counts a failed attempt. Only names of existing administrators get
-// their own counter, so unknown names cannot grow the table.
-func (t *throttle) failed(name string, known bool, now time.Time) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.failures++
-	if !known {
-		return
-	}
-	entry := t.names[name]
-	if entry == nil {
-		entry = &nameFailures{}
-		t.names[name] = entry
-	}
-	entry.count++
-	if entry.count >= maxNameFailures {
-		entry.count = 0
-		entry.lockedUntil = now.Add(lockoutPeriod)
-	}
-}
-
-func (t *throttle) succeeded(name string) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	delete(t.names, name)
 }
