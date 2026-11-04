@@ -3,7 +3,7 @@ import { createServer } from 'node:http'
 import { dirname, join } from 'node:path'
 import { expect, test } from '@playwright/test'
 import { adminURL, raw, siteURL } from './env'
-import { dialogButton, enrol, go, moreDetail, record, shot, signIn, stage } from './pages'
+import { advanced, dialogButton, enrol, go, moreDetail, record, shot, signIn, stage } from './pages'
 import { admin, adminCall, adminContext, adminRequests, admitted, auditEvents, call, demo, expectNoSecrets, finish, handedOut, open, password, ready, scriptDialogs, sessionCookie, status, strip, token } from './setup'
 
 // Admin API refusals, security log failures, a restore and the secret scan.
@@ -176,6 +176,36 @@ test.describe.serial('dashboard', () => {
     expect(await status()).toMatchObject({ state: 'normal', admission: 'ready', audit_failed: false })
     expect((await adminCall('DELETE', `/admin/blocked-accounts/${subject}`, undefined, { 'Idempotency-Key': crypto.randomUUID() })).status).toBe(200)
     record('audit-pending-shown-applied', { subject, status: blocked.status })
+  })
+
+  test('a draft saved while the gateway cannot read it back is shown as applied with a problem, never as refused', async () => {
+    // The gateway stores the draft but cannot read its record for the answer.
+    await demo.stop()
+    await demo.start({ fault: 'candidate-read-unavailable' })
+    await admin.reload()
+    await signIn(admin, 'admin', password)
+    const drafts = async () => ((await adminCall('GET', '/admin/candidates?limit=100')).body.items as { id: number }[]).map((c) => c.id)
+    const before = await drafts()
+    const policy = (await adminCall('GET', '/admin/policy')).body.document
+    await go(admin, 'Changes')
+    await advanced(admin)
+    await admin.getByLabel('Complete Policy Document (JSON)').fill(JSON.stringify(policy))
+    await admin.getByRole('button', { name: 'Save Draft and Check' }).click()
+    const notice = admin.getByRole('alert').filter({ hasText: 'Applied, but the answer reports a problem' })
+    await expect(notice).toHaveClass(/tone-pending/)
+    await expect(moreDetail(notice, 'HTTP status')).toHaveText('503')
+    await expect(moreDetail(notice, 'Error code')).toHaveText('STORE_ERROR')
+    await expect(admin.locator('.notice.tone-refused')).toHaveCount(0)
+    const saved = (await drafts()).filter((id) => !before.includes(id))
+    expect(saved).toHaveLength(1)
+
+    // A normal restart; the draft is withdrawn again for the tests that follow.
+    await demo.stop()
+    await demo.start()
+    await admin.reload()
+    await signIn(admin, 'admin', password)
+    expect((await adminCall('DELETE', `/admin/candidates/${saved[0]}`, undefined, { 'Idempotency-Key': crypto.randomUUID() })).status).toBe(200)
+    record('draft-read-failure-shown-applied', { candidate: saved[0] })
   })
 
   test('a restore from a backup is shown as recovery required, and a deny-all recovery base established in the dashboard makes the gateway ready again', async () => {
