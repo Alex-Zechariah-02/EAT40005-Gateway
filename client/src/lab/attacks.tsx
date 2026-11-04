@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react'
 import { Lightning, LockKey, TextAa, UserSwitch } from '@phosphor-icons/react'
-import { send, type Answer, type Request } from '../../lib/api'
-import { hasRole } from '../../lib/session'
-import type { Role, User } from '../../lib/types'
+import { send, type Answer, type Request } from '../lib/api'
+import { hasRole } from '../lib/session'
+import type { Role, User } from '../lib/types'
 
 // The security lab's tests: each one deliberate wrong request, and what the
 // Fetch baseline policy should answer for the person signed in.

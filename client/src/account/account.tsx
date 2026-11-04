@@ -7,7 +7,7 @@ import { useQuery } from '../lib/query'
 import { navigate } from '../lib/router'
 import { hasRole, roleNames, signOut, useSession } from '../lib/session'
 import type { Address, User } from '../lib/types'
-import { AddressForm } from '../shell'
+import { AddressForm } from '../app/shell'
 import { Button, ButtonLink } from '../ui/button'
 import { Loading, ProblemNotice, Skeleton } from '../ui/notice'
 

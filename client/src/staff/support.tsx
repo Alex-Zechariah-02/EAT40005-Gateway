@@ -8,9 +8,9 @@ import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { cx } from '../ui/cx'
 import { Empty, Loading, ProblemNotice, RefTag, RefreshProblem, Skeleton } from '../ui/notice'
-import { ticketStatus, ticketTone } from './help'
+import { ticketStatus, ticketTone } from '../help/help'
 import { OrderCard, Tabs, WorkspaceTitle, useAction } from './staff'
-import { Thread } from './ticket'
+import { Thread } from '../help/ticket'
 
 type Filter = 'open' | 'answered' | 'resolved' | 'all'
 

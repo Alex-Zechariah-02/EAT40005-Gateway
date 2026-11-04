@@ -1,31 +1,31 @@
 import { lazy, Suspense, type ReactNode } from 'react'
 import { Compass, LockKey } from '@phosphor-icons/react'
-import { match, useLocation } from './lib/router'
-import { hasRole, roleNames, useSession } from './lib/session'
-import type { Role } from './lib/types'
+import { match, useLocation } from '../lib/router'
+import { hasRole, roleNames, useSession } from '../lib/session'
+import type { Role } from '../lib/types'
 import { Shell } from './shell'
-import { ButtonLink } from './ui/button'
-import { Empty, Skeleton } from './ui/notice'
-import { Home } from './pages/home'
-import { SectionPage } from './pages/section'
-import { StoreRoute } from './pages/store'
-import { ItemPage } from './pages/item'
-import { BasketPage } from './pages/basket'
-import { SignInPage } from './pages/signin'
+import { ButtonLink } from '../ui/button'
+import { Empty, Skeleton } from '../ui/notice'
+import { Home } from '../shop/home'
+import { SectionPage } from '../shop/section'
+import { StoreRoute } from '../shop/store'
+import { ItemPage } from '../shop/item'
+import { BasketPage } from '../shop/basket'
+import { SignInPage } from '../account/signin'
 
 // Pages used by one role load on demand, so a customer never downloads the
 // merchant, rider, support or operations screens.
-const CheckoutPage = lazy(() => import('./pages/checkout').then((m) => ({ default: m.CheckoutPage })))
-const OrdersPage = lazy(() => import('./pages/orders').then((m) => ({ default: m.OrdersPage })))
-const OrderPage = lazy(() => import('./pages/order').then((m) => ({ default: m.OrderPage })))
-const HelpPage = lazy(() => import('./pages/help').then((m) => ({ default: m.HelpPage })))
-const TicketPage = lazy(() => import('./pages/ticket').then((m) => ({ default: m.TicketPage })))
-const MerchantPage = lazy(() => import('./pages/merchant').then((m) => ({ default: m.MerchantPage })))
-const RiderPage = lazy(() => import('./pages/rider').then((m) => ({ default: m.RiderPage })))
-const SupportPage = lazy(() => import('./pages/support').then((m) => ({ default: m.SupportPage })))
-const OpsPage = lazy(() => import('./pages/ops').then((m) => ({ default: m.OpsPage })))
-const LabPage = lazy(() => import('./pages/lab/lab').then((m) => ({ default: m.LabPage })))
-const AccountPage = lazy(() => import('./pages/account').then((m) => ({ default: m.AccountPage })))
+const CheckoutPage = lazy(() => import('../orders/checkout').then((m) => ({ default: m.CheckoutPage })))
+const OrdersPage = lazy(() => import('../orders/orders').then((m) => ({ default: m.OrdersPage })))
+const OrderPage = lazy(() => import('../orders/order').then((m) => ({ default: m.OrderPage })))
+const HelpPage = lazy(() => import('../help/help').then((m) => ({ default: m.HelpPage })))
+const TicketPage = lazy(() => import('../help/ticket').then((m) => ({ default: m.TicketPage })))
+const MerchantPage = lazy(() => import('../staff/merchant').then((m) => ({ default: m.MerchantPage })))
+const RiderPage = lazy(() => import('../staff/rider').then((m) => ({ default: m.RiderPage })))
+const SupportPage = lazy(() => import('../staff/support').then((m) => ({ default: m.SupportPage })))
+const OpsPage = lazy(() => import('../staff/ops').then((m) => ({ default: m.OpsPage })))
+const LabPage = lazy(() => import('../lab/lab').then((m) => ({ default: m.LabPage })))
+const AccountPage = lazy(() => import('../account/account').then((m) => ({ default: m.AccountPage })))
 
 export function App() {
   const { path, params } = useLocation()

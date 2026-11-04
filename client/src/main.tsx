@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { CSPProvider } from '@base-ui/react/csp-provider'
 import './styles.css'
 import './lib/theme'
-import { App } from './app'
+import { App } from './app/app'
 import { loadFonts } from './lib/fonts'
 
 async function start() {

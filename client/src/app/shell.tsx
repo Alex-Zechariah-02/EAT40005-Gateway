@@ -4,15 +4,15 @@ import { Popover } from '@base-ui/react/popover'
 import {
   CaretDown, Check, Info, Lifebuoy, MagnifyingGlass, MapPin, Moon, ShoppingBagOpen, SignOut, Sun, UserCircle, X,
 } from '@phosphor-icons/react'
-import { addressErrors, setAddress, useAddress } from './lib/address'
-import { basketCount, useBasket } from './lib/basket'
-import { Link, navigate, useLocation } from './lib/router'
-import { dismissNotice, hasRole, roleNames, signOut, useSession } from './lib/session'
-import { setTheme, useTheme, type ThemeChoice } from './lib/theme'
-import { states, type Address, type Role, type User } from './lib/types'
-import { Button, ButtonLink } from './ui/button'
-import { cx } from './ui/cx'
-import { SelectField, TextField } from './ui/field'
+import { addressErrors, setAddress, useAddress } from '../lib/address'
+import { basketCount, useBasket } from '../lib/basket'
+import { Link, navigate, useLocation } from '../lib/router'
+import { dismissNotice, hasRole, roleNames, signOut, useSession } from '../lib/session'
+import { setTheme, useTheme, type ThemeChoice } from '../lib/theme'
+import { states, type Address, type Role, type User } from '../lib/types'
+import { Button, ButtonLink } from '../ui/button'
+import { cx } from '../ui/cx'
+import { SelectField, TextField } from '../ui/field'
 
 // Staff workspaces, one per role. A person with several roles sees each.
 const workspaces: { role: Role; to: string; label: string }[] = [

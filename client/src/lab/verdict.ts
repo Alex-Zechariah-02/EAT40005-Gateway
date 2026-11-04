@@ -1,4 +1,4 @@
-import { answeredBy, type Answer } from '../../lib/api'
+import { answeredBy, type Answer } from '../lib/api'
 import type { By, Expected } from './attacks'
 
 // The security lab's verdict: how one test's answer compares with the baseline's.

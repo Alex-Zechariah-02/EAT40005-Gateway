@@ -14,7 +14,7 @@ import { cx } from '../ui/cx'
 import { SelectField, TextArea, TextField } from '../ui/field'
 import { Empty, ProblemNotice } from '../ui/notice'
 import { Photo } from '../ui/photo'
-import { useQuote } from './parts'
+import { useQuote } from '../shop/parts'
 
 const blank: Address = { line1: '', line2: '', postcode: '', city: 'Kuala Lumpur', state: 'Wilayah Persekutuan Kuala Lumpur' }
 // defaultAddress fills the form in one step with a complete address the
