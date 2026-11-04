@@ -113,11 +113,13 @@ export function build(): string {
 
 export function buildApplication(folder: string): string {
   const source = join(repository, folder)
-  const shell = (command: string) => {
-    const result = spawnSync(command, { cwd: source, encoding: 'utf8', shell: true })
+  const shell = (command: string, env: NodeJS.ProcessEnv = process.env) => {
+    const result = spawnSync(command, { cwd: source, encoding: 'utf8', shell: true, env })
     if (result.status !== 0) throw new Error(`${command}: ${result.stderr || result.stdout || result.error}`)
   }
   if (!existsSync(join(source, 'node_modules'))) shell('npm ci --prefer-offline --no-audit --no-fund')
-  shell('npm run build')
+  // A Vite dev server started earlier in this process sets NODE_ENV to
+  // development, which would make this a development build of React.
+  shell('npm run build', { ...process.env, NODE_ENV: 'production' })
   return join(source, 'dist')
 }
