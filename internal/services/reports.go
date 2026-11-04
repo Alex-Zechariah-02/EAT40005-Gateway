@@ -108,6 +108,10 @@ func (d *reports) handle(r *http.Request, body []byte) result {
 	}
 	orders, err := d.load(r.Context())
 	if err != nil {
+		// A caller that went away is not an Orders outage; the receipt says which.
+		if r.Context().Err() != nil {
+			return failure(499, "request_cancelled", "The caller cancelled the request before the report was ready.", "")
+		}
 		return failure(503, "orders_unavailable", "Orders could not supply a complete report. Try again later.", "")
 	}
 	selected := []Order{}

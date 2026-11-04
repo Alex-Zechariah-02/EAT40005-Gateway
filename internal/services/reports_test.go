@@ -1,8 +1,10 @@
 package services
 
 import (
+	"context"
 	"encoding/json"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -51,6 +53,36 @@ func TestReportsContractAndLiveOrders(t *testing.T) {
 	after, total := read()
 	if after != before+1 || total != revenue+5380 {
 		t.Fatalf("live aggregation: count %d -> %d, revenue %d -> %d", before, after, revenue, total)
+	}
+}
+
+// A caller that cancels is recorded as a cancellation, never as an Orders
+// outage, while a real Orders failure is still reported as one.
+func TestReportsRecordCallerCancellation(t *testing.T) {
+	_, orderService := newCommerce(t)
+	server := httptest.NewServer(orderService)
+	reportService, err := New(Config{Name: "reports", Secret: testSecret, OrdersURL: server.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reportService.data.(*reports).close()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	request := httptest.NewRequest("GET", "/reports/summary", nil).WithContext(ctx)
+	request.Header.Set("X-Gateway-Subject", "ops-01")
+	request.Header.Set("X-Gateway-Roles", "OPERATIONS")
+	reportService.ServeHTTP(httptest.NewRecorder(), request)
+	server.Close()
+	outage := serviceRequest(reportService, "GET", "/reports/summary", "", "ops-01", "OPERATIONS", "")
+	if outage.Code != 503 || !strings.Contains(outage.Body.String(), "orders_unavailable") {
+		t.Fatalf("Orders outage: %d %s", outage.Code, outage.Body)
+	}
+	statuses := []int{}
+	for _, receipt := range reportService.receipts {
+		statuses = append(statuses, receipt.Status)
+	}
+	if !slices.Equal(statuses, []int{499, 503}) {
+		t.Fatalf("receipt statuses %v, want cancellation 499 then outage 503", statuses)
 	}
 }
 
