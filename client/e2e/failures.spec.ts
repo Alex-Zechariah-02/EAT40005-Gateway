@@ -171,9 +171,9 @@ test.describe.serial('Failures and safeguards on the real services', () => {
   })
 
   test('a cancellation with Inventory unavailable stays uncertain while a failed checkout is a definite refusal', async ({ browser }) => {
-    const customer2 = await person(browser, 'customer2@fetch.test')
-    await addToBasket(customer2, siteURL, 'MER-005', 'Full Cream Milk 1 L')
-    const order = await placeOrder(customer2, siteURL, 'Fetch wallet')
+    const customer1 = await person(browser, 'customer1@fetch.test')
+    await addToBasket(customer1, siteURL, 'MER-005', 'Full Cream Milk 1 L')
+    const order = await placeOrder(customer1, siteURL, 'Fetch wallet')
     const before = (await demo.receipts('orders')).length
     const charged = (await demo.state('orders')).data as { wallets: Record<string, number> }
 
@@ -187,17 +187,17 @@ test.describe.serial('Failures and safeguards on the real services', () => {
     // control surface remain live; no response or application is patched.
     process.kill(demo.pids['inventory'])
     try {
-      await customer2.getByRole('button', { name: 'Cancel order' }).click()
-      await customer2.getByRole('dialog').getByRole('button', { name: 'Cancel order' }).click()
-      await expect(customer2.getByRole('heading', { level: 1 })).toHaveText('Order cancelled')
+      await customer1.getByRole('button', { name: 'Cancel order' }).click()
+      await customer1.getByRole('dialog').getByRole('button', { name: 'Cancel order' }).click()
+      await expect(customer1.getByRole('heading', { level: 1 })).toHaveText('Order cancelled')
       const state = (await demo.state('orders')).data as { orders: { id: string; status: string; total_sen: number }[]; wallets: Record<string, number> }
       const cancelled = state.orders.find((entry) => entry.id === order)!
       expect(cancelled.status).toBe('cancelled')
-      expect(state.wallets['cust-002']).toBe(charged.wallets['cust-002'] + cancelled.total_sen)
-      const unknown = customer2.getByRole('alert').filter({ hasText: 'Fetch couldn’t confirm cancelling this order.' })
+      expect(state.wallets['cust-001']).toBe(charged.wallets['cust-001'] + cancelled.total_sen)
+      const unknown = customer1.getByRole('alert').filter({ hasText: 'Fetch couldn’t confirm cancelling this order.' })
       await expect(unknown).toContainText('It may or may not have been cancelled.')
       await expect(unknown).toContainText('Answered by Orders · 503')
-      await customer2.waitForTimeout(3000)
+      await customer1.waitForTimeout(3000)
       const sent = (await since('orders', before)).filter((r) => r.method === 'POST' && r.target === `/orders/cancel/${order}`)
       expect(sent).toHaveLength(1)
       expect(sent[0].status).toBe(503)
