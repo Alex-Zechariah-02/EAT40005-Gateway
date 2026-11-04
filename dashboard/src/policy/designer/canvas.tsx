@@ -20,7 +20,15 @@ import { allReadable, ease, fitTo, focusOn, motion, useCanvasHeight } from './ca
 
 // The Designer's canvas: the draft's boxes and links, moved and fitted to the window.
 
-const columnX: Record<BoxKind, number> = { role: 0, operation: 256, api: 712, upstream: 948 }
+// Card widths and the space between columns are sized so the first fit
+// beside the open sidebar stays readable at 1280 px; 24 px still leaves
+// room for a connection's bend and arrowhead.
+const kinds: BoxKind[] = ['role', 'operation', 'api', 'upstream']
+const widths: Record<BoxKind, number> = { role: 200, operation: 360, api: 180, upstream: 200 }
+const columnGap = 24
+const columnX = Object.fromEntries(
+  kinds.map((kind, index) => [kind, kinds.slice(0, index).reduce((x, before) => x + widths[before] + columnGap, 0)]),
+) as Record<BoxKind, number>
 const gap = 20
 
 function CanvasGraph(props: CanvasProps) {
@@ -53,7 +61,6 @@ function CanvasGraph(props: CanvasProps) {
   // Cards stand in four columns, each centred on one line as in a pipeline
   // diagram, and restack as groups open and close.
   function laidOut(heights: Record<string, number>): CardNode[] {
-    const kinds: BoxKind[] = ['role', 'operation', 'api', 'upstream']
     const height = (id: string) => heights[id] ?? 56
     const columns = kinds.map((kind) => graph.cards.filter((card) => card.kind === kind))
     const totals = columns.map((list) => list.reduce((sum, card) => sum + height(card.id), 0) + Math.max(0, list.length - 1) * gap)
@@ -65,6 +72,7 @@ function CanvasGraph(props: CanvasProps) {
           id: card.id,
           type: 'card',
           position: { x: columnX[kinds[index]], y },
+          style: { width: widths[kinds[index]] },
           className: `designer-node-${kinds[index]}`,
           draggable: false,
           selectable: false,

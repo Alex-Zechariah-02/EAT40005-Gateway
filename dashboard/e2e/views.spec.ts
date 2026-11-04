@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { type Policy } from '../src/shared/api'
 import { adminURL } from './env'
-import { dialogButton, moreDetail, record } from './pages'
+import { dialogButton, moreDetail, record, shot } from './pages'
 import { applyJson, baseline, candidates, capture, currentPolicy, designer, discard, expandAll, formItem, node, page, selected, open, ready, finish } from './designer'
 
 // Form, JSON and canvas views of the draft, and the refusals the gateway names.
@@ -206,5 +206,25 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
     await capture('designer-worst-json')
     await discard()
     record('designer-stress', { operations: 40, idCharacters: 64, targetCharacters: 256, unusedAPI: true })
+  })
+
+  test('the first fit beside the open sidebar is readable at 1280 px and cards never overlap', async () => {
+    const original = page.viewportSize()!
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await page.reload()
+    await designer()
+    await expect(page.locator('.shell')).not.toHaveClass(/is-rail/)
+    const zoom = () => page.locator('.react-flow__viewport').evaluate((element) => new DOMMatrix(getComputedStyle(element).transform).a)
+    await expect.poll(zoom).toBeGreaterThanOrEqual(0.85)
+    const canvas = (await page.locator('.designer-canvas').boundingBox())!
+    const cards = await page.locator('.react-flow__node').evaluateAll((nodes) => nodes.map((n) => n.getBoundingClientRect().toJSON() as DOMRect))
+    for (const [index, card] of cards.entries()) {
+      expect(card.x >= canvas.x && card.right <= canvas.x + canvas.width && card.y >= canvas.y && card.bottom <= canvas.y + canvas.height, `card ${index} in view`).toBe(true)
+      for (const other of cards.slice(index + 1))
+        expect(card.right <= other.x || other.right <= card.x || card.bottom <= other.y || other.bottom <= card.y, `card ${index} overlaps another`).toBe(true)
+    }
+    await shot(page, 'designer-fit-1280')
+    record('designer-fit-1280', { zoom: await zoom(), cards: cards.length })
+    await page.setViewportSize(original)
   })
 })

@@ -222,18 +222,6 @@
   white-space: normal;
   overflow-wrap: anywhere;
 }
-.designer-node-role {
-  width: 220px;
-}
-.designer-node-operation {
-  width: 420px;
-}
-.designer-node-api {
-  width: 200px;
-}
-.designer-node-upstream {
-  width: 220px;
-}
 .designer-checks {
   display: flex;
   flex-wrap: wrap;
