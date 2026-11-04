@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"container/heap"
 	"sync"
 	"time"
 )
@@ -59,6 +60,40 @@ type counter struct {
 	bucket   int64
 	current  int64
 	previous int64
+	key      counterKey
+	index    int // position in the limiter's expiry queue
+}
+
+// removable is the first time at which both of the counter's buckets have
+// ended, so its estimate is zero: now/window >= bucket+2.
+func (c *counter) removable() int64 {
+	return (c.bucket + 2) * c.window
+}
+
+// expiryQueue orders counters by the time they become removable, so a sweep
+// visits only counters it removes. It implements heap.Interface.
+type expiryQueue []*counter
+
+func (q expiryQueue) Len() int           { return len(q) }
+func (q expiryQueue) Less(i, j int) bool { return q[i].removable() < q[j].removable() }
+
+func (q expiryQueue) Swap(i, j int) {
+	q[i], q[j] = q[j], q[i]
+	q[i].index, q[j].index = i, j
+}
+
+func (q *expiryQueue) Push(x any) {
+	c := x.(*counter)
+	c.index = len(*q)
+	*q = append(*q, c)
+}
+
+func (q *expiryQueue) Pop() any {
+	old := *q
+	c := old[len(old)-1]
+	old[len(old)-1] = nil
+	*q = old[:len(old)-1]
+	return c
 }
 
 // roll moves the counter to the bucket containing now. A time before the
@@ -97,6 +132,7 @@ const (
 type limiter struct {
 	mu         sync.Mutex
 	counters   map[counterKey]*counter
+	expiry     expiryQueue // the same counters, earliest removable first
 	admissions int
 	capacity   int
 }
@@ -121,16 +157,21 @@ func (l *limiter) admit(key counterKey, rule *rateRule, now int64) rateDecision 
 		if len(l.counters) >= l.capacity {
 			return rateNoCapacity
 		}
-		c = &counter{window: rule.window, bucket: now / rule.window}
+		c = &counter{window: rule.window, bucket: now / rule.window, key: key}
 		l.counters[key] = c
+		heap.Push(&l.expiry, c)
 	}
 
+	removable := c.removable()
 	c.roll(now)
 	if c.window != rule.window {
 		// The window changed: carry the usage so far, rounded up, into a
 		// counter for the new window, so a change never forgives requests.
 		used := (c.usage(now) + c.window - 1) / c.window
-		*c = counter{window: rule.window, bucket: now / rule.window, current: used}
+		c.window, c.bucket, c.current, c.previous = rule.window, now/rule.window, used, 0
+	}
+	if c.removable() != removable {
+		heap.Fix(&l.expiry, c.index)
 	}
 
 	if c.usage(now)+rule.window > rule.count*rule.window {
@@ -146,12 +187,12 @@ func (l *limiter) admit(key counterKey, rule *rateRule, now int64) rateDecision 
 }
 
 // sweep removes counters whose current and previous buckets have both ended.
-// Their estimate is zero, so removing them never changes a decision.
+// Their estimate is zero, so removing them never changes a decision. It visits
+// only the counters it removes, so a full table of live counters costs no scan.
 func (l *limiter) sweep(now int64) {
-	for key, c := range l.counters {
-		if now/c.window >= c.bucket+2 {
-			delete(l.counters, key)
-		}
+	for len(l.expiry) > 0 && l.expiry[0].removable() <= now {
+		c := heap.Pop(&l.expiry).(*counter)
+		delete(l.counters, c.key)
 	}
 }
 
