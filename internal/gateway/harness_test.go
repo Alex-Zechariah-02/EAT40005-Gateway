@@ -689,6 +689,9 @@ func (e *env) auditEvents() []map[string]any {
 	if err != nil {
 		e.t.Fatal(err)
 	}
+	// The gateway may be appending while the file is read: every record ends
+	// with a newline, so an unterminated tail is a record still being written.
+	data = data[:bytes.LastIndexByte(data, '\n')+1]
 	var events []map[string]any
 	for line := range bytes.SplitSeq(bytes.TrimSpace(data), []byte("\n")) {
 		if len(line) == 0 {
