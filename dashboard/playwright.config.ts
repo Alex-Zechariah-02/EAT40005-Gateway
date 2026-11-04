@@ -13,7 +13,8 @@ export default defineConfig({
     channel: 'chrome',
     headless: true,
     viewport: { width: 1280, height: 860 },
-    trace: 'off',
-    screenshot: 'off',
+    // Kept only for a failing test, so its run can be replayed step by step.
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
   },
 })

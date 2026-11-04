@@ -14,7 +14,8 @@ export default defineConfig({
     headless: true,
     actionTimeout: 15_000,
     viewport: { width: 1280, height: 860 },
-    trace: 'off',
-    screenshot: 'off',
+    // Kept only for a failing test, so its run can be replayed step by step.
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
   },
 })
