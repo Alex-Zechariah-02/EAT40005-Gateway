@@ -166,6 +166,7 @@ type env struct {
 	output    *logBuffer // the process's output, readable while it runs
 	a, b, c   *receiver
 	session   adminSession // the harness administrator's session, if any
+	sessionMu sync.Mutex   // guards session: tests call the Admin API from several goroutines
 	// interruptible starts the gateway in its own process group, so that
 	// interrupt can reach it without reaching the test process.
 	interruptible bool
@@ -367,7 +368,9 @@ func dialable(addr string) bool {
 // stop terminates the gateway abruptly. The design must tolerate this at any
 // point, so tests never rely on a graceful shutdown.
 func (e *env) stop() {
+	e.sessionMu.Lock()
 	e.session = adminSession{}
+	e.sessionMu.Unlock()
 	if e.process == nil {
 		return
 	}
@@ -539,20 +542,43 @@ func (e *env) login(name, password string) (adminSession, int) {
 func (e *env) harnessCall(method, path, body string, header ...string) (int, string, http.Header) {
 	e.t.Helper()
 	for range 2 {
-		if e.session.cookie == "" {
-			session, code := e.login(harnessAdmin, harnessPassword)
-			if code != http.StatusCreated {
-				return code, "harness login failed", nil
-			}
-			e.session = session
+		session, code := e.harnessSession()
+		if code != http.StatusCreated {
+			return code, "harness login failed", nil
 		}
-		code, data, h := e.adminSend(method, path, body, append(e.session.headers(e), header...)...)
+		code, data, h := e.adminSend(method, path, body, append(session.headers(e), header...)...)
 		if code != http.StatusUnauthorized {
 			return code, data, h
 		}
-		e.session = adminSession{}
+		e.forgetSession(session)
 	}
 	return http.StatusUnauthorized, "harness session refused", nil
+}
+
+// harnessSession returns the harness administrator's session, logging in
+// once when there is none; concurrent callers share that one login. The
+// status is the login's, or 201 for a session already held.
+func (e *env) harnessSession() (adminSession, int) {
+	e.sessionMu.Lock()
+	defer e.sessionMu.Unlock()
+	if e.session.cookie == "" {
+		session, code := e.login(harnessAdmin, harnessPassword)
+		if code != http.StatusCreated {
+			return adminSession{}, code
+		}
+		e.session = session
+	}
+	return e.session, http.StatusCreated
+}
+
+// forgetSession drops a refused session, unless another caller has already
+// replaced it with a new one.
+func (e *env) forgetSession(refused adminSession) {
+	e.sessionMu.Lock()
+	defer e.sessionMu.Unlock()
+	if e.session.cookie == refused.cookie {
+		e.session = adminSession{}
+	}
 }
 
 // publish sends a whole policy through the test publication hook, which
