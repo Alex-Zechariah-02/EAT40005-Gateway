@@ -108,7 +108,7 @@ func (c *Controller) startAdmin() error {
 	registerTestRoutes(c, mux)
 
 	c.admin = &http.Server{
-		Handler:           c.checkHost(mux),
+		Handler:           c.checkHost(detachWrites(mux)),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -144,6 +144,19 @@ func (c *Controller) checkHost(next http.Handler) http.Handler {
 		if r.Host != c.config.AdminListen {
 			c.refuse(w, r, http.StatusBadRequest, "bad_request", "bad_host", nil)
 			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// detachWrites keeps a state-changing request running when its client
+// disconnects: a change is committed in steps, and stopping between them
+// would leave its outcome unrecorded and fail the audit log. Reads keep
+// their cancellation, so a closed event stream ends.
+func detachWrites(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if unsafeMethod(r.Method) {
+			r = r.WithContext(context.WithoutCancel(r.Context()))
 		}
 		next.ServeHTTP(w, r)
 	})

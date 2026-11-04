@@ -4,6 +4,7 @@ package gateway
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"net/http"
 	"os"
@@ -25,6 +26,18 @@ func candidateReadFault() error {
 		return errors.New("injected candidate read failure")
 	}
 	return nil
+}
+
+// cancelPoint waits at the named point until the caller's context is done or
+// two seconds pass, so a test can disconnect a client exactly there.
+func cancelPoint(ctx context.Context, name string) {
+	if !faultEnabled(name) {
+		return
+	}
+	select {
+	case <-ctx.Done():
+	case <-time.After(2 * time.Second):
+	}
 }
 
 // crashPoint terminates the process abruptly, without cleanup, to simulate a

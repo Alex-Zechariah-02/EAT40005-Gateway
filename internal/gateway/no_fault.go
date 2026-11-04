@@ -3,10 +3,13 @@
 package gateway
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"time"
 )
+
+func cancelPoint(context.Context, string) {}
 
 func crashPoint(string) {}
 

@@ -943,6 +943,7 @@ func (c *Controller) publish(ctx context.Context, t transitionRecord, policy Pol
 // the audit log is marked failed, so protected admission stops until a
 // restart, whose reconciliation records the missing outcome event.
 func (c *Controller) finish(ctx context.Context, result Outcome, event Event) (Outcome, int) {
+	cancelPoint(ctx, "cancel-before-outcome")
 	if err := c.commitAudit(ctx, event); err != nil {
 		c.logger.Error("outcome event not recorded", "transition", result.Transition, "error", err)
 		c.audit.fail(err)
