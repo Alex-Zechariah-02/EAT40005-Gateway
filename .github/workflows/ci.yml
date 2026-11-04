@@ -1,0 +1,132 @@
+# Checks the gateway, its vulnerability status and both web apps on every change.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      EAT_PORT_OFFSET: "1000"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go mod verify
+      - run: test -z "$(gofmt -l cmd internal)"
+      - run: go vet ./...
+      - run: go vet -tags faultinject ./...
+      - run: go test ./... -count=1
+      - run: go test -race ./... -count=1 -timeout 60m
+
+  vuln:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
+  dashboard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      EAT_PORT_OFFSET: "2000"
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          # The browser tests also build the client app.
+          cache-dependency-path: |
+            dashboard/package-lock.json
+            client/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: npm audit --audit-level=high
+      # The tests run in the installed Chrome (playwright.config.ts).
+      - run: npx playwright install --with-deps chrome
+      - run: npx playwright test
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dashboard-test-results
+          path: dashboard/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  client:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      EAT_PORT_OFFSET: "3000"
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          # The browser tests also build the dashboard.
+          cache-dependency-path: |
+            client/package-lock.json
+            dashboard/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: npm audit --audit-level=high
+      # The tests run in the installed Chrome (playwright.config.ts).
+      - run: npx playwright install --with-deps chrome
+      - run: npx playwright test
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: client-test-results
+          path: client/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  deps:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
