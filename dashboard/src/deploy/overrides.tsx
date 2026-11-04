@@ -3,7 +3,7 @@ import { newKey } from '../shared/http'
 import type { Outcome, Override, OverridesView, Revision } from '../shared/api'
 import { useGatewayState, useMutation, usePaged, useRereadWhen, useResource } from '../shared/hooks'
 import { actorName, MutationResult, Problem, Receipt, ShowMore } from '../shared/replies'
-import { Badge, Empty, ListToolbar, matches, TableScroll } from '../shared/ui'
+import { Badge, ListToolbar, matches, TableScroll } from '../shared/ui'
 import { Confirm } from '../shared/dialogs'
 import { ReadStamp, Remaining, Time } from '../shared/time'
 import { PageHeader } from '../app/header'
@@ -222,11 +222,12 @@ export function Overrides({ admin, can }: ViewProps) {
 function OverrideHistory({ admin, reads }: { admin: ViewProps['admin']; reads: number }) {
   const linkedRule = useFocus('rule')
   const history = usePaged<Override>(admin, '/admin/overrides/history', [reads])
+  // With no rule ever added, the active list's empty state says so alone.
+  if (history.reply?.kind === 'ok' && history.items.length === 0) return null
   return (
     <section className="section card card-pad" aria-labelledby="past-rules-title">
       <h2 id="past-rules-title">Past Rules</h2>
       {history.reply && history.reply.kind !== 'ok' ? <Problem reply={history.reply} /> : null}
-      {history.reply?.kind === 'ok' && history.items.length === 0 ? <Empty title="No temporary rule has been added yet." /> : null}
       {history.items.length > 0 ? (
         <TableScroll label="Past Rules">
           <table>

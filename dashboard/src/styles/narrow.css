@@ -40,6 +40,11 @@
     display: none;
   }
 
+  /* The opened menu drops in under its button. */
+  .sidebar[data-open='true'] :is(.sidebar-nav, .who) {
+    animation: menu-in var(--dur-base) var(--ease-out);
+  }
+
   .sidebar-nav {
     padding-top: 12px;
   }

@@ -64,7 +64,16 @@
     animation: none;
   }
   .notice-timer {
-    animation-duration: var(--toast-ms);
+    animation-name: toast-timer-fade;
+  }
+  details[open] > :not(summary) {
+    animation-name: tip-in;
+  }
+}
+
+@keyframes toast-timer-fade {
+  to {
+    opacity: 0;
   }
 }
 
@@ -92,7 +101,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .shell,
   input[type='checkbox'],
   input[type='checkbox']::before,
   input[type='radio'],
@@ -116,7 +124,14 @@
   border-radius: var(--radius-md);
   background: var(--paper);
   box-shadow: var(--shadow-overlay);
-  animation: tip-in var(--dur-fast) var(--ease-out);
+  animation: menu-in var(--dur-fast) var(--ease-out);
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
 }
 
 .action-menu-item {
@@ -155,8 +170,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .action-menu {
-    animation: none;
+  .action-menu,
+  .sidebar[data-open='true'] :is(.sidebar-nav, .who) {
+    animation-name: tip-in;
   }
 }
 

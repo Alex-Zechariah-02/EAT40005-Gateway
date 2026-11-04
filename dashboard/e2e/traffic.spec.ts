@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
 import { adminURL, build, Demo, raw, siteURL, webRoot } from './env'
-import { dialogButton, enrol, go, record, shot, signIn } from './pages'
+import { dialogButton, enrol, go, nav, record, shot, signIn } from './pages'
+import { expectLayoutOnlyStorage } from './storage'
 import { admin, adminCall, adjust, finish, listAll, open, password, propose, ready, sales, status, token } from './setup'
 
 // Live Traffic, the impact preview, export, Security Log, Access Checker, Limits and alerts.
@@ -113,12 +114,15 @@ test.describe.serial('dashboard', () => {
     await expect(requests).toContainText('POST /admin/candidates')
     await expect(requests).toContainText('If-Match: "r<active version>"')
     await expect(main).not.toContainText('go run')
-    // The sidebar names the gateway by its admin address once widened; the
-    // narrow strip, the default, keeps it for screen readers only.
-    await expect(admin.getByText(new URL(adminURL).host, { exact: true })).toBeAttached()
-    await admin.getByRole('button', { name: 'Expand Sidebar' }).click()
-    await expect(admin.getByText(new URL(adminURL).host, { exact: true })).toBeVisible()
+    // The sidebar starts wide and names the gateway by its admin address;
+    // the narrow strip keeps it for screen readers only.
+    const host = admin.getByText(new URL(adminURL).host, { exact: true })
+    await expect(host).toBeVisible()
     await admin.getByRole('button', { name: 'Collapse Sidebar' }).click()
+    await expect(host).toBeAttached()
+    await expect(host).toBeHidden()
+    await admin.getByRole('button', { name: 'Expand Sidebar' }).click()
+    await expect(host).toBeVisible()
     record('monitor-pages', { allowedRef, refusedRef: refusedEvent.request_id, impactWindow: direct.window, flip, keys: keys.length, exported: policy.id })
   })
 
@@ -188,6 +192,23 @@ test.describe.serial('dashboard', () => {
     await expect(alerts).toContainText('The security log cannot be written')
     await shot(admin, '48-overview-alert')
     await admin.unroute('**/admin/alerts')
+  })
+
+  test('the sidebar starts wide with group names; the icon strip is remembered as the only sidebar value in browser storage', async () => {
+    const sidebar = admin.locator('.sidebar')
+    await admin.evaluate(() => localStorage.removeItem('gateway.sidebar'))
+    await admin.reload()
+    await expect(sidebar.locator('.nav-group-label').first()).toBeVisible()
+    await expect(nav(admin, 'Overview').locator('.nav-label')).toBeVisible()
+    await admin.getByRole('button', { name: 'Collapse Sidebar' }).click()
+    expect(await admin.evaluate(() => localStorage.getItem('gateway.sidebar'))).toBe('rail')
+    await expectLayoutOnlyStorage(admin, [password])
+    await admin.reload()
+    await expect(admin.getByRole('button', { name: 'Expand Sidebar' })).toBeAttached()
+    await expect(sidebar.locator('.nav-group-label').first()).toBeHidden()
+    await admin.getByRole('button', { name: 'Expand Sidebar' }).click()
+    expect(await admin.evaluate(() => localStorage.getItem('gateway.sidebar'))).toBeNull()
+    await expectLayoutOnlyStorage(admin, [password])
   })
 })
 

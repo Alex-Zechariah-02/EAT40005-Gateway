@@ -176,7 +176,6 @@ export function FormView(
                 <button
                   type="button"
                   className="designer-form-group-toggle"
-                  aria-label={`${groupTitles[kind]}, ${props.policy[sections[kind]].length}`}
                   aria-expanded={open.has(kind)}
                   aria-controls={`designer-form-list-${kind}`}
                   onClick={() =>
@@ -189,7 +188,7 @@ export function FormView(
                   }
                 >
                   {open.has(kind) ? <CaretDown size={14} aria-hidden="true" /> : <CaretRight size={14} aria-hidden="true" />}
-                  <span className="designer-form-group-title">{groupTitles[kind]}</span>
+                  <span className="designer-form-group-title">{groupTitles[kind]}</span>{' '}
                   <span className="designer-card-count">{props.policy[sections[kind]].length}</span>
                 </button>
               </h2>
@@ -220,9 +219,9 @@ export function FormView(
                       type="button"
                       className="designer-form-item"
                       aria-current={shown === key ? 'true' : undefined}
-                      aria-label={`${capital(kindNames[kind].one)} ${item.id || '(empty ID)'}`}
                       onClick={() => pick(key)}
                     >
+                      <span className="visually-hidden">{capital(kindNames[kind].one)} </span>
                       {operation ? (
                         <code>
                           <span className="method">{operation.method}</span> {operation.target}
@@ -230,7 +229,7 @@ export function FormView(
                       ) : (
                         <span>{item.id || '(empty ID)'}</span>
                       )}
-                      {operation ? <span className="designer-form-item-id">{operation.id}</span> : null}
+                      {operation ? <span className="designer-form-item-id"> {operation.id}</span> : null}
                     </button>
                   </li>
                 )

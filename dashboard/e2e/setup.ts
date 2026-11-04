@@ -2,7 +2,8 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, type Browser, type BrowserContext, type Locator, type Page } from '@playwright/test'
 import { adminURL, applicationDist, deployment, raw, siteURL, type Demo, type Receipt } from './env'
-import { activate, dialogButton, enrol, expectLayoutOnlyStorage, resolve, revisions, signIn, stage } from './pages'
+import { activate, dialogButton, enrol, resolve, revisions, signIn, stage } from './pages'
+import { expectLayoutOnlyStorage } from './storage'
 
 // The dashboard suite's shared deployment and steps. Each spec file opens one
 // demonstration deployment in beforeAll and drives it as an operator and its

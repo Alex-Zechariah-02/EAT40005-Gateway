@@ -70,7 +70,7 @@ function GlobalSearch() {
         type="search"
         aria-label="Search"
         aria-describedby={hint ? 'search-hint' : undefined}
-        placeholder="Ref, account, endpoint, change 12, rule 3"
+        placeholder="Search by Ref, account or endpoint"
         value={text}
         onChange={(event) => {
           setText(event.target.value)

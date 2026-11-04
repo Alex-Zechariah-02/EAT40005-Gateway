@@ -124,8 +124,9 @@ function Admission({ status }: { status: Status }) {
   )
 }
 
-// guideHidden is the page-memory key that hides the Getting started guide
-// until My account shows it again; nothing is stored in the browser.
+// guideHidden is the page-memory key for the Getting started guide: true
+// hides it, false (set by My account) shows it even when every step is done,
+// and unset shows it until then. Nothing is stored in the browser.
 export const guideHidden = 'overview.guide.hidden'
 
 // GettingStarted is the first-time guide once a policy is active: three
@@ -133,10 +134,12 @@ export const guideHidden = 'overview.guide.hidden'
 // reports. It links to the pages that do each step and changes nothing itself,
 // and to Connect an API for putting another service behind the gateway.
 function GettingStarted({ admin, can, status, open }: ViewProps & { status: Status }) {
-  const [hidden, setHidden] = useRemembered(guideHidden, false)
+  const [hidden, setHidden] = useRemembered<boolean | undefined>(guideHidden, undefined)
   const memory = useContext(ViewMemory)
   const trials = useResource<Page<Activation>>((signal) => admin.get('/admin/activations?limit=1', signal), [status.revision])
-  if (hidden) return null
+  // Until the trials are read, the steps are unknown: nothing is shown, so
+  // a finished guide never flashes before it hides itself.
+  if (hidden || !trials.reply) return null
   // The first trial ever is listed first; only one runs at a time, so once it
   // has ended a trial has been kept or undone.
   const first = trials.reply?.kind === 'ok' ? trials.reply.body.items[0] : undefined
@@ -146,6 +149,7 @@ function GettingStarted({ admin, can, status, open }: ViewProps & { status: Stat
     { done: first?.disposition !== undefined, text: 'A trial has ended: the change was kept, or undone.', go: 'changes' as const, label: 'Changes' },
   ]
   const done = steps.filter((step) => step.done).length
+  if (hidden === undefined && done === steps.length) return null
   return (
     <details className="section card card-pad getting-started">
       <summary>

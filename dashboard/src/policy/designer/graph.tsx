@@ -76,7 +76,7 @@ export function buildGraph(props: CanvasProps, zone: string): { cards: CardSpec[
       key,
       title: role.id || '(empty ID)',
       detail: `${count} ${count === 1 ? 'endpoint' : 'endpoints'}`,
-      label: `Role ${role.id}`,
+      kind: 'Role',
       badges,
       dim: !inTrace(key) || (selectedRole !== undefined && selectedRole !== role.id),
     }
@@ -103,8 +103,8 @@ export function buildGraph(props: CanvasProps, zone: string): { cards: CardSpec[
           <span className="method">{operation.method}</span> {operation.target}
         </code>
       ),
-      detail: operation.id,
-      label: `Endpoint ${operation.id}, ${operation.method} ${operation.target}`,
+      detail: <code>{operation.id}</code>,
+      kind: 'Endpoint',
       badges,
       mark: selectedRole && operation.auth !== 'none' ? (allowed(selectedRole, operation.id) ? 'allowed' : 'not-allowed') : undefined,
       dim: !inTrace(key),
@@ -147,8 +147,8 @@ export function buildGraph(props: CanvasProps, zone: string): { cards: CardSpec[
           return {
             key,
             title: api.id || '(empty ID)',
-            detail: `→ ${api.upstream || 'no service address'}`,
-            label: `API ${api.id}`,
+            detail: api.upstream ? <>→ <code>{api.upstream}</code></> : '→ no service address',
+            kind: 'API',
             badges: badgesFor(key),
             dim: !inTrace(key),
           }
@@ -169,7 +169,7 @@ export function buildGraph(props: CanvasProps, zone: string): { cards: CardSpec[
             key,
             title: upstream.id || '(empty ID)',
             detail: <code>{upstream.dial || 'Address needed'}</code>,
-            label: `Service address ${upstream.id}`,
+            kind: 'Service address',
             badges: badgesFor(key),
             dim: !inTrace(key),
           }

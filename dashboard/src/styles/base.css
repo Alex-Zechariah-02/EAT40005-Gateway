@@ -207,7 +207,7 @@ input.mono {
 }
 
 .events tbody tr:first-child {
-  animation: row-in 600ms var(--ease-out);
+  animation: row-in var(--dur-move) var(--ease-out);
 }
 
 .page-about:not([hidden]) {

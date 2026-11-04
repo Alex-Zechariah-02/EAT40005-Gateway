@@ -48,8 +48,8 @@
 .designer-check-value {
   min-width: 0;
   color: var(--ink);
-  font-family: var(--font-mono);
   font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
 .designer-check.tone-refused .designer-check-value {

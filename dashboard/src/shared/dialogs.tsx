@@ -36,7 +36,7 @@ export function TypedConfirmation(props: { word: string; value: string; onChange
       </label>
       <input
         id={id}
-        className="input mono"
+        className="input"
         value={props.value}
         onChange={(event) => props.onChange(event.target.value)}
         autoComplete="off"

@@ -25,7 +25,7 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
     expect((await demo.receipts('inventory')).length).toBe(before.length)
     await node('role:CUSTOMER').click()
     await selected().getByRole('checkbox', { name: 'GET /inventory/stock/* (inventory.stock.read)', exact: true }).check()
-    await page.getByRole('button', { name: /^Inventory API Endpoints,/ }).click()
+    await page.getByRole('button', { name: /^Inventory API Endpoints \d/ }).click()
     await expect(node('operation:inventory.stock.read')).toHaveClass(/is-allowed/)
     await capture('designer-permit-granted')
     const expected: Policy = structuredClone(baseline)

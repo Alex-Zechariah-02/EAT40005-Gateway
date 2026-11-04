@@ -13,6 +13,14 @@ test.describe.serial('dashboard', () => {
 
   test.afterAll(finish)
 
+  test('with no temporary rule ever added, the page shows one empty state', async () => {
+    await go(admin, 'Temporary Rules')
+    const main = admin.getByRole('main')
+    await expect(main.getByText('No temporary rules are active.')).toBeVisible()
+    await expect(main.locator('.empty, .card-empty')).toHaveCount(1)
+    await expect(main.getByRole('heading', { name: 'Past Rules' })).toHaveCount(0)
+  })
+
   test('Versions states what each role can do under the active policy, with temporary rules beside it', async () => {
     const policy = (await adminCall('GET', '/admin/policy')).body as { id: number; document: { roles: { id: string }[]; permits: { role: string; operation: string }[] } }
     await go(admin, 'Versions')

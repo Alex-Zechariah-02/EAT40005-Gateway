@@ -146,7 +146,8 @@
 }
 .designer-row-detail {
   color: var(--ink-3);
-  font: var(--text-xs)/1.4 var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.4;
   overflow-wrap: anywhere;
 }
 .designer-row-mark {
@@ -223,13 +224,13 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   box-shadow: var(--shadow-overlay);
-  animation: drawer-in var(--dur-move) var(--ease-out);
+  animation: side-panel-in var(--dur-move) var(--ease-out);
 }
 .designer-panel-close {
   float: right;
   margin: 0 0 8px 8px;
 }
-@keyframes drawer-in {
+@keyframes side-panel-in {
   from {
     transform: translateX(12px);
   }

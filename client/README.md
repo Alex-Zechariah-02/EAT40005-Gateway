@@ -23,7 +23,7 @@ The demonstration accounts and their shared password are on the sign-in page. Fe
 
 - **Sign-in:** Fetch Accounts issues a 15-minute token. It lives only in this tab's `sessionStorage`, so it survives a reload, ends when the tab closes, and each tab can be a different person. The app refreshes it silently before it expires. Changing person cancels pending requests and clears what was shown.
 - **Storage:** `sessionStorage` holds the session, the basket and the delivery address for this tab; `localStorage` holds only the chosen appearance (`fetch.theme`). No cookies.
-- **Errors:** every problem is said in plain words with who answered (the gateway or a named service) and the gateway's reference, **Ref**, shown in a short form; its copy button copies the full reference, which support and the Dashboard's request lookup use.
+- **Errors:** every problem is said in plain words with who answered (the gateway or a named service) and the gateway's reference, **Ref**, shown in a short form; its copy button copies the full reference, which support pastes into the Dashboard's header search to open that request (the Security Log finds older ones).
 - **Demo badge:** the header's **Demo** badge is the one place that says the site is a demonstration; it holds the note that every shop, person and order is fictional, and the link to the security lab.
 - **Unknown outcomes:** when a change gets no clear answer, the app says it may or may not have been applied and never sends it again by itself. Checkout sends an `Idempotency-Key`, so an explicit "Send the same order again" is safe.
 - **Roles only choose screens.** The gateway decides what each request may do, and the APIs check ownership.

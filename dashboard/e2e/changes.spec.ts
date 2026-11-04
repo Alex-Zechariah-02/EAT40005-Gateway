@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { activate, dialogButton, go, moreDetail, nav, record, resolve, revisions, shot, stage, trial, trialStep, versionsPart } from './pages'
+import { activate, advanced, dialogButton, go, moreDetail, nav, record, resolve, revisions, shot, stage, trial, trialStep, versionsPart } from './pages'
 import { admin, adminCall, admitted, demo, fact, finish, listAll, open, propose, ready, rowFor, scriptDialogs, status, summary } from './setup'
 
 // Draft changes, trials, keep and undo, earlier versions and refused drafts.
@@ -146,6 +146,8 @@ test.describe.serial('dashboard', () => {
     await shot(admin, '10b-revision')
     await detail.getByRole('button', { name: 'Start a Draft Change from This Version' }).click()
     await expect(admin.getByRole('heading', { level: 1, name: 'Changes' })).toBeVisible()
+    // A handed-over document opens the editor behind Advanced.
+    await expect(admin.getByRole('main').locator('details.advanced')).toHaveAttribute('open', '')
     const editor = admin.getByLabel('Complete Policy Document (JSON)')
     expect(JSON.parse(await editor.inputValue())).toEqual(genesis.document)
     // Nothing was sent: the gateway's state and its candidates are unchanged.
@@ -153,10 +155,11 @@ test.describe.serial('dashboard', () => {
     expect(await listAll('/admin/candidates')).toHaveLength(candidatesBefore)
 
     // Starting again from the confirmed policy asks before replacing the text.
-    await admin.getByRole('button', { name: /^Start from version \d+$/ }).click()
+    await admin.getByRole('button', { name: /^Start from Version \d+$/ }).click()
     await expect(admin.getByRole('dialog')).toContainText('The text in the editor is replaced by version')
     await dialogButton(admin, 'Replace It').click()
     expect(JSON.parse(await editor.inputValue())).toEqual((await adminCall('GET', '/admin/policy')).body.document)
+    await expect(editor).toBeFocused()
 
     // A changed rate limit is listed member by member in the review.
     const changed = JSON.parse(await editor.inputValue())
@@ -207,8 +210,16 @@ test.describe.serial('dashboard', () => {
     const candidates = (await listAll('/admin/candidates')).length
     const results: Record<string, { text: string; code: string | null; field: string | null }> = {}
 
-    // A document that is not JSON is stopped by the page before sending.
+    // The main path is the Policy page or the active version; pasting a
+    // document waits behind Advanced on a fresh visit.
+    await go(admin, 'Overview')
     await go(admin, 'Changes')
+    const stageCard = admin.getByRole('region', { name: 'Save a Draft Change' })
+    await expect(stageCard.getByRole('link', { name: 'Open the Policy Page' })).toHaveAttribute('href', '#/policy')
+    await expect(stageCard.getByRole('button', { name: `Start from Version ${before.confirmed}`, exact: true })).toBeVisible()
+    await expect(admin.getByLabel('Complete Policy Document (JSON)')).toBeHidden()
+    // A document that is not JSON is stopped by the page before sending.
+    await advanced(admin)
     await admin.getByLabel('Complete Policy Document (JSON)').fill('{"schema_version": 4,')
     await expect(admin.getByText('This is not valid JSON.')).toBeVisible()
     await admin.getByRole('button', { name: 'Save Draft and Check' }).click()
@@ -228,6 +239,7 @@ test.describe.serial('dashboard', () => {
       ['version 3 with subjects', JSON.stringify(legacy)],
     ]) {
       await go(admin, 'Changes')
+      await advanced(admin)
       await admin.getByLabel('Complete Policy Document (JSON)').fill(text)
       await admin.getByRole('button', { name: 'Save Draft and Check' }).click()
       const refusal = admin.getByRole('region', { name: 'Save a Draft Change' }).getByRole('alert')

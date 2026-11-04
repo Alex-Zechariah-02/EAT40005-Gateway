@@ -314,6 +314,16 @@ test.describe.serial('Fetch roles on the real services', () => {
     await shot(customer1, 'flows-08-not-yours')
     await customer1.getByRole('link', { name: 'Report this problem' }).click()
     await expect(customer1.getByLabel('Reference from an error message')).toHaveValue(shown)
+    // Support is told where an administrator finds the request: the Dashboard's header search.
+    await customer1.getByLabel('What is it about?').fill('Order not found')
+    await customer1.getByLabel('What happened?').fill('The page said the order could not be found.')
+    await customer1.getByRole('button', { name: 'Send to Fetch support' }).click()
+    await customer1.waitForURL(/\/help\/TKT-\d+$/)
+    const support1 = await person(browser, 'support1@fetch.test')
+    await support1.goto(`${siteURL}/support?ticket=${new URL(customer1.url()).pathname.split('/').pop()}`, { waitUntil: 'networkidle' })
+    const reference = support1.getByRole('heading', { name: 'Request reference' }).locator('..')
+    await expect(reference).toContainText('paste it into the Dashboard’s header search')
+    await expect(reference).not.toContainText(/request lookup/i)
   })
 
   test('operations reads platform reports and every order', async ({ browser }) => {
@@ -451,6 +461,8 @@ test.describe.serial('Fetch roles on the real services', () => {
   test('the security lab: every attack matches the baseline, refusals reach no service, forged identity headers change nothing and a blocked account is named', async ({ browser }) => {
     const customer2 = await person(browser, 'customer2@fetch.test')
     await customer2.goto(siteURL + '/lab', { waitUntil: 'networkidle' })
+    await expect(customer2.getByText(/paste it into the Dashboard’s header search/)).toBeVisible()
+    await expect(customer2.getByRole('main')).not.toContainText(/request lookup/i)
     const before = await demo.receipts('orders')
     for (const send of await customer2.getByRole('button', { name: 'Send', exact: true }).all()) {
       await send.click()

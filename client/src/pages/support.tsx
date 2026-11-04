@@ -102,7 +102,7 @@ function TicketDetail({ id, onChanged }: { id: string; onChanged: () => void }) 
       {t.request_ref && (
         <div className="rounded-3xl bg-surface p-5 shadow-card">
           <h3 className="font-extrabold">Request reference</h3>
-          <p className="mt-1 text-sm text-ink-2">The customer reported this reference from an error. A gateway administrator can look it up in the Dashboard under Request lookup to see exactly which check decided it.</p>
+          <p className="mt-1 text-sm text-ink-2">The customer reported this reference from an error. A gateway administrator can paste it into the Dashboard’s header search to see exactly which check decided it; the Dashboard’s Security Log finds older requests.</p>
           <div className="mt-3"><RefTag value={t.request_ref} /></div>
         </div>
       )}

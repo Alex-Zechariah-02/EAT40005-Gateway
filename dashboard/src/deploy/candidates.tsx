@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type FormEvent } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { newKey } from '../shared/http'
 import type { Candidate, Outcome, Revision } from '../shared/api'
 import { useGatewayState, useMutation, usePaged, useRereadWhen, useResource } from '../shared/hooks'
@@ -98,7 +98,7 @@ export function Candidates({ admin, can, draft, candidate }: ViewProps & { draft
               No draft changes yet.{' '}
               {manage ? (
                 <>
-                  Draft one on the <a href="#/policy">Policy</a> page, or paste a document below.
+                  Draft one on the <a href="#/policy">Policy</a> page, or start from the active version below.
                 </>
               ) : null}
             </p>
@@ -183,6 +183,9 @@ function StageForm(props: {
   const id = useId()
   const [text, setText] = useState(props.draft ?? '')
   const [replacing, setReplacing] = useState(false)
+  // advanced shows the document editor; a draft handed over from another page opens it.
+  const [advanced, setAdvanced] = useState(props.draft !== undefined)
+  const editor = useRef<HTMLTextAreaElement>(null)
   const mutation = useMutation<{ receipt: Outcome; candidate: Candidate }>(props.admin, props.changed)
   const bytes = new TextEncoder().encode(text).length
   let localError: string | undefined
@@ -203,7 +206,10 @@ function StageForm(props: {
   // changed and staged as a whole: a change is always a complete policy.
   function startFromConfirmed() {
     setReplacing(false)
-    if (props.confirmed?.document) setText(JSON.stringify(props.confirmed.document, null, 2))
+    if (!props.confirmed?.document) return
+    setText(JSON.stringify(props.confirmed.document, null, 2))
+    setAdvanced(true)
+    requestAnimationFrame(() => editor.current?.focus())
   }
 
   async function submit(event: FormEvent) {
@@ -216,42 +222,52 @@ function StageForm(props: {
 
   return (
     <section className="section card card-pad" aria-labelledby="stage-title">
-      <div className="card-head">
-        <h2 id="stage-title">Save a Draft Change</h2>
+      <h2 id="stage-title">Save a Draft Change</h2>
+      <p className="hint form-intro">
+        Draft the change on the Policy page, where every view checks it as you edit. To change the document itself, start from the active version.
+      </p>
+      <div className="actions">
+        <a className="btn btn-primary" href="#/policy">
+          Open the Policy Page
+        </a>
         {props.confirmed?.document ? (
-          <button type="button" className="btn btn-small" onClick={() => (text.trim() === '' ? startFromConfirmed() : setReplacing(true))}>
-            Start from version {props.confirmed.id}
+          <button type="button" className="btn" onClick={() => (text.trim() === '' ? startFromConfirmed() : setReplacing(true))}>
+            Start from Version {props.confirmed.id}
           </button>
         ) : null}
       </div>
-      <form onSubmit={submit}>
-        <Field id={`${id}-file`} label="Load a Policy Document from a File (Optional)">
-          <input id={`${id}-file`} className="file" type="file" accept="application/json,.json" onChange={(e) => load(e.target.files?.[0])} />
-        </Field>
-        <Field
-          id={`${id}-text`}
-          label="Complete Policy Document (JSON)"
-          hint={`Checked by the gateway with the same compiler that builds the enforced policy. ${bytes.toLocaleString()} of ${maxCandidateBytes.toLocaleString()} bytes.`}
-          error={localError}
-        >
-          <textarea
+      <details className="advanced" open={advanced} onToggle={(event) => setAdvanced(event.currentTarget.open)}>
+        <summary>Advanced: Paste or Load a Policy Document</summary>
+        <form className="advanced-body" onSubmit={submit}>
+          <Field id={`${id}-file`} label="Load a Policy Document from a File (Optional)">
+            <input id={`${id}-file`} className="file" type="file" accept="application/json,.json" onChange={(e) => load(e.target.files?.[0])} />
+          </Field>
+          <Field
             id={`${id}-text`}
-            className="input code-input"
-            rows={8}
-            spellCheck={false}
-            autoComplete="off"
-            value={text}
-            aria-invalid={localError ? true : undefined}
-            aria-describedby={describedBy(`${id}-text`, 'hint', localError)}
-            onChange={(e) => setText(e.target.value)}
-          />
-        </Field>
-        <div className="actions">
-          <button type="submit" className="btn btn-primary" disabled={mutation.pending || props.ifMatch === undefined || text.trim() === ''}>
-            {mutation.pending ? 'Saving…' : 'Save Draft and Check'}
-          </button>
-        </div>
-      </form>
+            label="Complete Policy Document (JSON)"
+            hint={`Checked by the gateway with the same compiler that builds the enforced policy. ${bytes.toLocaleString()} of ${maxCandidateBytes.toLocaleString()} bytes.`}
+            error={localError}
+          >
+            <textarea
+              ref={editor}
+              id={`${id}-text`}
+              className="input code-input"
+              rows={8}
+              spellCheck={false}
+              autoComplete="off"
+              value={text}
+              aria-invalid={localError ? true : undefined}
+              aria-describedby={describedBy(`${id}-text`, 'hint', localError)}
+              onChange={(e) => setText(e.target.value)}
+            />
+          </Field>
+          <div className="actions">
+            <button type="submit" className="btn btn-primary" disabled={mutation.pending || props.ifMatch === undefined || text.trim() === ''}>
+              {mutation.pending ? 'Saving…' : 'Save Draft and Check'}
+            </button>
+          </div>
+          </form>
+      </details>
       <Confirm
         open={replacing}
         title="Replace the document being edited?"

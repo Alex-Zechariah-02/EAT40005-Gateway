@@ -107,6 +107,10 @@ tbody tr:first-child td {
   border-top: 0;
 }
 
+tbody tr {
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+
 tbody tr:hover {
   background: var(--row-hover);
 }
@@ -170,7 +174,6 @@ pre {
 }
 
 .countdown {
-  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
@@ -202,6 +205,17 @@ details > summary::before {
 
 details[open] > summary::before {
   transform: rotate(90deg);
+}
+
+details[open] > :not(summary) {
+  animation: disclose-in var(--dur-base) var(--ease-out);
+}
+
+@keyframes disclose-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
 }
 
 /* Empty states: what is absent, and the way forward. */

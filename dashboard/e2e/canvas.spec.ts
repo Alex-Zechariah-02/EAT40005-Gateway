@@ -1,7 +1,8 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test } from '@playwright/test'
 import { adminURL } from './env'
-import { activate, dialogButton, expectLayoutOnlyStorage, go, record, resolve, shot, signIn, stage } from './pages'
+import { activate, dialogButton, go, record, resolve, shot, signIn, stage } from './pages'
+import { expectLayoutOnlyStorage } from './storage'
 import { api, baseline, demo, browserMessages, capture, context, currentPolicy, designer, discard, enrolment, expandAll, expectPolicyKept, node, page, password, policyViolations, requests, selected, open, ready, finish } from './designer'
 
 // The Policy Designer canvas: first-policy guidance, groups, accessibility and the content policy.
@@ -42,7 +43,7 @@ test.describe.serial('Policy Designer before the first policy', () => {
     for (const id of await page.locator('.react-flow__node').evaluateAll((nodes) => nodes.map((n) => n.getAttribute('data-id')!)))
       expect(await inView(`.react-flow__node[data-id="${id}"]`), `${id} in the opening view`).toBe(true)
     for (const api of baseline.apis)
-      await expect(page.getByRole('button', { name: new RegExp(`^${api.id[0].toUpperCase()}${api.id.slice(1)} API Endpoints,`) })).toHaveAttribute('aria-expanded', 'false')
+      await expect(page.getByRole('button', { name: new RegExp(`^${api.id[0].toUpperCase()}${api.id.slice(1)} API Endpoints \\d`) })).toHaveAttribute('aria-expanded', 'false')
     const reached = baseline.apis.filter((api) =>
       baseline.operations.some((operation) => operation.api === api.id && baseline.permits.some((permit) => permit.operation === operation.id)),
     )
@@ -88,7 +89,7 @@ test.describe.serial('Policy Designer before the first policy', () => {
     await selected().getByRole('button', { name: 'Close', exact: true }).click()
     await page.getByRole('button', { name: 'Collapse All', exact: true }).click()
     await expect(node('role:CUSTOMER')).toBeHidden()
-    await page.getByRole('button', { name: /^Roles,/ }).click()
+    await page.getByRole('button', { name: /^Roles \d/ }).click()
     await expect(node('role:CUSTOMER')).toBeVisible()
     record('designer-baseline', {
       revision: confirmed.id,
@@ -124,7 +125,7 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
   })
 
   test('groups open and close, full screen fills the window, and the canvas stores nothing in the browser', async () => {
-    const inventory = page.getByRole('button', { name: /^Inventory API Endpoints,/ })
+    const inventory = page.getByRole('button', { name: /^Inventory API Endpoints \d/ })
     await page.getByRole('button', { name: 'Collapse All', exact: true }).click()
     await expect(inventory).toHaveAttribute('aria-expanded', 'false')
     await expect(node('operation:inventory.stock.read')).toBeHidden()
@@ -133,7 +134,7 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
     await expect(node('operation:inventory.stock.read')).toBeVisible()
     // Opening a group brings it into view at a readable size, its heading
     // inside the canvas, even with another group already open.
-    const orders = page.getByRole('button', { name: /^Orders API Endpoints,/ })
+    const orders = page.getByRole('button', { name: /^Orders API Endpoints \d/ })
     await orders.click()
     await expect(orders).toHaveAttribute('aria-expanded', 'true')
     const focused = async () => {
@@ -243,6 +244,25 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
     })
     await page.setViewportSize({ width: 1440, height: 900 })
     record('designer-accessibility', { axeScans: 12, violations: 0, widths: [1440, 768, 375], keyboardStage: true, textResize: '200%' })
+  })
+
+  test('the boxes start just under the canvas toolbar, and only code and IDs use the mono font', async () => {
+    await designer()
+    await page.getByRole('button', { name: 'Fit', exact: true }).click()
+    // The fitted diagram is shorter than the canvas: it starts under the toolbar, not centred far below it.
+    const gap = () =>
+      page.evaluate(() => {
+        const canvas = document.querySelector('.designer-canvas')!.getBoundingClientRect()
+        return Math.round(Math.min(...[...document.querySelectorAll('.designer-card')].map((card) => card.getBoundingClientRect().top)) - canvas.top)
+      })
+    await expect.poll(gap).toBeGreaterThanOrEqual(60)
+    await expect.poll(gap).toBeLessThanOrEqual(72)
+    const family = (target: ReturnType<typeof node>) => target.evaluate((element) => getComputedStyle(element).fontFamily)
+    expect(await family(node('role:CUSTOMER').locator('.designer-row-detail'))).not.toContain('Mono')
+    expect(await family(node('role:CUSTOMER').locator('.designer-row-title'))).not.toContain('Mono')
+    expect(await family(page.locator('.designer-card-count').first())).not.toContain('Mono')
+    expect(await family(node('operation:inventory.stock.read').locator('.designer-row-detail code'))).toContain('Geist Mono')
+    expect(await family(node('operation:inventory.stock.read').locator('.designer-row-title code'))).toContain('Geist Mono')
   })
 
   test('all observed Designer interactions retain the content policy and secrets remain outside storage', async () => {

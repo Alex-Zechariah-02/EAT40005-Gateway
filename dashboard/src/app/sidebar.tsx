@@ -80,22 +80,23 @@ function ThemeSwitch() {
   )
 }
 
-// The sidebar starts as a narrow strip of icons; widening it is remembered
-// in one localStorage key, a display preference that grants nothing.
+// The sidebar starts wide, with labels and group names; narrowing it to the
+// strip of icons is remembered in one localStorage key ("rail"), a display
+// preference that grants nothing. Widening it again removes the key.
 const sidebarKey = 'gateway.sidebar'
 
 export function readSidebar(): boolean {
   try {
-    return localStorage.getItem(sidebarKey) === 'open'
+    return localStorage.getItem(sidebarKey) !== 'rail'
   } catch {
-    return false
+    return true
   }
 }
 
 function saveSidebar(open: boolean) {
   try {
-    if (open) localStorage.setItem(sidebarKey, 'open')
-    else localStorage.removeItem(sidebarKey)
+    if (open) localStorage.removeItem(sidebarKey)
+    else localStorage.setItem(sidebarKey, 'rail')
   } catch {
     // Storage refused: the choice lasts for this page only.
   }

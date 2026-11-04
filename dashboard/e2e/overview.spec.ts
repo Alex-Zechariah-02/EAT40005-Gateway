@@ -30,9 +30,19 @@ test.describe.serial('dashboard', () => {
     await expect(timeline.getByRole('listitem').first()).toContainText('Kept')
 
     // The Getting started guide ticks each step from what the gateway reports:
-    // the baseline trial was kept, so all three are done. Hidden, it stays
-    // hidden on the Overview until My account brings it back.
+    // the baseline trial was kept, so all three are done and it hides itself.
+    // My account brings it back; hidden again, it stays hidden on the Overview.
     const guide = main.locator('details.getting-started')
+    await go(admin, 'Changes')
+    const trials = admin.waitForResponse((reply) => reply.url().includes('/admin/activations?limit=1') && reply.ok())
+    await go(admin, 'Overview')
+    await trials
+    // Two frames let the page draw what that reply decided.
+    await admin.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))))
+    await expect(timeline.getByRole('listitem').first()).toBeVisible()
+    await expect(guide).toHaveCount(0)
+    await go(admin, 'My Account')
+    await main.getByRole('button', { name: 'Show the Getting Started Guide' }).click()
     await expect(guide.locator('summary')).toHaveText('Getting Started · 3 of 3 done')
     await guide.locator('summary').click()
     await expect(guide.getByRole('listitem')).toHaveCount(3)

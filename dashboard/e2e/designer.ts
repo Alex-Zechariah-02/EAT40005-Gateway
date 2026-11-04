@@ -1,7 +1,8 @@
 import { expect, type Browser, type BrowserContext, type Page } from '@playwright/test'
 import type { Candidate, Policy, Revision } from '../src/shared/api'
 import { adminURL, deployment, type Demo } from './env'
-import { activate, dialogButton, enrol, expectLayoutOnlyStorage, go, resolve, shot, signIn, stage } from './pages'
+import { activate, dialogButton, enrol, go, resolve, shot, signIn, stage } from './pages'
+import { expectLayoutOnlyStorage } from './storage'
 import { establish } from './setup'
 
 // The Policy Designer suite's shared deployment and steps: each spec file
@@ -96,7 +97,11 @@ export async function formItem(name: string) {
   const group = ['Service address', 'Endpoint', 'Role', 'API'].find((kind) => name.startsWith(kind + ' '))!
   const toggle = list.getByRole('button', { name: new RegExp(`^${group === 'Service address' ? 'Service Addresses' : group + 's'}\\b`) })
   if ((await toggle.getAttribute('aria-expanded')) === 'false') await toggle.click()
-  await list.getByRole('button', { name, exact: true }).click()
+  // An endpoint's name is its kind, its route and its ID: "Endpoint GET /x x.id".
+  const endpoint = name.match(/^Endpoint (\S+)$/)
+  const id = endpoint?.[1].replace(/\./g, '\\.')
+  const item = id ? list.getByRole('button', { name: new RegExp(`^Endpoint [A-Z]+ /\\S* ${id}$`) }) : list.getByRole('button', { name, exact: true })
+  await item.click()
 }
 
 // node is a box's row on the canvas; an endpoint's row shows once its API's

@@ -121,7 +121,7 @@ export function ObjectForm({ selection, inPanel = false, ...props }: FormProps &
                   {index + 1}
                 </span>
                 <span className="designer-check-name">{check.name}</span>{' '}
-                <span className="designer-check-value">{check.value}</span>
+                <span className="designer-check-value">{check.code ? <code>{check.value}</code> : check.value}</span>
               </button>
             </li>
           ))}

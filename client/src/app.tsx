@@ -24,7 +24,7 @@ const MerchantPage = lazy(() => import('./pages/merchant').then((m) => ({ defaul
 const RiderPage = lazy(() => import('./pages/rider').then((m) => ({ default: m.RiderPage })))
 const SupportPage = lazy(() => import('./pages/support').then((m) => ({ default: m.SupportPage })))
 const OpsPage = lazy(() => import('./pages/ops').then((m) => ({ default: m.OpsPage })))
-const LabPage = lazy(() => import('./pages/lab').then((m) => ({ default: m.LabPage })))
+const LabPage = lazy(() => import('./pages/lab/lab').then((m) => ({ default: m.LabPage })))
 const AccountPage = lazy(() => import('./pages/account').then((m) => ({ default: m.AccountPage })))
 
 export function App() {

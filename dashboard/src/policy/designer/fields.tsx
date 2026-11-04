@@ -268,11 +268,12 @@ export function OperationFields(props: {
   )
 }
 
-// checks lists what the gateway checks on an endpoint, in its fixed order.
-export function checks(policy: Policy, operation: Operation): { name: string; value: string; tone: 'neutral' | 'refused' | 'pending' | null }[] {
+// checks lists what the gateway checks on an endpoint, in its fixed order;
+// code marks a value that is a route or IDs.
+export function checks(policy: Policy, operation: Operation): { name: string; value: string; tone: 'neutral' | 'refused' | 'pending' | null; code?: boolean }[] {
   const api = policy.apis.find((item) => item.id === operation.api)
   return [
-    { name: 'Route', value: `${operation.method} ${operation.target}`, tone: 'neutral' },
+    { name: 'Route', value: `${operation.method} ${operation.target}`, tone: 'neutral', code: true },
     { name: 'Access', value: operation.access, tone: operation.access === 'deny' ? 'refused' : 'neutral' },
     { name: 'Sign-In', value: operation.auth === 'none' ? 'public' : 'required', tone: operation.auth === 'none' ? 'pending' : 'neutral' },
     {
@@ -291,6 +292,6 @@ export function checks(policy: Policy, operation: Operation): { name: string; va
       tone: operation.body || operation.headers ? 'neutral' : null,
     },
     { name: 'Record', value: 'always', tone: 'neutral' },
-    { name: 'Forward', value: `${operation.api} → ${api?.upstream ?? 'missing service address'}`, tone: 'neutral' },
+    { name: 'Forward', value: `${operation.api} → ${api?.upstream ?? 'missing service address'}`, tone: 'neutral', code: api?.upstream !== undefined },
   ]
 }

@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs'
 import { resolve as resolvePath } from 'node:path'
 import { expect, test } from '@playwright/test'
 import { adminURL, applicationDist, gatewayIdentity, raw, siteURL } from './env'
-import { dialogButton, enrol, expectLayoutOnlyStorage, go, moreDetail, nav, record, resolve, revisions, shot, signIn, stage, trial, trialStep } from './pages'
+import { dialogButton, enrol, go, moreDetail, nav, record, resolve, revisions, shot, signIn, stage, trial, trialStep } from './pages'
+import { expectLayoutOnlyStorage } from './storage'
 import { admin, adminCall, adminContext, demo, enrolled, enrolmentSecret, finish, fontsInUse, handedOut, open, password, status, strip, uiPolicy } from './setup'
 
 // Cold start, sign-in and the first policy on a new installation.

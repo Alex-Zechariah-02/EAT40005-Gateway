@@ -12,7 +12,8 @@ export interface Row {
   key: BoxKey
   title: ReactNode
   detail?: ReactNode
-  label: string
+  // kind starts the row's accessible name, which is otherwise its visible text.
+  kind: string
   badges: { tone: 'pending' | 'refused' | 'neutral' | 'ok'; text: string }[]
   // mark is set while a role is selected: whether that role may call this endpoint.
   mark?: 'allowed' | 'not-allowed'
@@ -52,18 +53,17 @@ const Card = memo(function Card({ id, data }: NodeProps<CardNode>) {
           <button
             type="button"
             className="designer-card-toggle nopan"
-            aria-label={`${data.title}, ${data.count}`}
             aria-expanded={data.open}
             aria-controls={listId}
             onClick={data.onToggle}
           >
             {data.open ? <CaretDown size={14} aria-hidden="true" /> : <CaretRight size={14} aria-hidden="true" />}
-            <span className="designer-card-title">{data.title}</span>
+            <span className="designer-card-title">{data.title}</span>{' '}
             <span className="designer-card-count">{data.count}</span>
           </button>
         ) : (
           <span className="designer-card-heading">
-            <span className="designer-card-title">{data.title}</span>
+            <span className="designer-card-title">{data.title}</span>{' '}
             <span className="designer-card-count">{data.count}</span>
           </span>
         )}
@@ -81,15 +81,17 @@ const Card = memo(function Card({ id, data }: NodeProps<CardNode>) {
                 type="button"
                 className={`designer-row nopan${row.dim ? ' is-dim' : ''}${row.mark ? ` is-${row.mark}` : ''}`}
                 aria-current={data.selection === row.key ? 'true' : undefined}
-                aria-label={row.label}
                 data-box={row.key}
                 onClick={() => data.onSelect(row.key)}
               >
                 <span className="designer-row-main">
-                  <span className="designer-row-title">{row.title}</span>
+                  <span className="designer-row-title">
+                    <span className="visually-hidden">{row.kind} </span>
+                    {row.title}
+                  </span>{' '}
                   {row.detail ? <span className="designer-row-detail">{row.detail}</span> : null}
-                </span>
-                {row.mark ? <span className="designer-row-mark">{row.mark === 'allowed' ? 'Allowed' : 'No Permission'}</span> : null}
+                </span>{' '}
+                {row.mark ? <span className="designer-row-mark">{row.mark === 'allowed' ? 'Allowed' : 'No Permission'}</span> : null}{' '}
                 {row.badges.map((badge) => (
                   <Badge key={badge.text} tone={badge.tone}>
                     {badge.text}

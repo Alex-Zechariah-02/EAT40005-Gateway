@@ -77,8 +77,12 @@ test.describe.serial('Connect an API: entry points, keyboard and accessibility',
     await flow().getByRole('button', { name: 'Close', exact: true }).click()
     await expect(flow()).toHaveCount(0)
 
+    // Every step is done here, so the guide has hidden itself; My Account shows it again.
     await go(page, 'Overview')
     const guide = page.locator('details.getting-started')
+    await expect(page.getByRole('heading', { level: 1, name: 'Overview' })).toBeVisible()
+    await go(page, 'My Account')
+    await page.getByRole('main').getByRole('button', { name: 'Show the Getting Started Guide' }).click()
     await guide.locator('summary').click()
     await guide.getByRole('button', { name: 'Connect an API', exact: true }).click()
     await expect(page).toHaveURL(/#\/policy$/)

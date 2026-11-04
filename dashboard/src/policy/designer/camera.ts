@@ -1,10 +1,13 @@
 import { useEffect, useState, type RefObject } from 'react'
-import type { FitViewOptions, ReactFlowInstance } from '@xyflow/react'
+import { getViewportForBounds, type FitViewOptions, type ReactFlowInstance } from '@xyflow/react'
 
 // The canvas view: its height in the window, fitting the whole diagram, or one card at a readable size.
 
-// The top keeps room for the canvas toolbar, so no card sits under it.
-const fit: { maxZoom: number; padding: FitViewOptions['padding'] } = { maxZoom: 1, padding: { top: '64px', x: '6%', bottom: '6%' } }
+// The top keeps room for the canvas toolbar, so no card sits under it; the
+// sides keep 4% each, narrow enough for readable cards beside the open sidebar.
+const toolbar = 64
+const side = 0.04
+const padding: NonNullable<FitViewOptions['padding']> = { top: `${toolbar}px`, x: `${side * 100}%`, bottom: '6%' }
 // A card brought into focus is never shown smaller than this, so its text
 // stays readable.
 const readable = 0.85
@@ -15,18 +18,22 @@ export function motion(ms: number): number {
 }
 export const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2)
 // fitTo shows the whole diagram in the window, clear of the toolbar and of
-// the side form when it is open.
+// the side form when it is open, at most at full size. A diagram shorter
+// than the window starts just under the toolbar, not centred far below it.
 export function fitTo(flow: ReactFlowInstance, canvas: HTMLDivElement | null, duration: number) {
-  const panel = canvas?.closest('.designer-workspace')?.querySelector('.designer-side-panel')
-  const covered = canvas && panel && panel.getBoundingClientRect().top < canvas.getBoundingClientRect().bottom - 1
-  const padding: FitViewOptions['padding'] = covered ? { top: '64px', bottom: '24px', left: '24px', right: `${panel.getBoundingClientRect().width + 36}px` } : fit.padding
-  void flow.fitView({ ...fit, padding, duration, ease })
+  if (!canvas) return
+  const panel = canvas.closest('.designer-workspace')?.querySelector('.designer-side-panel')
+  const covered = panel && panel.getBoundingClientRect().top < canvas.getBoundingClientRect().bottom - 1
+  const room: NonNullable<FitViewOptions['padding']> = covered ? { top: `${toolbar}px`, bottom: '24px', left: '24px', right: `${panel.getBoundingClientRect().width + 36}px` } : padding
+  const bounds = flow.getNodesBounds(flow.getNodes())
+  const view = getViewportForBounds(bounds, canvas.clientWidth, canvas.clientHeight, 0.1, 1, room)
+  void flow.setViewport({ ...view, y: toolbar - bounds.y * view.zoom }, { duration, ease })
 }
 // allReadable says whether fitting every card keeps them at a readable size.
 export function allReadable(flow: ReactFlowInstance, canvas: HTMLDivElement | null): boolean {
   if (!canvas) return true
   const bounds = flow.getNodesBounds(flow.getNodes())
-  return Math.min((canvas.clientWidth * 0.88) / bounds.width, (canvas.clientHeight - 64 - 24) / bounds.height) >= readable
+  return Math.min((canvas.clientWidth * (1 - 2 * side)) / bounds.width, (canvas.clientHeight - toolbar - 24) / bounds.height) >= readable
 }
 // focusOn brings one card or row (in the diagram's own coordinates) into
 // the uncovered part of the canvas at a readable size: centred when it
@@ -38,7 +45,7 @@ export function focusOn(flow: ReactFlowInstance, canvas: HTMLDivElement | null, 
   const covered = panel && panel.getBoundingClientRect().top < canvasBox.bottom - 1
   const left = 24
   const right = covered ? panel.getBoundingClientRect().width + 36 : 24
-  const top = 64
+  const top = toolbar
   const bottom = 24
   const width = canvasBox.width - left - right
   const height = canvasBox.height - top - bottom

@@ -98,10 +98,10 @@
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   /* Movement on screen eases in and out, so a box never jumps into place. */
   --ease-in-out: cubic-bezier(0.45, 0, 0.25, 1);
+  /* Every UI change ends within 300 ms; only dialogs and drawers may take longer. */
   --dur-fast: 180ms;
   --dur-base: 240ms;
-  --dur-move: 320ms;
-  --dur-layout: 420ms;
+  --dur-move: 280ms;
   color-scheme: light;
 }
 

@@ -1,6 +1,6 @@
 /* The sidebar: wide with labels or a strip of icons, and its navigation. */
 
-/* Sidebar: wide with labels, or a strip of icons (the default), chosen with
+/* Sidebar: wide with labels (the default), or a strip of icons, chosen with
    the button above the account and remembered by the browser. */
 .sidebar-toggle {
   display: flex;
@@ -24,8 +24,10 @@
 }
 
 @media (min-width: 961px) {
-  .shell {
-    transition: grid-template-columns var(--dur-base) var(--ease-out);
+  /* The width changes at once, since easing the grid would lay the whole
+     page out on every frame; the labels fade in after a widening. */
+  .is-toggled:not(.is-rail) :is(.brand-text, .nav-label, .who-text, .nav-group-label, .theme-switch) {
+    animation: tip-in var(--dur-base) var(--ease-out);
   }
 
   .shell.is-rail {

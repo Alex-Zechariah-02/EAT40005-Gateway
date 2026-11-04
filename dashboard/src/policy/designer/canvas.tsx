@@ -179,11 +179,17 @@ function CanvasGraph(props: CanvasProps) {
     return () => clearTimeout(timer)
   }, [props.panelOpen, props.selection, props.trace?.operation])
 
-  function setAll(state: 'open' | 'closed') {
-    // The fit the person asked for wins over a selection still waiting to be
-    // brought into view.
+  // cancelMoves drops a selection still waiting to be brought into view and a
+  // group still settling, so the fit the person asked for wins over both.
+  function cancelMoves() {
     clearTimeout(pendingFocus.current)
     pendingFocus.current = undefined
+    clearTimeout(settle.current)
+    refit.current = null
+  }
+
+  function setAll(state: 'open' | 'closed') {
+    cancelMoves()
     refit.current = { opened: false }
     setOpen(state === 'open' ? new Set(graph.cards.filter((card) => card.data.collapsible).map((card) => card.id)) : new Set())
   }
@@ -245,7 +251,14 @@ function CanvasGraph(props: CanvasProps) {
             <button className="btn btn-small" type="button" onClick={() => setAll('closed')}>
               Collapse All
             </button>
-            <button className="btn btn-small" type="button" onClick={() => fitTo(flow, area.current, 200)}>
+            <button
+              className="btn btn-small"
+              type="button"
+              onClick={() => {
+                cancelMoves()
+                fitTo(flow, area.current, 200)
+              }}
+            >
               Fit
             </button>
             <button className="btn btn-small" type="button" aria-pressed={props.expanded} onClick={props.onExpand}>

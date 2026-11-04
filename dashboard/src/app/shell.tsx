@@ -87,6 +87,8 @@ export function Shell(props: {
   const [designerDraft, setDesignerDraft] = useState<DesignerDraft | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [wide, setWide] = useState(readSidebar)
+  // toggled lets the sidebar's labels fade in after a widening, never on load.
+  const [toggled, setToggled] = useState(false)
   // pendingDraft carries a draft from open() to the view change it causes;
   // any other change of view, such as the back button, opens no draft.
   const pendingDraft = useRef<Handoff | undefined>(undefined)
@@ -179,7 +181,7 @@ export function Shell(props: {
       <a className="visually-hidden" href="#content">
         Skip to Content
       </a>
-      <div className={wide ? 'shell' : 'shell is-rail'}>
+      <div className={`shell${wide ? '' : ' is-rail'}${toggled ? ' is-toggled' : ''}`}>
         <TooltipLayer />
         {/* On a narrow screen the views and the account move behind the menu
             button. */}
@@ -191,7 +193,10 @@ export function Shell(props: {
           menuOpen={menuOpen}
           setMenuOpen={setMenuOpen}
           wide={wide}
-          setWide={setWide}
+          setWide={(next) => {
+            setToggled(true)
+            setWide(next)
+          }}
           signOut={signOut}
         />
         <main id="content" className="page" tabIndex={-1}>

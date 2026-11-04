@@ -1,20 +1,5 @@
 /* Toggles: the segmented control and the disclosure chevron, with their reduced motion. */
 
-@media (prefers-reduced-motion: reduce) {
-  dialog[open] {
-    animation: none;
-  }
-  .btn,
-  .input,
-  .segmented button,
-  details > summary::before {
-    transition: none;
-  }
-  .btn:active {
-    transform: none;
-  }
-}
-
 /* Segmented control: one choice of a few, as pressed buttons. */
 .segmented {
   display: inline-flex;
@@ -77,4 +62,22 @@ details > summary::before {
 
 details[open] > summary::before {
   transform: rotate(45deg);
+}
+
+/* Reduced motion: after the rules it overrides, which have the same
+   specificity, so movement stops; colour changes elsewhere may stay. */
+@media (prefers-reduced-motion: reduce) {
+  dialog[open] {
+    animation: none;
+  }
+  .btn,
+  .input,
+  .segmented button,
+  details > summary::before {
+    transition: none;
+  }
+  .btn:active,
+  .segmented button:active {
+    transform: none;
+  }
 }

@@ -66,6 +66,7 @@ test.describe.serial('dashboard', () => {
     // plainly that a short Ref is not enough.
     const search = admin.getByRole('searchbox', { name: 'Search', exact: true })
     await go(admin, 'Overview')
+    await expect(search).toHaveAttribute('placeholder', 'Search by Ref, account or endpoint')
     await search.fill('ops-01')
     await search.press('Enter')
     await expect(admin.getByRole('heading', { level: 1, name: 'Security Log' })).toBeVisible()

@@ -1,7 +1,8 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test'
 import { adminURL, build, Demo, webRoot } from './env'
-import { dialogButton, enrol, expectLayoutOnlyStorage, go, signIn, stage } from './pages'
+import { dialogButton, enrol, go, signIn, stage } from './pages'
+import { expectLayoutOnlyStorage } from './storage'
 
 // Every time on screen uses one format in the zone chosen on My Account:
 // 24-hour, day first, with the zone, and the same moment in UTC on hover or

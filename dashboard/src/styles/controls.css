@@ -171,16 +171,15 @@
   background: var(--accent-active);
 }
 
-/* Every control eases its colour and outline changes, so hover, focus and
-   press read as one calm response instead of a flash. Zero specificity:
-   a component's own transition always wins. */
+/* Every control eases its colour changes, so hover and press read as one
+   calm response instead of a flash; the focus ring appears at once. Zero
+   specificity: a component's own transition always wins. */
 :where(button, a, input, select, textarea, summary, label, [role='tab'], [tabindex]) {
   transition:
     color var(--dur-fast) var(--ease-out),
     background-color var(--dur-fast) var(--ease-out),
     border-color var(--dur-fast) var(--ease-out),
     box-shadow var(--dur-fast) var(--ease-out),
-    outline-color var(--dur-fast) var(--ease-out),
     text-decoration-color var(--dur-fast) var(--ease-out),
     opacity var(--dur-fast) var(--ease-out);
 }
