@@ -1,9 +1,9 @@
+// Data-plane handler and its request pipeline.
+
 package gateway
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"net/http"
 	"net/netip"
@@ -60,36 +60,6 @@ func newHandler(c *Controller, maxBodyBytes int64, forward forwardFunc) (*Handle
 type binding struct{ dial string }
 
 type bindingKey struct{}
-
-// request tracks one request through the stages for its security event.
-type request struct {
-	event        Event
-	w            http.ResponseWriter
-	audit        *auditLog
-	observations *observations
-	started      time.Time
-	// bodyPending is true while a declared request body has not been
-	// consumed by validation.
-	bodyPending bool
-}
-
-func (q *request) pass(stage int) { q.event.Stages[stage] = stagePass }
-
-func (q *request) reject(stage int, status int, code string) {
-	q.event.Kind, q.event.Stage, q.event.Decision = "request.rejected", stageNames[stage], "reject"
-	q.event.Stages[stage] = stageReject
-	q.event.Status, q.event.Error = status, code
-	q.event.DurationMS = float64(time.Since(q.started)) / float64(time.Millisecond)
-	q.audit.Record(q.event)
-	q.observations.record(q.event)
-	if q.bodyPending {
-		// Closing the connection stops net/http from reading the unread body
-		// before it writes the rejection, which a client that declares a body
-		// and never sends it could otherwise hold open.
-		q.w.Header().Set("Connection", "close")
-	}
-	writeError(q.w, status, code, q.event.RequestID)
-}
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	q := &request{
@@ -308,128 +278,3 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	q.forwarded(recorder.status, "forwarded", "")
 }
-
-// forwarded records the outcome of a request that was handed to the
-// forwarder.
-func (q *request) forwarded(status int, decision, code string) {
-	q.event.Kind, q.event.Stage = "request.forwarded", stageNames[stageForward]
-	q.event.Stages[stageForward] = stagePass
-	if decision != "forwarded" {
-		q.event.Stages[stageForward] = stageFail
-	}
-	q.event.Decision, q.event.Status, q.event.Error = decision, status, code
-	q.event.DurationMS = float64(time.Since(q.started)) / float64(time.Millisecond)
-	q.audit.Record(q.event)
-	q.observations.record(q.event)
-}
-
-// isGatewayHeader reports whether only the gateway may set the named header.
-func isGatewayHeader(name string) bool {
-	name = http.CanonicalHeaderKey(name)
-	return name == "X-Request-Id" || strings.HasPrefix(name, "X-Gateway-")
-}
-
-// connectionNames returns, in canonical form, the field names that the
-// Connection fields of header nominate; the reverse proxy removes each of
-// them before forwarding (RFC 9110, section 7.6.1). It reads every field line
-// and every comma-separated element, ignoring empty ones. Trimming white space
-// here covers at least what the proxy trims, so no name the proxy removes is
-// missed. An element that is not a field name, such as a quoted one, comes
-// back unchanged and matches no field, as it removes none at the proxy.
-func connectionNames(header http.Header) []string {
-	var names []string
-	for _, value := range header.Values("Connection") {
-		for element := range strings.SplitSeq(value, ",") {
-			if name := strings.TrimSpace(element); name != "" {
-				names = append(names, http.CanonicalHeaderKey(name))
-			}
-		}
-	}
-	return names
-}
-
-// stripUntrustedHeaders removes headers that only the gateway may set, and the
-// client credential, which upstreams do not receive. It also removes every
-// header whose name holds '_' or '.': an upstream that maps header names to
-// CGI-style variables folds those characters and '-' alike, so such a name
-// could stand in for another header, a gateway header included. No header
-// schema may declare such a name.
-func stripUntrustedHeaders(header http.Header) {
-	for name := range header {
-		if isGatewayHeader(name) || strings.ContainsAny(name, "_.") {
-			delete(header, name)
-		}
-	}
-	header.Del("Authorization")
-}
-
-// forwardFailure maps a forwarding failure to the gateway's answer: 504 when
-// the upstream timed out, 503 when no upstream could be used, and 502
-// otherwise.
-func forwardFailure(err error) (int, string) {
-	switch {
-	case errors.Is(err, errUpstreamTimeout):
-		return http.StatusGatewayTimeout, "upstream_timeout"
-	case errors.Is(err, errNoUpstream):
-		return http.StatusServiceUnavailable, "gateway_unavailable"
-	}
-	return http.StatusBadGateway, "upstream_unavailable"
-}
-
-// failureReason states what is known about the delivery of a request whose
-// forwarding failed before any response: "not_sent" when it never reached
-// the upstream, "outcome_unknown" when the upstream may have acted on it, and
-// "client_cancelled" when the client went away after it was handed to an
-// upstream connection, which leaves the outcome unknown too. A forwarder that
-// cannot tell gives no reason.
-func failureReason(err error) string {
-	switch {
-	case errors.Is(err, errNotSent):
-		return "not_sent"
-	case errors.Is(err, errClientGone):
-		return "client_cancelled"
-	case errors.Is(err, errMaybeSent):
-		return "outcome_unknown"
-	}
-	return ""
-}
-
-func writeError(w http.ResponseWriter, status int, code, requestID string) {
-	writeJSON(w, status, map[string]string{"error": code, "request_id": requestID})
-}
-
-func newRequestID() string {
-	id := make([]byte, 16)
-	rand.Read(id)
-	return hex.EncodeToString(id)
-}
-
-// statusRecorder notes the final status the forwarder wrote, while passing
-// everything through unchanged.
-type statusRecorder struct {
-	http.ResponseWriter
-	status int
-	wrote  bool
-}
-
-func (s *statusRecorder) WriteHeader(status int) {
-	// Informational (1xx) responses precede the final status.
-	if !s.wrote && status >= 200 {
-		s.status, s.wrote = status, true
-	}
-	s.ResponseWriter.WriteHeader(status)
-}
-
-func (s *statusRecorder) Write(data []byte) (int, error) {
-	if !s.wrote {
-		s.status, s.wrote = http.StatusOK, true
-	}
-	return s.ResponseWriter.Write(data)
-}
-
-// Unwrap lets http.ResponseController reach the underlying writer, so a
-// forwarder can flush a streamed response through the recorder.
-func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
-
-// Interface guard
-var _ http.Handler = (*Handler)(nil)
