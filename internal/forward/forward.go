@@ -1,4 +1,4 @@
-package gateway
+package forward
 
 import (
 	"context"
@@ -19,16 +19,16 @@ import (
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 )
 
-// upstreamTimeouts bounds the phases of one exchange with an upstream.
-type upstreamTimeouts struct {
-	// dial bounds establishing the connection.
-	dial time.Duration
-	// responseHeader bounds the wait for the response header once the
+// UpstreamTimeouts bounds the phases of one exchange with an upstream.
+type UpstreamTimeouts struct {
+	// Dial bounds establishing the connection.
+	Dial time.Duration
+	// ResponseHeader bounds the wait for the response header once the
 	// request has been written.
-	responseHeader time.Duration
-	// readIdle bounds each wait for more of the response body: a body that
+	ResponseHeader time.Duration
+	// ReadIdle bounds each wait for more of the response body: a body that
 	// sends nothing for this long ends the exchange.
-	readIdle time.Duration
+	ReadIdle time.Duration
 }
 
 // Delivery of a request whose exchange failed before any response, recorded
@@ -42,7 +42,7 @@ var (
 )
 
 var (
-	errResponseStalled  = errors.New("upstream response stalled")
+	ErrResponseStalled  = errors.New("upstream response stalled")
 	errProtocolSwitched = errors.New("upstream switched protocols")
 )
 
@@ -54,12 +54,12 @@ type upstreamProxy struct {
 	errorLog  *log.Logger
 }
 
-// newUpstreamProxy returns the proxy whose exchanges are bounded by timeouts.
+// NewUpstreamProxy returns the proxy whose exchanges are bounded by timeouts.
 // Every timeout must be positive: a zero would leave its phase unbounded.
 // The reverse proxy's own warnings, such as a failed response body read, go to
 // logger.
-func newUpstreamProxy(timeouts upstreamTimeouts, logger *slog.Logger) (*upstreamProxy, error) {
-	if timeouts.dial <= 0 || timeouts.responseHeader <= 0 || timeouts.readIdle <= 0 {
+func NewUpstreamProxy(timeouts UpstreamTimeouts, logger *slog.Logger) (*upstreamProxy, error) {
+	if timeouts.Dial <= 0 || timeouts.ResponseHeader <= 0 || timeouts.ReadIdle <= 0 {
 		return nil, errors.New("every upstream timeout must be positive")
 	}
 	if logger == nil {
@@ -71,8 +71,8 @@ func newUpstreamProxy(timeouts upstreamTimeouts, logger *slog.Logger) (*upstream
 		transport: &http.Transport{
 			// No Proxy function: the bound address is dialled directly, never
 			// through a proxy named by the environment.
-			DialContext:           (&net.Dialer{Timeout: timeouts.dial}).DialContext,
-			ResponseHeaderTimeout: timeouts.responseHeader,
+			DialContext:           (&net.Dialer{Timeout: timeouts.Dial}).DialContext,
+			ResponseHeaderTimeout: timeouts.ResponseHeader,
 			// Every request is sent once, on a new connection. A transport that
 			// keeps idle connections resends a request it deems replayable (GET,
 			// HEAD, OPTIONS, or any request with an Idempotency-Key and no body)
@@ -84,7 +84,7 @@ func newUpstreamProxy(timeouts upstreamTimeouts, logger *slog.Logger) (*upstream
 			DisableCompression: true,
 			Protocols:          protocols,
 		},
-		readIdle: timeouts.readIdle,
+		readIdle: timeouts.ReadIdle,
 		errorLog: slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
 	}, nil
 }
@@ -96,10 +96,10 @@ func newUpstreamProxy(timeouts upstreamTimeouts, logger *slog.Logger) (*upstream
 // answer; a response that fails after it started is aborted by the reverse
 // proxy with http.ErrAbortHandler, which it panics with only under a net/http
 // server, so the handler must be served by one.
-func (p *upstreamProxy) forward(w http.ResponseWriter, r *http.Request) error {
-	b, bound := r.Context().Value(bindingKey{}).(binding)
-	if !bound || !compile.IsLoopbackDial(b.dial) {
-		return fmt.Errorf("%w: %w", errNoUpstream, errNotSent)
+func (p *upstreamProxy) Forward(w http.ResponseWriter, r *http.Request) error {
+	dial, bound := BoundDial(r.Context())
+	if !bound || !compile.IsLoopbackDial(dial) {
+		return fmt.Errorf("%w: %w", ErrNoUpstream, errNotSent)
 	}
 
 	// The exchange ends when the client goes away, through its request's
@@ -113,7 +113,7 @@ func (p *upstreamProxy) forward(w http.ResponseWriter, r *http.Request) error {
 
 	var failure error
 	proxy := &httputil.ReverseProxy{
-		Rewrite:   func(pr *httputil.ProxyRequest) { rewriteToUpstream(pr, b.dial) },
+		Rewrite:   func(pr *httputil.ProxyRequest) { rewriteToUpstream(pr, dial) },
 		Transport: p.transport,
 		ErrorLog:  p.errorLog,
 		ModifyResponse: func(res *http.Response) error {
@@ -126,7 +126,7 @@ func (p *upstreamProxy) forward(w http.ResponseWriter, r *http.Request) error {
 			// Only the gateway assigns the response's correlation reference.
 			res.Header.Del("X-Request-Id")
 			res.Header.Add("Via", via(res.ProtoMajor, res.ProtoMinor))
-			res.Body = newIdleBody(res.Body, p.readIdle, func() { cancel(errResponseStalled) })
+			res.Body = newIdleBody(res.Body, p.readIdle, func() { cancel(ErrResponseStalled) })
 			return nil
 		},
 		// The enforcement handler answers the client; only the cause is kept.
@@ -136,13 +136,13 @@ func (p *upstreamProxy) forward(w http.ResponseWriter, r *http.Request) error {
 	if failure == nil {
 		return nil
 	}
-	return exchangeFailure(failure, connected.Load(), r.Context().Err() != nil)
+	return ExchangeFailure(failure, connected.Load(), r.Context().Err() != nil)
 }
 
-// exchangeFailure classifies an exchange that failed before any response by
+// ExchangeFailure classifies an exchange that failed before any response by
 // what is known about delivery and, for the gateway's answer, whether the
 // upstream timed out.
-func exchangeFailure(err error, connected, clientGone bool) error {
+func ExchangeFailure(err error, connected, clientGone bool) error {
 	switch {
 	case !connected:
 		return fmt.Errorf("%w: %w", errNotSent, err)
@@ -152,7 +152,7 @@ func exchangeFailure(err error, connected, clientGone bool) error {
 	// Once connected, only the response-header timeout ends the exchange
 	// with a timeout error.
 	if netErr, ok := errors.AsType[net.Error](err); ok && netErr.Timeout() {
-		return fmt.Errorf("%w: %w: %w", errUpstreamTimeout, errMaybeSent, err)
+		return fmt.Errorf("%w: %w: %w", ErrUpstreamTimeout, errMaybeSent, err)
 	}
 	return fmt.Errorf("%w: %w", errMaybeSent, err)
 }

@@ -13,6 +13,7 @@ import (
 
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
+	"github.com/Alex-Zechariah-02/apiward/internal/forward"
 )
 
 const defaultMaxBodyBytes = 16 << 10
@@ -240,7 +241,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.Header.Set("X-Gateway-Subject", q.event.Subject)
 		r.Header.Set("X-Gateway-Roles", strings.Join(roles, ","))
 	}
-	r = r.WithContext(context.WithValue(r.Context(), bindingKey{}, binding{dial: rule.Dial()}))
+	r = r.WithContext(forward.Bind(r.Context(), rule.Dial()))
 	q.pass(stageBind)
 
 	recorder := &statusRecorder{ResponseWriter: w}
@@ -258,11 +259,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	forwardErr := h.forward(recorder, r)
 	finished = true
 	if forwardErr != nil {
-		status, code := forwardFailure(forwardErr)
+		status, code := forward.ForwardFailure(forwardErr)
 		if !recorder.wrote {
 			writeError(w, status, code, q.event.RequestID)
 		}
-		q.event.Reason = failureReason(forwardErr)
+		q.event.Reason = forward.FailureReason(forwardErr)
 		q.forwarded(status, "upstream_failure", code)
 		return
 	}

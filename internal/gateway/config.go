@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/forward"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
@@ -106,7 +107,7 @@ type nativeConfig struct {
 	readTimeout       time.Duration
 	writeTimeout      time.Duration
 	idleTimeout       time.Duration
-	upstream          upstreamTimeouts
+	upstream          forward.UpstreamTimeouts
 	// website holds the built Fetch website served at /; nil when
 	// none is configured.
 	website fs.FS

@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/forward"
 )
 
 // The forwarder's response and failures reach the client and the outcome
@@ -44,8 +46,8 @@ func TestEnforcementResponses(t *testing.T) {
 		status int
 		code   string
 	}{
-		{"upstream timed out", fmt.Errorf("waiting for headers: %w", errUpstreamTimeout), http.StatusGatewayTimeout, "upstream_timeout"},
-		{"no upstream", fmt.Errorf("source failed: %w", errNoUpstream), http.StatusServiceUnavailable, "gateway_unavailable"},
+		{"upstream timed out", fmt.Errorf("waiting for headers: %w", forward.ErrUpstreamTimeout), http.StatusGatewayTimeout, "upstream_timeout"},
+		{"no upstream", fmt.Errorf("source failed: %w", forward.ErrNoUpstream), http.StatusServiceUnavailable, "gateway_unavailable"},
 		{"upstream unreachable", &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")}, http.StatusBadGateway, "upstream_unavailable"},
 	}
 	for _, tc := range failures {

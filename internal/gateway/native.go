@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
+	"github.com/Alex-Zechariah-02/apiward/internal/forward"
 )
 
 // The native gateway: the controller, its enforcement handler and the native
@@ -182,7 +183,7 @@ type nativeGateway struct {
 // a failure leaves nothing served. When it returns an error, everything it
 // acquired is released.
 func startNative(cfg nativeConfig, logger *slog.Logger) (*nativeGateway, error) {
-	proxy, err := newUpstreamProxy(cfg.upstream, logger)
+	proxy, err := forward.NewUpstreamProxy(cfg.upstream, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +199,7 @@ func startNative(cfg nativeConfig, logger *slog.Logger) (*nativeGateway, error) 
 	if c.audit.openErr != nil {
 		return release(fmt.Errorf("audit log: %w", c.audit.openErr))
 	}
-	enforcement, err := newHandler(c, cfg.maxBodyBytes, proxy.forward)
+	enforcement, err := newHandler(c, cfg.maxBodyBytes, proxy.Forward)
 	if err != nil {
 		return release(err)
 	}

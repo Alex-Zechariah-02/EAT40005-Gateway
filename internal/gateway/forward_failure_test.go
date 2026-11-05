@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/forward"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
@@ -45,7 +46,7 @@ func TestNativeForwardingFailuresBeforeResponse(t *testing.T) {
 		}
 		defer listener.Close()
 		timeouts := forwardTimeouts
-		timeouts.responseHeader = 500 * time.Millisecond
+		timeouts.ResponseHeader = 500 * time.Millisecond
 		e.serveNative(e.policyWithUpstream(listener.Addr().String()), timeouts)
 		// The connection completes in the listener's queue, so the request
 		// may have been delivered as far as the gateway can tell.
@@ -93,7 +94,7 @@ func TestNativeForwardingFailuresBeforeResponse(t *testing.T) {
 	t.Run("response-header timeout", func(t *testing.T) {
 		e := newEnv(t)
 		timeouts := forwardTimeouts
-		timeouts.responseHeader = 500 * time.Millisecond
+		timeouts.ResponseHeader = 500 * time.Millisecond
 		e.serveNative(e.policy(e.a, false), timeouts)
 		cancelled := make(chan struct{})
 		e.a.handle = func(w http.ResponseWriter, r *http.Request) bool {
@@ -185,10 +186,10 @@ func TestNativeForwardingFailureClassification(t *testing.T) {
 		{"response-header timeout", headerTimeout, true, false, 504, "upstream_timeout", "outcome_unknown"},
 	}
 	for _, tc := range cases {
-		err := exchangeFailure(tc.err, tc.connected, tc.clientGone)
-		status, code := forwardFailure(err)
-		if status != tc.status || code != tc.code || failureReason(err) != tc.reason || !errors.Is(err, tc.err) {
-			t.Errorf("%s: %v gives %d %s (%s), want %d %s (%s)", tc.name, err, status, code, failureReason(err), tc.status, tc.code, tc.reason)
+		err := forward.ExchangeFailure(tc.err, tc.connected, tc.clientGone)
+		status, code := forward.ForwardFailure(err)
+		if status != tc.status || code != tc.code || forward.FailureReason(err) != tc.reason || !errors.Is(err, tc.err) {
+			t.Errorf("%s: %v gives %d %s (%s), want %d %s (%s)", tc.name, err, status, code, forward.FailureReason(err), tc.status, tc.code, tc.reason)
 		}
 	}
 }

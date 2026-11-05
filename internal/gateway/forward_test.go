@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/forward"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
@@ -25,13 +26,13 @@ import (
 
 // forwardTimeouts are the legacy dial and response-header bounds and the
 // read-idle bound of the native transport.
-var forwardTimeouts = upstreamTimeouts{dial: 2 * time.Second, responseHeader: 5 * time.Second, readIdle: 5 * time.Second}
+var forwardTimeouts = forward.UpstreamTimeouts{Dial: 2 * time.Second, ResponseHeader: 5 * time.Second, ReadIdle: 5 * time.Second}
 
 // serveNative seeds e's database with policy, owns and starts its controller,
 // and serves the enforcement handler with the native proxy, bounded by
 // timeouts, at e.dataAddr, where the harness request helpers send. It returns
 // the controller and the proxy's log.
-func (e *env) serveNative(policy policy.Policy, timeouts upstreamTimeouts) (*Controller, *logBuffer) {
+func (e *env) serveNative(policy policy.Policy, timeouts forward.UpstreamTimeouts) (*Controller, *logBuffer) {
 	e.t.Helper()
 	seed(e.t, e.database, policy, seedOptions{})
 	c, _ := e.own(e.controllerConfig())
@@ -39,11 +40,11 @@ func (e *env) serveNative(policy policy.Policy, timeouts upstreamTimeouts) (*Con
 		e.t.Fatal(err)
 	}
 	logs := &logBuffer{}
-	p, err := newUpstreamProxy(timeouts, slog.New(slog.NewJSONHandler(logs, nil)))
+	p, err := forward.NewUpstreamProxy(timeouts, slog.New(slog.NewJSONHandler(logs, nil)))
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	h, err := newHandler(c, 0, p.forward)
+	h, err := newHandler(c, 0, p.Forward)
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -103,33 +104,6 @@ func failedOutcome(ev map[string]any, status int, code, reason string) bool {
 		ev["status"] == float64(status) && ev["error"] == code && got == reason
 }
 
-// The proxy needs a bound for every phase of an exchange, since a zero would
-// leave that phase unbounded, and a logger.
-func TestNativeForwardingProxyRefusesIncompleteSetup(t *testing.T) {
-	logger := slog.New(slog.DiscardHandler)
-	for name, timeouts := range map[string]upstreamTimeouts{
-		"no dial bound":            {responseHeader: time.Second, readIdle: time.Second},
-		"no response-header bound": {dial: time.Second, readIdle: time.Second},
-		"no read-idle bound":       {dial: time.Second, responseHeader: time.Second},
-		"negative read-idle bound": {dial: time.Second, responseHeader: time.Second, readIdle: -time.Second},
-	} {
-		if p, err := newUpstreamProxy(timeouts, logger); p != nil || err == nil {
-			t.Errorf("%s: %v, %v", name, p, err)
-		}
-	}
-	if p, err := newUpstreamProxy(forwardTimeouts, nil); p != nil || err == nil {
-		t.Errorf("without a logger: %v, %v", p, err)
-	}
-	p, err := newUpstreamProxy(forwardTimeouts, logger)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if tr := p.transport; tr.Proxy != nil || !tr.DisableKeepAlives || !tr.DisableCompression || tr.ResponseHeaderTimeout != forwardTimeouts.responseHeader ||
-		!tr.Protocols.HTTP1() || tr.Protocols.HTTP2() || tr.Protocols.UnencryptedHTTP2() {
-		t.Fatalf("transport %+v", tr)
-	}
-}
-
 // Every catalogue step runs through the native proxy against the three
 // fixture processes: each admitted request reaches exactly its fixture, which
 // runs the intended operation with the expected outcome and state change and
@@ -187,45 +161,6 @@ func TestNativeForwardingBinding(t *testing.T) {
 			t.Errorf("A received Host %q and headers %v", r.Host, r.Headers)
 		}
 	}
-
-	// The proxy sends nothing without a usable binding, whatever else the
-	// request carries.
-	p, err := newUpstreamProxy(forwardTimeouts, slog.New(slog.DiscardHandler))
-	if err != nil {
-		t.Fatal(err)
-	}
-	type otherKey struct{}
-	unusable := []struct {
-		name  string
-		value func(context.Context) context.Context
-	}{
-		{"no binding", func(ctx context.Context) context.Context { return ctx }},
-		{"binding under another key", func(ctx context.Context) context.Context {
-			return context.WithValue(ctx, otherKey{}, binding{dial: e.c.addr})
-		}},
-		{"destination as a plain value", func(ctx context.Context) context.Context { return context.WithValue(ctx, bindingKey{}, e.c.addr) }},
-		{"empty binding", func(ctx context.Context) context.Context { return context.WithValue(ctx, bindingKey{}, binding{}) }},
-		{"host name", func(ctx context.Context) context.Context {
-			return context.WithValue(ctx, bindingKey{}, binding{dial: "localhost:" + port(e.c.addr)})
-		}},
-		{"address not on loopback", func(ctx context.Context) context.Context {
-			return context.WithValue(ctx, bindingKey{}, binding{dial: "192.0.2.1:80"})
-		}},
-		{"no port", func(ctx context.Context) context.Context {
-			return context.WithValue(ctx, bindingKey{}, binding{dial: "127.0.0.1"})
-		}},
-	}
-	for _, tc := range unusable {
-		r := httptest.NewRequest(http.MethodGet, "/a/x", nil)
-		r.Header.Set("X-Gateway-Dial", e.c.addr)
-		rec := httptest.NewRecorder()
-		err := p.forward(rec, r.WithContext(tc.value(r.Context())))
-		status, code := forwardFailure(err)
-		if status != http.StatusServiceUnavailable || code != "gateway_unavailable" || failureReason(err) != "not_sent" || rec.Body.Len() != 0 || len(rec.Header()) != 0 {
-			t.Errorf("%s: %v maps to %d %s (%s), response %d %v", tc.name, err, status, code, failureReason(err), rec.Code, rec.Header())
-		}
-	}
-	e.assertReceipts(3, 1, 0)
 }
 
 // A request keeps the destination of the generation it captured while

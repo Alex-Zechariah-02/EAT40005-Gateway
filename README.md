@@ -42,6 +42,7 @@ Each package under `internal/` imports only the packages listed before it; a tes
 - `internal/fault`: the fault-injection points tests use to crash, delay or fail the gateway at exact places. They act only in binaries built with the `faultinject` tag; normal builds compile them to no-ops.
 - `internal/policy`: the policy document: its types, strict JSON decoding, and the limits and identifier formats every policy must meet.
 - `internal/compile`: turns a policy into an immutable generation (routes, permits, rate rules, body and header schemas) that requests are decided against, readable only through methods; it also owns the trusted clock for deadlines.
+- `internal/forward`: sends an admitted request to the one upstream it is bound to, on a new connection each time; a missing or non-loopback binding is sent nowhere.
 - `internal/gateway`: the gateway itself, which uses the packages above.
 
 ## Build and test

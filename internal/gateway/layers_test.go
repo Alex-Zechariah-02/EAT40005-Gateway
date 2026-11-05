@@ -16,7 +16,8 @@ var layers = map[string][]string{
 	"fault":   nil,
 	"policy":  nil,
 	"compile": {"fault", "policy"},
-	"gateway": {"fault", "policy", "compile"},
+	"forward": {"compile"},
+	"gateway": {"fault", "policy", "compile", "forward"},
 }
 
 // unlayered packages are not part of the gateway's layering.

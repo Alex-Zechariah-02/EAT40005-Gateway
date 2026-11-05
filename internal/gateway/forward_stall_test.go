@@ -14,6 +14,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/forward"
 )
 
 // After the response header, the read-idle bound ends an upstream body that
@@ -26,7 +28,7 @@ import (
 func TestNativeForwardingResponseStalls(t *testing.T) {
 	const idle = 500 * time.Millisecond
 	timeouts := forwardTimeouts
-	timeouts.readIdle = idle
+	timeouts.ReadIdle = idle
 	e := newEnv(t)
 	_, logs := e.serveNative(e.policy(e.a, false), timeouts)
 	var respond func(w http.ResponseWriter, r *http.Request)
@@ -79,7 +81,7 @@ func TestNativeForwardingResponseStalls(t *testing.T) {
 		if ev := lastOutcome(); !failedOutcome(ev, http.StatusOK, "upstream_incomplete", "") {
 			t.Fatalf("outcome %v", ev)
 		}
-		if !strings.Contains(logs.String(), errResponseStalled.Error()) {
+		if !strings.Contains(logs.String(), forward.ErrResponseStalled.Error()) {
 			t.Fatalf("proxy log %s", logs)
 		}
 	})
@@ -183,7 +185,7 @@ func TestNativeForwardingReleasesStalledExchanges(t *testing.T) {
 	const transportGoroutine = "net/http.(*persistConn)."
 	e := newEnv(t)
 	timeouts := forwardTimeouts
-	timeouts.readIdle = 300 * time.Millisecond
+	timeouts.ReadIdle = 300 * time.Millisecond
 	e.serveNative(e.policy(e.a, false), timeouts)
 	before := goroutines(transportGoroutine)
 	var cancelled atomic.Int64

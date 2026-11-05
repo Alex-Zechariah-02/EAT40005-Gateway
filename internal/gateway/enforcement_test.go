@@ -13,6 +13,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/forward"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
@@ -42,12 +43,12 @@ type memoryForwarder struct {
 }
 
 func (f *memoryForwarder) forward(w http.ResponseWriter, r *http.Request) error {
-	b, bound := r.Context().Value(bindingKey{}).(binding)
+	dial, bound := forward.BoundDial(r.Context())
 	body, _ := io.ReadAll(r.Body)
 	f.mu.Lock()
 	f.got = append(f.got, handedRequest{
 		bound:  bound,
-		dial:   b.dial,
+		dial:   dial,
 		method: r.Method,
 		target: r.RequestURI,
 		host:   r.Host,

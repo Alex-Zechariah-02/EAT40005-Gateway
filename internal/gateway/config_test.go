@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/forward"
 )
 
 // configDocument is a complete native configuration whose paths point into
@@ -73,7 +75,7 @@ func TestNativeConfigSettings(t *testing.T) {
 		readTimeout:       10 * time.Second,
 		writeTimeout:      30 * time.Second,
 		idleTimeout:       5 * time.Minute,
-		upstream:          upstreamTimeouts{dial: 2 * time.Second, responseHeader: 5 * time.Second, readIdle: 5 * time.Second},
+		upstream:          forward.UpstreamTimeouts{Dial: 2 * time.Second, ResponseHeader: 5 * time.Second, ReadIdle: 5 * time.Second},
 	}
 	if !reflect.DeepEqual(cfg, want) {
 		t.Fatalf("defaults\n got %+v\nwant %+v", cfg, want)
@@ -99,7 +101,7 @@ func TestNativeConfigSettings(t *testing.T) {
 		c.AuditMaxBytes != 1<<20 || c.AuditMaxFiles != 4 || c.AdminUI != site || cfg.website == nil ||
 		cfg.maxBodyBytes != 2048 || cfg.headerLimit != 32768 || cfg.readHeaderTimeout != 2*time.Second ||
 		cfg.readTimeout != 3*time.Second || cfg.writeTimeout != 4*time.Second || cfg.idleTimeout != time.Minute ||
-		cfg.upstream != (upstreamTimeouts{dial: time.Second, responseHeader: 3 * time.Second, readIdle: 2 * time.Minute}) {
+		cfg.upstream != (forward.UpstreamTimeouts{Dial: time.Second, ResponseHeader: 3 * time.Second, ReadIdle: 2 * time.Minute}) {
 		t.Fatalf("written settings not taken: %+v", cfg)
 	}
 }
