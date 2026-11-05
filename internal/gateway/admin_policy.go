@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 func (c *Controller) handleStatus(w http.ResponseWriter, r *http.Request, who caller) {
@@ -32,16 +33,16 @@ func (c *Controller) handleStatus(w http.ResponseWriter, r *http.Request, who ca
 	// The stored base, which differs from the served generation only while
 	// the gateway is unavailable. A failed read is reported as such, so the
 	// missing revisions are never read as "none".
-	a, err := c.store.load(r.Context())
+	a, err := c.store.Load(r.Context())
 	switch {
 	case err != nil:
 		c.logger.Error("reading authority for status", "error", err)
 		status["stored_authority"] = "unreadable"
-	case a.mode == modeNormal:
-		status["confirmed"] = a.confirmed
-		if a.provisional != 0 {
-			status["provisional"] = a.provisional
-			status["deadline"] = a.deadline.UTC()
+	case a.Mode == store.ModeNormal:
+		status["confirmed"] = a.Confirmed
+		if a.Provisional != 0 {
+			status["provisional"] = a.Provisional
+			status["deadline"] = a.Deadline.UTC()
 		}
 	}
 	writeJSON(w, http.StatusOK, status)
@@ -49,20 +50,20 @@ func (c *Controller) handleStatus(w http.ResponseWriter, r *http.Request, who ca
 
 // confirmedPolicy reads the confirmed base. It answers the request itself and
 // returns false when no confirmed base is serving.
-func (c *Controller) confirmedPolicy(w http.ResponseWriter, r *http.Request) (revisionInfo, policy.Policy, bool) {
-	a, err := c.store.load(r.Context())
+func (c *Controller) confirmedPolicy(w http.ResponseWriter, r *http.Request) (store.RevisionInfo, policy.Policy, bool) {
+	a, err := c.store.Load(r.Context())
 	if err != nil {
 		c.logger.Error("reading authority", "error", err)
 		adminError(w, http.StatusServiceUnavailable, "unavailable", "")
-		return revisionInfo{}, policy.Policy{}, false
+		return store.RevisionInfo{}, policy.Policy{}, false
 	}
-	if a.mode != modeNormal {
+	if a.Mode != store.ModeNormal {
 		adminError(w, http.StatusConflict, "no_confirmed_policy", "")
-		return revisionInfo{}, policy.Policy{}, false
+		return store.RevisionInfo{}, policy.Policy{}, false
 	}
-	revision, ok, err := c.store.revision(r.Context(), a.confirmed)
+	revision, ok, err := c.store.Revision(r.Context(), a.Confirmed)
 	if err == nil && !ok {
-		err = fmt.Errorf("confirmed revision %d missing", a.confirmed)
+		err = fmt.Errorf("confirmed revision %d missing", a.Confirmed)
 	}
 	var p policy.Policy
 	if err == nil {
@@ -71,7 +72,7 @@ func (c *Controller) confirmedPolicy(w http.ResponseWriter, r *http.Request) (re
 	if err != nil {
 		c.logger.Error("reading confirmed policy", "error", err)
 		adminError(w, http.StatusServiceUnavailable, "unavailable", "")
-		return revisionInfo{}, policy.Policy{}, false
+		return store.RevisionInfo{}, policy.Policy{}, false
 	}
 	return revision, p, true
 }
@@ -94,7 +95,7 @@ func (c *Controller) handleRevisions(w http.ResponseWriter, r *http.Request, who
 	if !ok {
 		return
 	}
-	items, err := c.store.revisions(r.Context(), cursor, limit)
+	items, err := c.store.Revisions(r.Context(), cursor, limit)
 	if err != nil {
 		adminError(w, http.StatusServiceUnavailable, "unavailable", "")
 		return
@@ -111,7 +112,7 @@ func (c *Controller) handleRevision(w http.ResponseWriter, r *http.Request, who 
 	if !ok {
 		return
 	}
-	revision, found, err := c.store.revision(r.Context(), id)
+	revision, found, err := c.store.Revision(r.Context(), id)
 	switch {
 	case err != nil:
 		adminError(w, http.StatusServiceUnavailable, "unavailable", "")
@@ -133,8 +134,8 @@ func (c *Controller) writePolicyOutcome(w http.ResponseWriter, r *http.Request, 
 	case status == http.StatusOK && outcome.Revision != 0:
 		w.Header().Set("ETag", policyETag(outcome.Revision))
 	case status == http.StatusPreconditionFailed:
-		if a, err := c.store.load(r.Context()); err == nil && a.mode == modeNormal {
-			w.Header().Set("ETag", policyETag(a.confirmed))
+		if a, err := c.store.Load(r.Context()); err == nil && a.Mode == store.ModeNormal {
+			w.Header().Set("ETag", policyETag(a.Confirmed))
 		}
 	}
 	writeJSON(w, status, outcome)

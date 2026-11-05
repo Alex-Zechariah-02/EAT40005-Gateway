@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // The test gateway moves its wall clock alone. A wall clock set back while an
@@ -30,7 +32,7 @@ func TestOverrideExpiryUnderClockChanges(t *testing.T) {
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 
 	// Set back an hour after creation: still expires on time.
-	setBack := e.mustOverride(harness, permitOverride(overrideException, "READER", "write-a", 2), `"r1"`, "clock-set-back-0001")
+	setBack := e.mustOverride(harness, permitOverride(store.OverrideException, "READER", "write-a", 2), `"r1"`, "clock-set-back-0001")
 	setOffset(-time.Hour)
 	waitFor(t, setBack.Expires.Add(3*time.Second), "the expiry with the wall clock set back", func() bool { return len(e.status().Overrides) == 0 })
 	if e.probe("bob", http.MethodPost, "/a/item") != http.StatusForbidden {
@@ -39,7 +41,7 @@ func TestOverrideExpiryUnderClockChanges(t *testing.T) {
 
 	// Set forward an hour: an override with ten minutes left is not used again.
 	setOffset(0)
-	forward := e.mustOverride(harness, permitOverride(overrideException, "READER", "write-a", 600), `"r1"`, "clock-forward-00001")
+	forward := e.mustOverride(harness, permitOverride(store.OverrideException, "READER", "write-a", 600), `"r1"`, "clock-forward-00001")
 	if e.probe("bob", http.MethodPost, "/a/item") != http.StatusOK {
 		t.Fatal("grant not enforced")
 	}
@@ -57,7 +59,7 @@ func TestOverrideExpiryUnderClockChanges(t *testing.T) {
 	// Created while the wall clock is an hour ahead, then set back to the
 	// time the monotonic clock implies: the override still ends after its own
 	// two seconds, not an hour later.
-	ahead := e.mustOverride(harness, permitOverride(overrideException, "READER", "write-a", 2), `"r1"`, "clock-ahead-000001")
+	ahead := e.mustOverride(harness, permitOverride(store.OverrideException, "READER", "write-a", 2), `"r1"`, "clock-ahead-000001")
 	setOffset(0)
 	if e.probe("bob", http.MethodPost, "/a/item") != http.StatusOK {
 		t.Fatal("grant not enforced before its lifetime ended")
@@ -82,13 +84,13 @@ func TestOverrideExpiryUnderClockChanges(t *testing.T) {
 	e.stop()
 	setOffset(time.Hour)
 	e.start(binaries.fault, "GATEWAY_WALL_OFFSET="+offset)
-	if health := e.health(); health != modeNormal {
+	if health := e.health(); health != store.ModeNormal {
 		t.Fatalf("health %q with the clock restored", health)
 	}
 
 	e.stop()
 	for _, o := range storedOverrides(t, e.database) {
-		if o.Status != overrideExpired {
+		if o.Status != store.OverrideExpired {
 			t.Fatalf("override %+v", o)
 		}
 	}

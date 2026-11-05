@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // These tests run the gateway, cmd/gateway, as its own process with its
@@ -40,7 +42,7 @@ func TestNativeGatewayServesFixtures(t *testing.T) {
 	e.assertReceipts(0, 0, 0)
 
 	s := e.status()
-	if s.Admission != "ready" || s.State != modeNormal {
+	if s.Admission != "ready" || s.State != store.ModeNormal {
 		t.Fatalf("status %+v, want normal and ready", s)
 	}
 	output := e.output.String()

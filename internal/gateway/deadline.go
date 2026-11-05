@@ -11,6 +11,7 @@ import (
 
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // scheduleDeadline arms the timer that wakes the controller at the earliest
@@ -77,25 +78,25 @@ func (c *Controller) expire(g *compile.Generation) {
 // protected admission has then stopped.
 func (c *Controller) settle(ctx context.Context, now time.Time, withProvisional bool) bool {
 	for {
-		a, err := c.store.load(ctx)
+		a, err := c.store.Load(ctx)
 		if err != nil {
 			c.unavailable(err.Error())
 			return false
 		}
-		var due *override
-		for i, o := range a.overrides {
+		var due *store.Override
+		for i, o := range a.Overrides {
 			if !now.Before(o.ExpiresAt) && (due == nil || o.ExpiresAt.Before(due.ExpiresAt)) {
-				due = &a.overrides[i]
+				due = &a.Overrides[i]
 			}
 		}
-		provisionalDue := withProvisional && a.provisional != 0 && !now.Before(a.deadline)
+		provisionalDue := withProvisional && a.Provisional != 0 && !now.Before(a.Deadline)
 		switch {
-		case provisionalDue && (due == nil || !due.ExpiresAt.Before(a.deadline)):
+		case provisionalDue && (due == nil || !due.ExpiresAt.Before(a.Deadline)):
 			if !c.timeout(ctx, a, now) {
 				return false
 			}
 		case due != nil:
-			t := transitionRecord{
+			t := store.TransitionRecord{
 				ID:       fmt.Sprintf("auto-expire:%d", due.ID),
 				Kind:     "tpo.expire",
 				Actor:    "controller",
@@ -103,7 +104,7 @@ func (c *Controller) settle(ctx context.Context, now time.Time, withProvisional 
 				Override: due.ID,
 			}
 			t.Digest = t.ID
-			if result, _ := c.publishOverrides(ctx, t, a, *due, overrideExpired, now); result.Outcome != "committed" {
+			if result, _ := c.publishOverrides(ctx, t, a, *due, store.OverrideExpired, now); result.Outcome != "committed" {
 				return false
 			}
 		default:
@@ -115,17 +116,17 @@ func (c *Controller) settle(ctx context.Context, now time.Time, withProvisional 
 // timeout rolls back an expired provisional base under its deterministic
 // identity, so a repeated attempt can never apply twice. It reports whether
 // the restored base is now published; when it is not, nothing is served.
-func (c *Controller) timeout(ctx context.Context, a authority, now time.Time) bool {
-	t := transitionRecord{
-		ID:        fmt.Sprintf("auto-rollback:%d", a.provisional),
+func (c *Controller) timeout(ctx context.Context, a store.Authority, now time.Time) bool {
+	t := store.TransitionRecord{
+		ID:        fmt.Sprintf("auto-rollback:%d", a.Provisional),
 		Kind:      "cpa.timeout",
 		Actor:     "controller",
-		Target:    fmt.Sprintf("revision %d", a.provisional),
-		Expected:  sql.NullInt64{Int64: a.confirmed, Valid: true},
-		Candidate: a.candidate,
+		Target:    fmt.Sprintf("revision %d", a.Provisional),
+		Expected:  sql.NullInt64{Int64: a.Confirmed, Valid: true},
+		Candidate: a.Candidate,
 	}
 	t.Digest = t.ID
-	result, _ := c.endProvisional(ctx, t, a, dispositionTimedOut, now)
+	result, _ := c.endProvisional(ctx, t, a, store.DispositionTimedOut, now)
 	return result.Outcome == "committed"
 }
 
@@ -137,15 +138,15 @@ func (c *Controller) timeout(ctx context.Context, a authority, now time.Time) bo
 // Every other disposition restores the rollback target; if that cannot be
 // completed, the controller stops admitting protected requests rather than
 // keep serving a provisional policy that is being withdrawn.
-func (c *Controller) endProvisional(ctx context.Context, t transitionRecord, a authority, disposition string, now time.Time) (Outcome, int) {
-	target := a.confirmed
-	if disposition == dispositionConfirmed {
-		target = a.provisional
+func (c *Controller) endProvisional(ctx context.Context, t store.TransitionRecord, a store.Authority, disposition string, now time.Time) (Outcome, int) {
+	target := a.Confirmed
+	if disposition == store.DispositionConfirmed {
+		target = a.Provisional
 	}
 	stage := strings.TrimPrefix(t.Kind, "cpa.")
 	failed := func(reason string, result Outcome, status int) (Outcome, int) {
-		if disposition != dispositionConfirmed {
-			c.unavailable(fmt.Sprintf("%s (%s of revision %d) not completed: %s", t.ID, stage, a.provisional, reason))
+		if disposition != store.DispositionConfirmed {
+			c.unavailable(fmt.Sprintf("%s (%s of revision %d) not completed: %s", t.ID, stage, a.Provisional, reason))
 		}
 		return result, status
 	}
@@ -153,8 +154,8 @@ func (c *Controller) endProvisional(ctx context.Context, t transitionRecord, a a
 	// The base that follows is compiled with the overrides active now, never
 	// with an earlier effective policy: an override that ended while the
 	// base was provisional stays ended.
-	g, err := c.compileEffective(ctx, target, time.Time{}, a.overrides)
-	if err == nil && disposition != dispositionConfirmed {
+	g, err := c.compileEffective(ctx, target, time.Time{}, a.Overrides)
+	if err == nil && disposition != store.DispositionConfirmed {
 		err = fault.RollbackFault()
 	}
 	if err != nil {
@@ -169,17 +170,17 @@ func (c *Controller) endProvisional(ctx context.Context, t transitionRecord, a a
 	}
 	fault.CrashPoint(stage + "-before-commit")
 	t.Revision = target
-	if err := c.store.commitResolution(ctx, t, a, disposition, now); err != nil {
+	if err := c.store.CommitResolution(ctx, t, a, disposition, now); err != nil {
 		result, status := c.storeFailure(t.ID, err)
 		return failed("commit failed", result, status)
 	}
 	fault.CrashPoint(stage + "-after-commit")
 
 	c.current.Store(g)
-	c.state = modeNormal
+	c.state = store.ModeNormal
 	c.scheduleDeadline(g)
 	fault.CrashPoint(stage + "-after-swap")
-	if err := c.store.markPublished(ctx, t.ID, "publisher", now); err != nil {
+	if err := c.store.MarkPublished(ctx, t.ID, "publisher", now); err != nil {
 		c.logger.Error("recording publication receipt", "error", err)
 	}
 	fault.CrashPoint(stage + "-after-receipt")
@@ -189,9 +190,9 @@ func (c *Controller) endProvisional(ctx context.Context, t transitionRecord, a a
 		Outcome:        "committed",
 		Revision:       target,
 		Generation:     g.ID,
-		Candidate:      a.candidate,
-		Provisional:    a.provisional,
-		RollbackTarget: a.confirmed,
+		Candidate:      a.Candidate,
+		Provisional:    a.Provisional,
+		RollbackTarget: a.Confirmed,
 		Disposition:    disposition,
 	}
 	event := Event{
@@ -200,10 +201,10 @@ func (c *Controller) endProvisional(ctx context.Context, t transitionRecord, a a
 		Actor:          t.Actor,
 		Revision:       target,
 		Generation:     g.ID,
-		Candidate:      a.candidate,
-		Provisional:    a.provisional,
-		RollbackTarget: a.confirmed,
-		Deadline:       a.deadline.UTC(),
+		Candidate:      a.Candidate,
+		Provisional:    a.Provisional,
+		RollbackTarget: a.Confirmed,
+		Deadline:       a.Deadline.UTC(),
 	}
 	return c.finish(ctx, result, event)
 }

@@ -1,6 +1,6 @@
 // Stored override records and the store's own path check.
 
-package gateway
+package store
 
 import (
 	"errors"
@@ -22,35 +22,35 @@ import (
 // record, routes and destinations cannot be overridden, so no override can
 // weaken them.
 const (
-	overrideException   = "exception"
-	overrideContainment = "containment"
+	OverrideException   = "exception"
+	OverrideContainment = "containment"
 
-	controlPermit    = "permit"
-	controlRate      = "rate"
-	controlOperation = "operation"
+	ControlPermit    = "permit"
+	ControlRate      = "rate"
+	ControlOperation = "operation"
 
 	// An override must expire within this many seconds of its creation. The
 	// upper bound limits how long a temporary change can stay in force
 	// without becoming a confirmed policy change.
-	minOverrideSeconds = 1
-	maxOverrideSeconds = 24 * 60 * 60
+	MinOverrideSeconds = 1
+	MaxOverrideSeconds = 24 * 60 * 60
 
-	// maxActiveOverrides bounds the work of compiling an effective policy.
-	maxActiveOverrides = 64
+	// MaxActiveOverrides bounds the work of compiling an effective policy.
+	MaxActiveOverrides = 64
 )
 
 // Override states. Only active overrides are applied; the others are final.
 // Quarantined marks an override found active in a restored historical
 // database, which never regains authority.
 const (
-	overrideActive      = "active"
-	overrideRevoked     = "revoked"
-	overrideExpired     = "expired"
-	overrideQuarantined = "quarantined"
+	OverrideActive      = "active"
+	OverrideRevoked     = "revoked"
+	OverrideExpired     = "expired"
+	OverrideQuarantined = "quarantined"
 )
 
-// override is one stored temporary override and its lifecycle.
-type override struct {
+// Override is one stored temporary override and its lifecycle.
+type Override struct {
 	ID         int64      `json:"id"`
 	Type       string     `json:"type"`
 	Control    string     `json:"control"`
@@ -69,21 +69,21 @@ type override struct {
 	Resolution string     `json:"resolution,omitempty"`
 }
 
-// dependencies lists the control targets an override relies on: its own, the
+// Dependencies lists the control targets an override relies on: its own, the
 // operation it applies to and, for a permit, the role. A candidate that
 // changes any of them would change or invalidate the override.
-func (o override) dependencies() []string {
-	targets := []string{o.Target, controlOperation + ":" + o.Operation}
-	if o.Control == controlPermit {
+func (o Override) Dependencies() []string {
+	targets := []string{o.Target, ControlOperation + ":" + o.Operation}
+	if o.Control == ControlPermit {
 		targets = append(targets, "role:"+o.Role)
 	}
 	return targets
 }
 
-// regularPath refuses devices, directories and links at a file boundary.
+// RegularPath refuses devices, directories and links at a file boundary.
 // Deployment directories must be controlled by the local operator; these
 // checks do not defend against an actor who can replace their ancestors.
-func regularPath(path string) error {
+func RegularPath(path string) error {
 	info, err := os.Lstat(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil

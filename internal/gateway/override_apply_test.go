@@ -11,6 +11,7 @@ import (
 
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // The resolver applies each supported change to a copy of the base and
@@ -22,7 +23,7 @@ func TestApplyOverrides(t *testing.T) {
 	basePolicy.Operations[0].Rate = rate(4, 60) // read-a
 	pristine := string(mustJSON(basePolicy))
 
-	stored := func(id int64, r OverrideRequest) override {
+	stored := func(id int64, r OverrideRequest) store.Override {
 		o, err := r.check()
 		if err != nil {
 			t.Fatalf("request %+v: %v", r, err)
@@ -30,12 +31,12 @@ func TestApplyOverrides(t *testing.T) {
 		o.ID, o.ExpiresAt = id, time.UnixMilli(time.Now().Add(time.Hour).UnixMilli())
 		return o
 	}
-	all := []override{
-		stored(1, permitOverride(overrideException, "READER", "write-a", 60)),
-		stored(2, permitOverride(overrideContainment, "WRITER", "read-a", 60)),
-		stored(3, rateOverride(overrideException, "read-a", 9, 60)),
+	all := []store.Override{
+		stored(1, permitOverride(store.OverrideException, "READER", "write-a", 60)),
+		stored(2, permitOverride(store.OverrideContainment, "WRITER", "read-a", 60)),
+		stored(3, rateOverride(store.OverrideException, "read-a", 9, 60)),
 		stored(4, operationContainment("read-b", 60)),
-		stored(5, permitOverride(overrideContainment, "READER", "read-a", 60)),
+		stored(5, permitOverride(store.OverrideContainment, "READER", "read-a", 60)),
 	}
 	p, err := applyOverrides(basePolicy, all)
 	if err != nil {
@@ -107,19 +108,19 @@ func TestApplyOverrides(t *testing.T) {
 	// Each refusal names what no longer fits; nothing is partly applied.
 	refused := []struct {
 		name string
-		list []override
+		list []store.Override
 		want string
 	}{
-		{"grant of a permit the base has", []override{stored(1, permitOverride(overrideException, "WRITER", "write-a", 60))}, "INVALID_VALUE@role"},
-		{"removal of a permit the base lacks", []override{stored(1, permitOverride(overrideContainment, "READER", "write-a", 60))}, "INVALID_VALUE@role"},
-		{"permit on a public operation", []override{stored(1, permitOverride(overrideException, "READER", "denied", 60))}, "INVALID_VALUE@operation"},
-		{"unknown role", []override{stored(1, permitOverride(overrideException, "ADMIN", "write-a", 60))}, "UNKNOWN_REFERENCE@role"},
-		{"unknown operation", []override{stored(1, operationContainment("delete-a", 60))}, "UNKNOWN_REFERENCE@operation"},
-		{"rate exception that does not raise", []override{stored(1, rateOverride(overrideException, "read-a", 4, 60))}, "INVALID_VALUE@count"},
-		{"rate containment that does not lower", []override{stored(1, rateOverride(overrideContainment, "read-a", 5, 60))}, "INVALID_VALUE@count"},
-		{"rate override without a base rule", []override{stored(1, rateOverride(overrideException, "read-b", 10, 60))}, "INVALID_VALUE@operation"},
-		{"containment of a denied operation", []override{stored(1, operationContainment("denied", 60))}, "INVALID_VALUE@operation"},
-		{"two overrides of one target", []override{stored(1, rateOverride(overrideException, "read-a", 9, 60)), stored(2, rateOverride(overrideContainment, "read-a", 1, 60))}, "OVERRIDE_CONFLICT@rate:read-a"},
+		{"grant of a permit the base has", []store.Override{stored(1, permitOverride(store.OverrideException, "WRITER", "write-a", 60))}, "INVALID_VALUE@role"},
+		{"removal of a permit the base lacks", []store.Override{stored(1, permitOverride(store.OverrideContainment, "READER", "write-a", 60))}, "INVALID_VALUE@role"},
+		{"permit on a public operation", []store.Override{stored(1, permitOverride(store.OverrideException, "READER", "denied", 60))}, "INVALID_VALUE@operation"},
+		{"unknown role", []store.Override{stored(1, permitOverride(store.OverrideException, "ADMIN", "write-a", 60))}, "UNKNOWN_REFERENCE@role"},
+		{"unknown operation", []store.Override{stored(1, operationContainment("delete-a", 60))}, "UNKNOWN_REFERENCE@operation"},
+		{"rate exception that does not raise", []store.Override{stored(1, rateOverride(store.OverrideException, "read-a", 4, 60))}, "INVALID_VALUE@count"},
+		{"rate containment that does not lower", []store.Override{stored(1, rateOverride(store.OverrideContainment, "read-a", 5, 60))}, "INVALID_VALUE@count"},
+		{"rate override without a base rule", []store.Override{stored(1, rateOverride(store.OverrideException, "read-b", 10, 60))}, "INVALID_VALUE@operation"},
+		{"containment of a denied operation", []store.Override{stored(1, operationContainment("denied", 60))}, "INVALID_VALUE@operation"},
+		{"two overrides of one target", []store.Override{stored(1, rateOverride(store.OverrideException, "read-a", 9, 60)), stored(2, rateOverride(store.OverrideContainment, "read-a", 1, 60))}, "OVERRIDE_CONFLICT@rate:read-a"},
 	}
 	for _, r := range refused {
 		if _, err := applyOverrides(basePolicy, r.list); overrideErrorCode(err) != r.want {
@@ -133,10 +134,10 @@ func TestApplyOverrides(t *testing.T) {
 	denied := basePolicy
 	denied.Operations = slices.Clone(basePolicy.Operations)
 	denied.Operations[1].Access = "deny" // write-a
-	if _, err := applyOverrides(denied, []override{stored(1, permitOverride(overrideException, "READER", "write-a", 60))}); overrideErrorCode(err) != "INVALID_VALUE@operation" {
+	if _, err := applyOverrides(denied, []store.Override{stored(1, permitOverride(store.OverrideException, "READER", "write-a", 60))}); overrideErrorCode(err) != "INVALID_VALUE@operation" {
 		t.Errorf("permit exception on a denied operation: %v", err)
 	}
-	tooMany := make([]override, maxActiveOverrides+1)
+	tooMany := make([]store.Override, store.MaxActiveOverrides+1)
 	if _, err := effectiveGeneration(basePolicy, 7, deadline, tooMany); overrideErrorCode(err) != "LIMIT_EXCEEDED@overrides" {
 		t.Errorf("too many overrides: %v", err)
 	}

@@ -14,6 +14,7 @@ import (
 
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // runRestore performs a declared historical restore. The backup is copied
@@ -51,7 +52,7 @@ func runRestore(o *operatorContext, flags map[string]string) (int, error) {
 
 	now := time.Now()
 	episode := randomHex(16)
-	t := transitionRecord{ID: "operator:restore:" + episode, Kind: "operator.restore", Actor: "operator", Target: filepath.Base(backup), Digest: manifest.SHA256}
+	t := store.TransitionRecord{ID: "operator:restore:" + episode, Kind: "operator.restore", Actor: "operator", Target: filepath.Base(backup), Digest: manifest.SHA256}
 	if err := o.record(Event{Kind: "transition.intent", Transition: t.ID, File: filepath.Base(backup)}); err != nil {
 		return 1, err
 	}
@@ -81,11 +82,11 @@ func runRestore(o *operatorContext, flags map[string]string) (int, error) {
 	}
 	// The restore is complete. If its audit receipt cannot be recorded here,
 	// the gateway records the outcome event again at its next startup.
-	if st, err := openStore(live); err == nil {
-		st.markAudited(context.Background(), t.ID, time.Now())
-		st.close()
+	if st, err := store.OpenStore(live); err == nil {
+		st.MarkAudited(context.Background(), t.ID, time.Now())
+		st.Close()
 	}
-	fmt.Printf("restored %s as %s in %s mode (episode %s)\n", backup, live, modeRecovery, episode)
+	fmt.Printf("restored %s as %s in %s mode (episode %s)\n", backup, live, store.ModeRecovery, episode)
 	if retired != "" {
 		fmt.Printf("the replaced database is kept as %s\n", retired)
 	}
@@ -111,10 +112,10 @@ func checkBackup(backup string) (backupManifest, error) {
 	if sum != manifest.SHA256 || size != manifest.Bytes {
 		return manifest, errors.New("the backup does not match its manifest checksum")
 	}
-	if manifest.SchemaVersion != databaseVersion {
-		return manifest, fmt.Errorf("the backup has schema version %d, this gateway needs %d", manifest.SchemaVersion, databaseVersion)
+	if manifest.SchemaVersion != store.DatabaseVersion {
+		return manifest, fmt.Errorf("the backup has schema version %d, this gateway needs %d", manifest.SchemaVersion, store.DatabaseVersion)
 	}
-	db, err := sql.Open("sqlite", databaseURI(backup)+"?mode=ro&_pragma=foreign_keys(ON)")
+	db, err := sql.Open("sqlite", store.DatabaseURI(backup)+"?mode=ro&_pragma=foreign_keys(ON)")
 	if err != nil {
 		return manifest, err
 	}
@@ -124,7 +125,7 @@ func checkBackup(backup string) (backupManifest, error) {
 	if err := db.QueryRow("PRAGMA integrity_check").Scan(&check); err != nil || check != "ok" {
 		return manifest, fmt.Errorf("the backup fails the integrity check: %v %s", err, check)
 	}
-	if err := verify(db); err != nil {
+	if err := store.Verify(db); err != nil {
 		return manifest, fmt.Errorf("the backup is not usable: %w", err)
 	}
 	var installation, mode string
@@ -143,18 +144,18 @@ func checkBackup(backup string) (backupManifest, error) {
 // which would be applied to the restored file.
 func checkLive(live, installation string) error {
 	if _, err := os.Stat(live); err == nil {
-		st, err := openStore(live)
+		st, err := store.OpenStore(live)
 		switch {
 		case err == nil:
-			a, loadErr := st.load(context.Background())
-			closeErr := st.close()
-			if loadErr == nil && a.installation != installation {
-				return fmt.Errorf("the backup belongs to installation %s, the live database to %s", installation, a.installation)
+			a, loadErr := st.Load(context.Background())
+			closeErr := st.Close()
+			if loadErr == nil && a.Installation != installation {
+				return fmt.Errorf("the backup belongs to installation %s, the live database to %s", installation, a.Installation)
 			}
 			if closeErr != nil {
 				return closeErr
 			}
-		case !errors.Is(err, errUnavailable):
+		case !errors.Is(err, store.ErrUnavailable):
 			return err
 		}
 	}
@@ -168,13 +169,13 @@ func checkLive(live, installation string) error {
 
 // copyDatabase copies a database file through SQLite into a new file.
 func copyDatabase(source, target string) error {
-	db, err := sql.Open("sqlite", databaseURI(source)+"?mode=ro")
+	db, err := sql.Open("sqlite", store.DatabaseURI(source)+"?mode=ro")
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 	db.SetMaxOpenConns(1)
-	if err := createPrivate(target); err != nil {
+	if err := store.CreatePrivate(target); err != nil {
 		return err
 	}
 	if _, err := db.Exec("VACUUM INTO ?", target); err != nil {
@@ -183,14 +184,14 @@ func copyDatabase(source, target string) error {
 	return checkDatabaseFile(target)
 }
 
-func markRecovery(path string, t transitionRecord, episode string, now time.Time) error {
-	db, err := connect(path, "DELETE")
+func markRecovery(path string, t store.TransitionRecord, episode string, now time.Time) error {
+	db, err := store.Connect(path, "DELETE")
 	if err != nil {
 		return err
 	}
-	s := &store{db: db}
-	err = s.declareRecovery(context.Background(), t, episode, now)
-	return errors.Join(err, s.close())
+	s := store.Adopt(db)
+	err = s.DeclareRecovery(context.Background(), t, episode, now)
+	return errors.Join(err, s.Close())
 }
 
 func removeFiles(paths ...string) error {
@@ -215,12 +216,12 @@ func removeStagedDatabase(path, installation string) error {
 	} else if err != nil {
 		return err
 	}
-	db, err := sql.Open("sqlite", databaseURI(path)+"?mode=ro&_pragma=foreign_keys(ON)")
+	db, err := sql.Open("sqlite", store.DatabaseURI(path)+"?mode=ro&_pragma=foreign_keys(ON)")
 	if err != nil {
 		return err
 	}
 	db.SetMaxOpenConns(1)
-	err = verify(db)
+	err = store.Verify(db)
 	var identity string
 	if err == nil {
 		err = db.QueryRow("SELECT installation FROM deployment WHERE id = 1").Scan(&identity)

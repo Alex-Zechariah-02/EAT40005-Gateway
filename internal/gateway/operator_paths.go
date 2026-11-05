@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 func pathsAlias(a, b string) bool {
@@ -33,7 +35,7 @@ func operatorPaths(configPath string, cfg Config, command string, flags map[stri
 		protected = append(protected, struct{ name, path string }{"JWT public key", key.PublicKeyFile})
 	}
 	for i, file := range protected {
-		if err := regularPath(file.path); err != nil {
+		if err := store.RegularPath(file.path); err != nil {
 			return fmt.Errorf("%s: %w", file.name, err)
 		}
 		for _, previous := range protected[:i] {
@@ -53,7 +55,7 @@ func operatorPaths(configPath string, cfg Config, command string, flags map[stri
 		paths = []string{flags["backup"], manifestPath(flags["backup"]), cfg.Database + ".restore", cfg.Database + ".restore-wal", cfg.Database + ".restore-shm", cfg.Database + ".restore-journal"}
 	}
 	for i, path := range paths {
-		if err := regularPath(path); err != nil {
+		if err := store.RegularPath(path); err != nil {
 			return err
 		}
 		for _, other := range protected {

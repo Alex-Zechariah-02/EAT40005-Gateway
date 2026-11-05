@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // decodeBody reads a bounded JSON request body into value. It refuses another
@@ -73,8 +74,8 @@ func idempotencyKey(w http.ResponseWriter, r *http.Request) (string, bool) {
 
 // adminTransition names a mutation by its administrator and idempotency key,
 // so two administrators can never collide and a retry finds its own record.
-func adminTransition(who caller, key, kind, target string, expected sql.NullInt64, payload any) transitionRecord {
-	return transitionRecord{
+func adminTransition(who caller, key, kind, target string, expected sql.NullInt64, payload any) store.TransitionRecord {
+	return store.TransitionRecord{
 		ID:       "admin:" + who.admin.Name + ":" + key,
 		Kind:     kind,
 		Actor:    who.admin.Name,

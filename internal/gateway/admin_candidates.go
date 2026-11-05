@@ -13,12 +13,13 @@ import (
 
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // candidateView marks every candidate as not active: staging never changes
 // the enforced policy.
 type candidateView struct {
-	candidateRecord
+	store.CandidateRecord
 	Active   bool            `json:"active"`
 	Document json.RawMessage `json:"document,omitempty"`
 }
@@ -32,14 +33,14 @@ func (c *Controller) handleCandidates(w http.ResponseWriter, r *http.Request, wh
 	if !ok {
 		return
 	}
-	records, err := c.store.candidates(r.Context(), cursor, limit)
+	records, err := c.store.Candidates(r.Context(), cursor, limit)
 	if err != nil {
 		adminError(w, http.StatusServiceUnavailable, "unavailable", "")
 		return
 	}
 	items := make([]candidateView, 0, len(records))
 	for _, record := range records {
-		items = append(items, candidateView{candidateRecord: record})
+		items = append(items, candidateView{CandidateRecord: record})
 	}
 	result := list{Items: items}
 	if len(records) == limit {
@@ -53,14 +54,14 @@ func (c *Controller) handleCandidate(w http.ResponseWriter, r *http.Request, who
 	if !ok {
 		return
 	}
-	record, found, err := c.store.candidate(r.Context(), id)
+	record, found, err := c.store.Candidate(r.Context(), id)
 	switch {
 	case err != nil:
 		adminError(w, http.StatusServiceUnavailable, "unavailable", "")
 	case !found:
 		adminError(w, http.StatusNotFound, "not_found", "")
 	default:
-		writeJSON(w, http.StatusOK, candidateView{candidateRecord: record, Document: record.Document})
+		writeJSON(w, http.StatusOK, candidateView{CandidateRecord: record, Document: record.Document})
 	}
 }
 
@@ -92,14 +93,14 @@ func (c *Controller) handlePostCandidate(w http.ResponseWriter, r *http.Request,
 		writeJSON(w, status, outcome)
 		return
 	}
-	record, _, err := c.store.candidate(r.Context(), outcome.Candidate)
+	record, _, err := c.store.Candidate(r.Context(), outcome.Candidate)
 	if err != nil {
 		c.logger.Error("reading committed candidate", "error", err)
 		outcome.Reason = "STORE_ERROR"
 		writeJSON(w, http.StatusServiceUnavailable, outcome)
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"receipt": outcome, "candidate": candidateView{candidateRecord: record}})
+	writeJSON(w, http.StatusCreated, map[string]any{"receipt": outcome, "candidate": candidateView{CandidateRecord: record}})
 }
 
 func (c *Controller) handleWithdrawCandidate(w http.ResponseWriter, r *http.Request, who caller) {
@@ -188,27 +189,27 @@ func (c *Controller) handleResolve(kind, disposition string) adminHandler {
 // relative to its rollback target.
 func (c *Controller) handleProvisional(w http.ResponseWriter, r *http.Request, who caller) {
 	ctx := r.Context()
-	a, err := c.store.load(ctx)
+	a, err := c.store.Load(ctx)
 	if err != nil {
 		c.logger.Error("reading authority", "error", err)
 		adminError(w, http.StatusServiceUnavailable, "unavailable", "")
 		return
 	}
-	w.Header().Set("ETag", policyETag(a.confirmed))
-	if a.provisional == 0 {
+	w.Header().Set("ETag", policyETag(a.Confirmed))
+	if a.Provisional == 0 {
 		adminError(w, http.StatusNotFound, "no_provisional", "")
 		return
 	}
-	record, found, err := c.store.activation(ctx, "revision", a.provisional)
+	record, found, err := c.store.Activation(ctx, "revision", a.Provisional)
 	if err == nil && !found {
-		err = fmt.Errorf("activation of revision %d missing", a.provisional)
+		err = fmt.Errorf("activation of revision %d missing", a.Provisional)
 	}
 	var before, after policy.Policy
 	if err == nil {
-		before, err = c.storedPolicy(ctx, a.confirmed)
+		before, err = c.storedPolicy(ctx, a.Confirmed)
 	}
 	if err == nil {
-		after, err = c.storedPolicy(ctx, a.provisional)
+		after, err = c.storedPolicy(ctx, a.Provisional)
 	}
 	if err != nil {
 		c.logger.Error("reading the provisional base", "error", err)
@@ -216,14 +217,14 @@ func (c *Controller) handleProvisional(w http.ResponseWriter, r *http.Request, w
 		return
 	}
 	view := map[string]any{"activation": record, "changes": compile.PolicyChanges(before, after)}
-	if g := c.current.Load(); g != nil && g.Revision == a.provisional {
+	if g := c.current.Load(); g != nil && g.Revision == a.Provisional {
 		view["generation"] = g.ID
 	}
 	writeJSON(w, http.StatusOK, view)
 }
 
 func (c *Controller) storedPolicy(ctx context.Context, id int64) (policy.Policy, error) {
-	r, found, err := c.store.revision(ctx, id)
+	r, found, err := c.store.Revision(ctx, id)
 	if err == nil && !found {
 		err = fmt.Errorf("revision %d missing", id)
 	}
@@ -243,7 +244,7 @@ func (c *Controller) handleActivations(w http.ResponseWriter, r *http.Request, w
 	if !ok {
 		return
 	}
-	items, err := c.store.activations(r.Context(), cursor, limit)
+	items, err := c.store.Activations(r.Context(), cursor, limit)
 	if err != nil {
 		adminError(w, http.StatusServiceUnavailable, "unavailable", "")
 		return

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // Each supported override changes enforcement at once, exactly as its type
@@ -45,7 +46,7 @@ func TestOverrideLifecycle(t *testing.T) {
 
 	// An RBAC exception grants bob the write.
 	before := time.Now()
-	grant := e.mustOverride(harness, permitOverride(overrideException, "READER", "write-a", 600), `"r1"`, "lifecycle-grant-0001")
+	grant := e.mustOverride(harness, permitOverride(store.OverrideException, "READER", "write-a", 600), `"r1"`, "lifecycle-grant-0001")
 	if grant.Override != 1 || grant.Target != "permit:READER:write-a" || grant.Revision != 1 || !strings.HasPrefix(grant.Generation, "r1+o1-") ||
 		grant.Expires.Before(before.Add(600*time.Second).Add(-time.Millisecond)) || grant.Expires.After(time.Now().Add(600*time.Second)) {
 		t.Fatalf("grant receipt %+v", grant)
@@ -73,7 +74,7 @@ func TestOverrideLifecycle(t *testing.T) {
 
 	// An RBAC containment withdraws alice's read; a route containment closes
 	// /b for everyone.
-	contain := e.mustOverride(harness, permitOverride(overrideContainment, "WRITER", "read-a", 600), `"r1"`, "lifecycle-contain-01")
+	contain := e.mustOverride(harness, permitOverride(store.OverrideContainment, "WRITER", "read-a", 600), `"r1"`, "lifecycle-contain-01")
 	closed := e.mustOverride(harness, operationContainment("read-b", 600), `"r1"`, "lifecycle-close-0001")
 	if !strings.HasPrefix(closed.Generation, "r1+o1.2.3-") {
 		t.Fatalf("generation %s", closed.Generation)
@@ -84,7 +85,7 @@ func TestOverrideLifecycle(t *testing.T) {
 	// confirmed base is still revision 1.
 	view := e.activeOverrides(harness)
 	if view.Revision != 1 || view.Confirmed != 1 || view.Generation != closed.Generation || !slices.Equal(view.GenerationOverrides, []int64{1, 2, 3}) ||
-		len(view.Overrides) != 3 || view.Overrides[1].Target != "permit:WRITER:read-a" || view.Overrides[1].Status != overrideActive ||
+		len(view.Overrides) != 3 || view.Overrides[1].Target != "permit:WRITER:read-a" || view.Overrides[1].Status != store.OverrideActive ||
 		view.Overrides[1].Actor != harnessAdmin || view.Overrides[1].Base != 1 || view.Overrides[1].Creation != contain.Transition {
 		t.Fatalf("overrides view %+v", view)
 	}
@@ -113,7 +114,7 @@ func TestOverrideLifecycle(t *testing.T) {
 	// Revoking the grant removes it alone, over the current base (with
 	// carol), never an earlier policy.
 	code, revoked, body := e.revokeOverride(harness, grant.Override, "lifecycle-revoke-01")
-	if code != http.StatusOK || revoked.Disposition != overrideRevoked || revoked.Override != grant.Override || revoked.Revision != 2 ||
+	if code != http.StatusOK || revoked.Disposition != store.OverrideRevoked || revoked.Override != grant.Override || revoked.Revision != 2 ||
 		!strings.HasPrefix(revoked.Generation, "r2+o2.3-") {
 		t.Fatalf("revocation: %d %s", code, body)
 	}
@@ -123,11 +124,11 @@ func TestOverrideLifecycle(t *testing.T) {
 	}
 	// Retries and stale revocations.
 	if code, again, body := e.revokeOverride(harness, grant.Override, "lifecycle-revoke-01"); code != http.StatusOK || again.Transition != revoked.Transition ||
-		again.Disposition != overrideRevoked || again.Override != grant.Override {
+		again.Disposition != store.OverrideRevoked || again.Override != grant.Override {
 		t.Fatalf("retried revocation: %d %s", code, body)
 	}
 	if code, again, body := e.revokeOverride(harness, grant.Override, "lifecycle-revoke-02"); code != http.StatusConflict || again.Reason != "ALREADY_RESOLVED" ||
-		again.Disposition != overrideRevoked {
+		again.Disposition != store.OverrideRevoked {
 		t.Fatalf("second revocation: %d %s", code, body)
 	}
 	if code, _, body := e.revokeOverride(harness, 99, "lifecycle-revoke-03"); code != http.StatusNotFound {
@@ -136,11 +137,11 @@ func TestOverrideLifecycle(t *testing.T) {
 	// The identical creation request returns its recorded receipt and creates
 	// nothing, although the base has moved on; changed in any way (here its
 	// precondition), it is refused.
-	if code, again, body := e.createOverride(harness, permitOverride(overrideException, "READER", "write-a", 600), `"r1"`, "lifecycle-grant-0001"); code != http.StatusCreated ||
+	if code, again, body := e.createOverride(harness, permitOverride(store.OverrideException, "READER", "write-a", 600), `"r1"`, "lifecycle-grant-0001"); code != http.StatusCreated ||
 		again.Transition != grant.Transition || again.Override != grant.Override {
 		t.Fatalf("replayed creation: %d %s", code, body)
 	}
-	if code, again, body := e.createOverride(harness, permitOverride(overrideException, "READER", "write-a", 600), `"r2"`, "lifecycle-grant-0001"); code != http.StatusUnprocessableEntity ||
+	if code, again, body := e.createOverride(harness, permitOverride(store.OverrideException, "READER", "write-a", 600), `"r2"`, "lifecycle-grant-0001"); code != http.StatusUnprocessableEntity ||
 		again.Reason != "TRANSITION_ID_REUSED" {
 		t.Fatalf("creation key reused for another request: %d %s", code, body)
 	}
@@ -165,13 +166,13 @@ func TestOverrideLifecycle(t *testing.T) {
 	// History, events and durable state.
 	code, body, _ = e.as(harness, http.MethodGet, "/admin/overrides/history", "")
 	history := fromJSON[struct {
-		Items []override `json:"items"`
+		Items []store.Override `json:"items"`
 	}](t, body)
 	if code != http.StatusOK || len(history.Items) != 3 {
 		t.Fatalf("override history: %d %s", code, body)
 	}
 	for _, o := range history.Items {
-		if o.Status != overrideRevoked || o.ResolvedBy != harnessAdmin || o.ResolvedAt == nil || o.Resolution == "" {
+		if o.Status != store.OverrideRevoked || o.ResolvedBy != harnessAdmin || o.ResolvedAt == nil || o.Resolution == "" {
 			t.Fatalf("history item %+v", o)
 		}
 	}
@@ -198,7 +199,7 @@ func TestOverrideLifecycle(t *testing.T) {
 		t.Fatalf("%d published and audited override transitions, want 6", n)
 	}
 	for _, o := range storedOverrides(t, e.database) {
-		if o.Status != overrideRevoked || o.Base != 1 {
+		if o.Status != store.OverrideRevoked || o.Base != 1 {
 			t.Fatalf("stored override %+v", o)
 		}
 	}

@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // registerTestRoutes adds the test publication hook: a whole-policy
@@ -16,7 +17,7 @@ import (
 // activation lifecycle. The hook still needs an administrator session with
 // manage_policy, the admin origin and the CSRF token.
 func registerTestRoutes(c *Controller, mux *http.ServeMux) {
-	c.route(mux, "POST /test/publish", permManagePolicy, func(w http.ResponseWriter, r *http.Request, who caller) {
+	c.route(mux, "POST /test/publish", store.PermManagePolicy, func(w http.ResponseWriter, r *http.Request, who caller) {
 		var change Change
 		if !decodeBody(w, r, policy.MaxPolicyBytes, &change) {
 			return

@@ -1,6 +1,10 @@
 package gateway
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
+)
 
 // handleLimits reports each built-in limit with its current use, so an
 // administrator can see one coming before it is reached. Every figure is read
@@ -12,7 +16,7 @@ func (c *Controller) handleLimits(w http.ResponseWriter, r *http.Request, who ca
 	}
 	limit := func(used, max int64) map[string]int64 { return map[string]int64{"used": used, "max": max} }
 	writeJSON(w, http.StatusOK, map[string]any{
-		"temporary_rules":        limit(int64(active), maxActiveOverrides),
+		"temporary_rules":        limit(int64(active), store.MaxActiveOverrides),
 		"live_views":             limit(int64(c.observations.viewerCount()), maxEventStreams),
 		"administrator_sessions": limit(int64(c.sessions.count()), maxSessions),
 		"audit_files":            limit(c.audit.files.Load(), int64(c.audit.maxFiles)),

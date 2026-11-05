@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 func TestNativeOperatorArguments(t *testing.T) {
@@ -81,7 +83,7 @@ func TestNativeOperatorPaths(t *testing.T) {
 func TestNativeOperatorOwnership(t *testing.T) {
 	e := newEnv(t)
 	seed(t, e.database, e.protectedPolicy(), seedOptions{})
-	lock, err := lockDeployment(e.database)
+	lock, err := store.LockDeployment(e.database)
 	if err != nil {
 		t.Fatal(err)
 	}

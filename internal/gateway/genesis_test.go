@@ -6,13 +6,15 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // stagedCandidate is the reply to a candidate submission.
 type stagedCandidate struct {
 	Receipt   Outcome `json:"receipt"`
 	Candidate struct {
-		candidateRecord
+		store.CandidateRecord
 		Active *bool `json:"active"`
 	} `json:"candidate"`
 }
@@ -40,7 +42,7 @@ func (e *env) establish(s adminSession, path string, candidate int64, checksum s
 // bootstrapped installs a gateway, enrols root and stages a deny-all
 // candidate, all on the given binary. It returns root's password and the
 // staged candidate.
-func bootstrapped(t *testing.T, binary string) (*env, string, candidateRecord) {
+func bootstrapped(t *testing.T, binary string) (*env, string, store.CandidateRecord) {
 	t.Helper()
 	e, secret := installEnv(t, binary)
 	password := testPassword()
@@ -52,7 +54,7 @@ func bootstrapped(t *testing.T, binary string) (*env, string, candidateRecord) {
 	if code != http.StatusCreated || !staged.Candidate.DenyAll {
 		t.Fatalf("staging the deny-all candidate: %d %s", code, body)
 	}
-	return e, password, staged.Candidate.candidateRecord
+	return e, password, staged.Candidate.CandidateRecord
 }
 
 // publishedEvents returns the transition.published events of one transition.
@@ -101,7 +103,7 @@ func TestGenesisEstablishesDenyAllBase(t *testing.T) {
 	if code != http.StatusOK || !strings.Contains(body, "alice") {
 		t.Errorf("independent containment in bootstrap: %d %s", code, body)
 	}
-	if e.health() != modeBootstrap {
+	if e.health() != store.ModeBootstrap {
 		t.Fatal("a refused request left bootstrap mode")
 	}
 
@@ -113,23 +115,23 @@ func TestGenesisEstablishesDenyAllBase(t *testing.T) {
 	if !strings.HasPrefix(outcome.Transition, "genesis:") {
 		t.Fatalf("genesis transition %q", outcome.Transition)
 	}
-	if e.health() != modeNormal {
+	if e.health() != store.ModeNormal {
 		t.Fatal("genesis did not set normal mode")
 	}
 	code, body, _ = e.as(root, http.MethodGet, "/admin/status", "")
 	s := fromJSON[status](t, body)
-	if code != http.StatusOK || s.State != modeNormal || s.Revision != outcome.Revision || s.Generation != outcome.Generation {
+	if code != http.StatusOK || s.State != store.ModeNormal || s.Revision != outcome.Revision || s.Generation != outcome.Generation {
 		t.Fatalf("status after genesis: %d %s", code, body)
 	}
 	code, body, header := e.as(root, http.MethodGet, "/admin/policy", "")
-	revision := fromJSON[revisionInfo](t, body)
+	revision := fromJSON[store.RevisionInfo](t, body)
 	if code != http.StatusOK || header.Get("ETag") != fmt.Sprintf(`"r%d"`, outcome.Revision) ||
 		revision.Origin != "genesis" || revision.Actor != "root" || revision.Parent != 0 ||
 		revision.Checksum != denyAll.Checksum {
 		t.Fatalf("confirmed policy after genesis: %d %s", code, body)
 	}
 	_, body, _ = e.as(root, http.MethodGet, fmt.Sprintf("/admin/candidates/%d", denyAll.ID), "")
-	if c := fromJSON[candidateRecord](t, body); c.Status != "established" {
+	if c := fromJSON[store.CandidateRecord](t, body); c.Status != "established" {
 		t.Fatalf("genesis candidate status %q", c.Status)
 	}
 
@@ -166,7 +168,7 @@ func TestGenesisEstablishesDenyAllBase(t *testing.T) {
 
 	// History and audit agree with the response.
 	code, body, _ = e.as(root, http.MethodGet, "/admin/history/"+outcome.Transition, "")
-	entry := fromJSON[historyEntry](t, body)
+	entry := fromJSON[store.HistoryEntry](t, body)
 	if code != http.StatusOK || entry.Actor != "root" || entry.Outcome != "committed" || entry.Revision != outcome.Revision ||
 		entry.PublishedBy != "publisher" || entry.AuditedAt == nil {
 		t.Fatalf("genesis history: %d %s", code, body)
@@ -212,7 +214,7 @@ func TestGenesisSurvivesCrash(t *testing.T) {
 			}
 
 			e.start(binaries.plain)
-			if e.health() != modeNormal {
+			if e.health() != store.ModeNormal {
 				t.Fatal("the committed genesis is not serving after restart")
 			}
 			root = e.mustLogin("root", password)
@@ -221,7 +223,7 @@ func TestGenesisSurvivesCrash(t *testing.T) {
 				t.Fatalf("retry after the crash: %d %+v", code, outcome)
 			}
 			_, body, _ := e.as(root, http.MethodGet, "/admin/history/"+outcome.Transition, "")
-			if entry := fromJSON[historyEntry](t, body); entry.PublishedBy != tc.publishedBy || entry.AuditedAt == nil {
+			if entry := fromJSON[store.HistoryEntry](t, body); entry.PublishedBy != tc.publishedBy || entry.AuditedAt == nil {
 				t.Fatalf("history after the crash: %s", body)
 			}
 			if code, _ := e.get("/a/x"); code != http.StatusForbidden {

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 func TestExpiredProvisionalNeverServes(t *testing.T) {
@@ -143,7 +145,7 @@ func TestUnavailableAuthorityAdmitsNothing(t *testing.T) {
 			earlier := []byte(`{"upstreams":[{"id":"A","dial":"` + e.a.addr + `"}],` +
 				`"operations":[{"id":"read-a","method":"GET","target":"/a/*","upstream":"A","access":"allow"}]}`)
 			db := inspect(e.t, e.database)
-			if _, err := db.Exec(`UPDATE revision SET document = ?, checksum = ? WHERE id = 1`, earlier, documentChecksum(earlier)); err != nil {
+			if _, err := db.Exec(`UPDATE revision SET document = ?, checksum = ? WHERE id = 1`, earlier, store.DocumentChecksum(earlier)); err != nil {
 				e.t.Fatal(err)
 			}
 			db.Close()
@@ -156,17 +158,17 @@ func TestUnavailableAuthorityAdmitsNothing(t *testing.T) {
 				`"apis":[{"id":"a","upstream":"A"}],` +
 				`"operations":[{"id":"read-a","api":"a","method":"GET","target":"/a/*","access":"allow","auth":"required"}]}`)
 			db := inspect(e.t, e.database)
-			if _, err := db.Exec(`UPDATE revision SET document = ?, checksum = ? WHERE id = 1`, earlier, documentChecksum(earlier)); err != nil {
+			if _, err := db.Exec(`UPDATE revision SET document = ?, checksum = ? WHERE id = 1`, earlier, store.DocumentChecksum(earlier)); err != nil {
 				e.t.Fatal(err)
 			}
 			db.Close()
 		}, "SCHEMA_VERSION_UNSUPPORTED"},
 		{"recovery required", func(e *env) {
-			seed(e.t, e.database, e.policy(e.a, false), seedOptions{mode: modeRecovery})
-		}, modeRecovery},
+			seed(e.t, e.database, e.policy(e.a, false), seedOptions{mode: store.ModeRecovery})
+		}, store.ModeRecovery},
 		{"bootstrap locked", func(e *env) {
-			seed(e.t, e.database, e.policy(e.a, false), seedOptions{mode: modeBootstrap})
-		}, modeBootstrap},
+			seed(e.t, e.database, e.policy(e.a, false), seedOptions{mode: store.ModeBootstrap})
+		}, store.ModeBootstrap},
 		{"rollback recorded but provisional still active", func(e *env) {
 			provisional := e.policy(e.a, true)
 			seed(e.t, e.database, e.policy(e.a, false), seedOptions{provisional: &provisional, deadline: time.Now().Add(-time.Second)})
@@ -184,7 +186,7 @@ func TestUnavailableAuthorityAdmitsNothing(t *testing.T) {
 			tc.prepare(e)
 			e.start(binaries.fault)
 			wantHealth, wantMutation := "unavailable", http.StatusServiceUnavailable
-			if tc.state == modeRecovery || tc.state == modeBootstrap {
+			if tc.state == store.ModeRecovery || tc.state == store.ModeBootstrap {
 				wantHealth, wantMutation = tc.state, http.StatusOK
 			}
 			if health := e.health(); health != wantHealth {

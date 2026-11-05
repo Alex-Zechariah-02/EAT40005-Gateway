@@ -5,6 +5,8 @@ package gateway
 import (
 	"net/http"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // acquireHashing takes one of the bounded password-hashing slots.
@@ -32,7 +34,7 @@ func (c *Controller) handleEnrol(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, maxAdminBody, &body) {
 		return
 	}
-	if !isAdminName(body.Name) || !validPassword(body.Password) {
+	if !store.IsAdminName(body.Name) || !validPassword(body.Password) {
 		adminError(w, http.StatusBadRequest, "bad_request", "")
 		return
 	}
@@ -45,7 +47,7 @@ func (c *Controller) handleEnrol(w http.ResponseWriter, r *http.Request) {
 		c.refuse(w, r, http.StatusTooManyRequests, "too_many_attempts", reason, nil)
 		return
 	}
-	e, found, err := c.store.enrolment(r.Context(), tokenHash(body.Secret))
+	e, found, err := c.store.Enrolment(r.Context(), tokenHash(body.Secret))
 	if err != nil {
 		c.logger.Error("reading enrolment", "error", err)
 		adminError(w, http.StatusServiceUnavailable, "unavailable", "")
@@ -68,7 +70,7 @@ func (c *Controller) handleEnrol(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, status, outcome)
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"name": e.Name, "permissions": e.Permissions.names()})
+	writeJSON(w, http.StatusCreated, map[string]any{"name": e.Name, "permissions": e.Permissions.Names()})
 }
 
 func (c *Controller) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -92,7 +94,7 @@ func (c *Controller) handleLogin(w http.ResponseWriter, r *http.Request) {
 		c.refuse(w, r, http.StatusTooManyRequests, "too_many_attempts", reason, nil)
 		return
 	}
-	admin, found, err := c.store.administrator(r.Context(), body.Name)
+	admin, found, err := c.store.Administrator(r.Context(), body.Name)
 	if err != nil {
 		c.logger.Error("reading administrator", "error", err)
 		adminError(w, http.StatusServiceUnavailable, "unavailable", "")
@@ -136,10 +138,10 @@ func (c *Controller) handleLogin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, sessionView(admin, s))
 }
 
-func sessionView(admin administrator, s session) map[string]any {
+func sessionView(admin store.Administrator, s session) map[string]any {
 	return map[string]any{
 		"name":        admin.Name,
-		"permissions": admin.Permissions.names(),
+		"permissions": admin.Permissions.Names(),
 		"csrf_token":  s.csrf,
 		"expires_at":  s.expires.UTC(),
 	}

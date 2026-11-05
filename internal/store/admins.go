@@ -1,6 +1,6 @@
 // Administrator, enrolment and recovery records.
 
-package gateway
+package store
 
 import (
 	"context"
@@ -9,9 +9,9 @@ import (
 	"time"
 )
 
-// commitEnrolment consumes an enrolment and writes the administrator's new
+// CommitEnrolment consumes an enrolment and writes the administrator's new
 // credential in one transaction. Only one request can consume a secret.
-func (s *store) commitEnrolment(ctx context.Context, t transitionRecord, e enrolment, passwordHash string, now time.Time) error {
+func (s *DB) CommitEnrolment(ctx context.Context, t TransitionRecord, e Enrolment, passwordHash string, now time.Time) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -38,9 +38,9 @@ func (s *store) commitEnrolment(ctx context.Context, t transitionRecord, e enrol
 	return tx.Commit()
 }
 
-// commitPassword replaces an administrator's password if the credential has
+// CommitPassword replaces an administrator's password if the credential has
 // not changed since it was verified.
-func (s *store) commitPassword(ctx context.Context, t transitionRecord, name string, credential int64, passwordHash string, now time.Time) error {
+func (s *DB) CommitPassword(ctx context.Context, t TransitionRecord, name string, credential int64, passwordHash string, now time.Time) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -59,31 +59,31 @@ func (s *store) commitPassword(ctx context.Context, t transitionRecord, name str
 	return tx.Commit()
 }
 
-func (s *store) administrator(ctx context.Context, name string) (administrator, bool, error) {
-	var a administrator
+func (s *DB) Administrator(ctx context.Context, name string) (Administrator, bool, error) {
+	var a Administrator
 	err := s.db.QueryRowContext(ctx, `SELECT name, permissions, password, status, credential FROM administrator WHERE name = ?`, name).
 		Scan(&a.Name, &a.Permissions, &a.Password, &a.Status, &a.Credential)
 	if errors.Is(err, sql.ErrNoRows) {
-		return administrator{}, false, nil
+		return Administrator{}, false, nil
 	}
 	return a, err == nil, err
 }
 
-func (s *store) enrolment(ctx context.Context, secretHash string) (enrolment, bool, error) {
-	var e enrolment
+func (s *DB) Enrolment(ctx context.Context, secretHash string) (Enrolment, bool, error) {
+	var e Enrolment
 	var expires int64
 	err := s.db.QueryRowContext(ctx, `SELECT administrator, secret, permissions, expires_at FROM enrolment WHERE secret = ?`, secretHash).
 		Scan(&e.Name, &e.Secret, &e.Permissions, &expires)
 	if errors.Is(err, sql.ErrNoRows) {
-		return enrolment{}, false, nil
+		return Enrolment{}, false, nil
 	}
 	e.ExpiresAt = time.UnixMilli(expires)
 	return e, err == nil, err
 }
 
-// issueEnrolment replaces any pending enrolment for the administrator and
+// IssueEnrolment replaces any pending enrolment for the administrator and
 // records the operator transition, in one transaction.
-func (s *store) issueEnrolment(ctx context.Context, t transitionRecord, e enrolment, now time.Time) error {
+func (s *DB) IssueEnrolment(ctx context.Context, t TransitionRecord, e Enrolment, now time.Time) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -104,7 +104,7 @@ func (s *store) issueEnrolment(ctx context.Context, t transitionRecord, e enrolm
 	return tx.Commit()
 }
 
-// declareRecovery puts a restored database into recovery_required under a new
+// DeclareRecovery puts a restored database into recovery_required under a new
 // episode and quarantines everything whose authority cannot be trusted after a
 // historical restore: administrators, candidates, pending enrolments, any
 // provisional base, whose activation is closed as quarantined rather than
@@ -112,7 +112,7 @@ func (s *store) issueEnrolment(ctx context.Context, t transitionRecord, e enrolm
 // which may since have been revoked. The activation and all those overrides
 // name the restore transition as their resolution. History and revisions are
 // kept as evidence.
-func (s *store) declareRecovery(ctx context.Context, t transitionRecord, episode string, now time.Time) error {
+func (s *DB) DeclareRecovery(ctx context.Context, t TransitionRecord, episode string, now time.Time) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -123,15 +123,15 @@ func (s *store) declareRecovery(ctx context.Context, t transitionRecord, episode
 		query string
 		args  []any
 	}{
-		{`UPDATE deployment SET mode = ?, recovery_episode = ? WHERE id = 1`, []any{modeRecovery, episode}},
+		{`UPDATE deployment SET mode = ?, recovery_episode = ? WHERE id = 1`, []any{ModeRecovery, episode}},
 		{`UPDATE administrator SET status = 'quarantined', updated_at = ?`, []any{now.UnixMilli()}},
 		{`UPDATE candidate SET status = 'quarantined' WHERE status = 'validated'`, nil},
 		{`DELETE FROM enrolment`, nil},
 		{`UPDATE activation SET disposition = ?, resolved_at = ?, resolved_by = 'operator', resolution = ? WHERE disposition IS NULL`,
-			[]any{dispositionQuarantined, now.UnixMilli(), t.ID}},
+			[]any{DispositionQuarantined, now.UnixMilli(), t.ID}},
 		{`UPDATE base SET provisional = NULL, deadline = NULL WHERE id = 1`, nil},
 		{`UPDATE override SET status = ?, resolved_at = ?, resolved_by = 'operator', resolution = ? WHERE status = 'active'`,
-			[]any{overrideQuarantined, now.UnixMilli(), t.ID}},
+			[]any{OverrideQuarantined, now.UnixMilli(), t.ID}},
 	}
 	for _, statement := range statements {
 		if _, err := tx.ExecContext(ctx, statement.query, statement.args...); err != nil {
@@ -142,4 +142,29 @@ func (s *store) declareRecovery(ctx context.Context, t transitionRecord, episode
 		return err
 	}
 	return tx.Commit()
+}
+
+// adminEntry is one administrator as listed: name, permissions and status.
+type adminEntry struct {
+	Name        string
+	Permissions Permission
+	Status      string
+}
+
+// Administrators lists every administrator, ordered by name.
+func (s *DB) Administrators(ctx context.Context) ([]adminEntry, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT name, permissions, status FROM administrator ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []adminEntry
+	for rows.Next() {
+		var entry adminEntry
+		if err := rows.Scan(&entry.Name, &entry.Permissions, &entry.Status); err != nil {
+			return nil, err
+		}
+		list = append(list, entry)
+	}
+	return list, rows.Err()
 }

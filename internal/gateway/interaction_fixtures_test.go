@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // Overrides through the three fixture APIs, whose own receipts and state
@@ -33,7 +35,7 @@ func TestOverridesWithFixtures(t *testing.T) {
 	if code, _ := e.get("/reports/sales", bearer(t, "staff-01")...); code != http.StatusForbidden || receiptCounts(fixtures)["reports"] != 0 {
 		t.Fatalf("sales report under the base: %d", code)
 	}
-	sales := e.mustOverride(harness, permitOverride(overrideException, "STAFF", "reports.sales", 600), `"r1"`, "fixtures-sales-00001")
+	sales := e.mustOverride(harness, permitOverride(store.OverrideException, "STAFF", "reports.sales", 600), `"r1"`, "fixtures-sales-00001")
 	if code, _ := e.get("/reports/sales", bearer(t, "staff-01")...); code != http.StatusOK || receiptCounts(fixtures)["reports"] != 1 {
 		t.Fatalf("sales report under the exception: %d %v", code, receiptCounts(fixtures))
 	}
@@ -51,7 +53,7 @@ func TestOverridesWithFixtures(t *testing.T) {
 		t.Fatalf("order creation under the containment: %d", code)
 	}
 	// Rate containment: staff may list orders once per window.
-	limit := e.mustOverride(harness, rateOverride(overrideContainment, "orders.list", 1, 600), `"r1"`, "fixtures-limit-00001")
+	limit := e.mustOverride(harness, rateOverride(store.OverrideContainment, "orders.list", 1, 600), `"r1"`, "fixtures-limit-00001")
 	codes := []int{}
 	for range 2 {
 		code, _ := e.get("/orders", bearer(t, "staff-01")...)
@@ -115,7 +117,7 @@ func TestOverridesKeepRoutingAndUpstreams(t *testing.T) {
 	e.start(binaries.plain)
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 	e.mustOverride(harness, operationContainment("read-b", 600), `"r1"`, "routing-close-00001")
-	e.mustOverride(harness, permitOverride(overrideException, "READER", "write-a", 600), `"r1"`, "routing-grant-00001")
+	e.mustOverride(harness, permitOverride(store.OverrideException, "READER", "write-a", 600), `"r1"`, "routing-grant-00001")
 
 	e.resetReceivers()
 	rows := []struct {

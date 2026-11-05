@@ -1,6 +1,6 @@
 // Administrator permissions and names.
 
-package gateway
+package store
 
 import (
 	"fmt"
@@ -9,30 +9,30 @@ import (
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
-// permission is a set of administrator rights. Each admin route requires
+// Permission is a set of administrator rights. Each admin route requires
 // exactly one; holding read never implies the right to change anything.
-type permission int
+type Permission int
 
 const (
-	permRead permission = 1 << iota
-	permReadHistory
-	permManageSubjects
-	permManagePolicy
+	PermRead Permission = 1 << iota
+	PermReadHistory
+	PermManageSubjects
+	PermManagePolicy
 
-	permAll = permRead | permReadHistory | permManageSubjects | permManagePolicy
+	PermAll = PermRead | PermReadHistory | PermManageSubjects | PermManagePolicy
 )
 
 var permissionNames = []struct {
-	bit  permission
+	bit  Permission
 	name string
 }{
-	{permRead, "read"},
-	{permReadHistory, "read_history"},
-	{permManageSubjects, "manage_subjects"},
-	{permManagePolicy, "manage_policy"},
+	{PermRead, "read"},
+	{PermReadHistory, "read_history"},
+	{PermManageSubjects, "manage_subjects"},
+	{PermManagePolicy, "manage_policy"},
 }
 
-func (p permission) names() []string {
+func (p Permission) Names() []string {
 	names := []string{}
 	for _, entry := range permissionNames {
 		if p&entry.bit != 0 {
@@ -42,9 +42,9 @@ func (p permission) names() []string {
 	return names
 }
 
-// parsePermissions reads a comma-separated list of permission names.
-func parsePermissions(list string) (permission, error) {
-	var p permission
+// ParsePermissions reads a comma-separated list of permission names.
+func ParsePermissions(list string) (Permission, error) {
+	var p Permission
 	for name := range strings.SplitSeq(list, ",") {
 		found := false
 		for _, entry := range permissionNames {
@@ -61,7 +61,7 @@ func parsePermissions(list string) (permission, error) {
 }
 
 // Administrator names are short lowercase identifiers, safe to log.
-func isAdminName(name string) bool {
+func IsAdminName(name string) bool {
 	if name == "" || len(name) > policy.MaxIDLength {
 		return false
 	}

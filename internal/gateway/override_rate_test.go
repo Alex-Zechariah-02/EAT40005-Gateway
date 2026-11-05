@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // Rate overrides change only the count of an existing rule. The counters
@@ -33,7 +34,7 @@ func TestRateOverrideKeepsCounters(t *testing.T) {
 		t.Fatalf("alice under the base rule: %v", got)
 	}
 	// Exception to 6 mid-window: C=3, so 3 more (C+1 <= 6 for C = 3..5).
-	raise := e.mustOverride(harness, rateOverride(overrideException, "read-a", 6, 600), `"r1"`, "rate-raise-000001")
+	raise := e.mustOverride(harness, rateOverride(store.OverrideException, "read-a", 6, 600), `"r1"`, "rate-raise-000001")
 	if got := e.sendAs("alice", http.MethodGet, "/a/x", "", 4); !statusesAre(got, 200, 200, 200, 429) {
 		t.Fatalf("alice under the exception: %v, want 3 admitted then 429 (no reset)", got)
 	}
@@ -54,7 +55,7 @@ func TestRateOverrideKeepsCounters(t *testing.T) {
 	clock.set(base + 15_000)
 	// Containment to 2: alice 3+1 > 2, refused; carol, who has sent
 	// nothing, gets 2 (0+1 <= 2, 1+1 <= 2, then 2+1 > 2).
-	contain := e.mustOverride(harness, rateOverride(overrideContainment, "read-a", 2, 600), `"r1"`, "rate-lower-000001")
+	contain := e.mustOverride(harness, rateOverride(store.OverrideContainment, "read-a", 2, 600), `"r1"`, "rate-lower-000001")
 	if got := e.sendAs("alice", http.MethodGet, "/a/x", "", 1); !statusesAre(got, 429) {
 		t.Fatalf("alice under the containment: %v", got)
 	}
@@ -85,7 +86,7 @@ func TestRateOverrideKeepsCounters(t *testing.T) {
 	// Concurrency at the boundary: a fresh window (two buckets later), an
 	// exception to 5, and 20 simultaneous requests by one subject: exactly 5.
 	clock.set(base + 40_000)
-	race := e.mustOverride(harness, rateOverride(overrideException, "read-a", 5, 600), `"r1"`, "rate-race-0000001")
+	race := e.mustOverride(harness, rateOverride(store.OverrideException, "read-a", 5, 600), `"r1"`, "rate-race-0000001")
 	e.resetReceivers()
 	var wg sync.WaitGroup
 	var mu sync.Mutex
@@ -116,7 +117,7 @@ func TestRateOverrideKeepsCounters(t *testing.T) {
 	// (bucket base+80 s is more than one after base+40 s), an exception to 6
 	// that expires in 2 s, then a new subject is added to the base.
 	clock.set(base + 80_000)
-	expiring := e.mustOverride(harness, rateOverride(overrideException, "read-a", 6, 2), `"r1"`, "rate-expiring-0001")
+	expiring := e.mustOverride(harness, rateOverride(store.OverrideException, "read-a", 6, 2), `"r1"`, "rate-expiring-0001")
 	next := ratePolicy(e)
 	next.Roles = append(next.Roles, policy.Role{ID: "OTHER"})
 	e.confirmPolicy(harness, next, 1, "rate-permanent-change")

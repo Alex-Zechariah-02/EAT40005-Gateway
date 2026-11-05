@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 type historyItem struct {
@@ -254,7 +255,7 @@ func TestStoreErrorOnResendDoesNotMeanNothingChanged(t *testing.T) {
 	request := struct {
 		Reason string `json:"reason"`
 	}{reason}
-	block := adminTransition(caller{admin: administrator{Name: harnessAdmin}}, "store-error-resend-01", "account.block", "cust-500", sql.NullInt64{}, request)
+	block := adminTransition(caller{admin: store.Administrator{Name: harnessAdmin}}, "store-error-resend-01", "account.block", "cust-500", sql.NullInt64{}, request)
 	receipt, status := c.changeBlock(t.Context(), block, reason)
 	if status != http.StatusOK {
 		t.Fatalf("block: %d %s", status, receipt)

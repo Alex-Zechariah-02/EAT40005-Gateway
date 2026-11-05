@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // backupManifest describes a backup file. Its checksum detects a damaged or
@@ -41,13 +42,13 @@ func runBackup(o *operatorContext, flags map[string]string) (int, error) {
 	if _, err := os.Lstat(output); !errors.Is(err, fs.ErrNotExist) {
 		return 1, fmt.Errorf("%s already exists; a backup never replaces a file", output)
 	}
-	st, err := openStore(o.config.Database)
+	st, err := store.OpenStore(o.config.Database)
 	if err != nil {
 		return 1, err
 	}
-	defer st.close()
+	defer st.Close()
 	o.openAudit()
-	a, err := st.load(context.Background())
+	a, err := st.Load(context.Background())
 	if err != nil {
 		return 1, err
 	}
@@ -56,14 +57,14 @@ func runBackup(o *operatorContext, flags map[string]string) (int, error) {
 	if _, err := os.Lstat(manifestPath(output)); !errors.Is(err, fs.ErrNotExist) {
 		return 1, errors.New("the backup manifest already exists")
 	}
-	if err := removeStagedDatabase(partial, a.installation); err != nil {
+	if err := removeStagedDatabase(partial, a.Installation); err != nil {
 		return 1, err
 	}
-	if err := createPrivate(partial); err != nil {
+	if err := store.CreatePrivate(partial); err != nil {
 		return 1, err
 	}
 	defer removeFiles(partial)
-	if _, err := st.db.Exec("VACUUM INTO ?", partial); err != nil {
+	if err := st.Snapshot(partial); err != nil {
 		return 1, fmt.Errorf("writing snapshot: %w", err)
 	}
 	fault.CrashPoint("backup-before-verify")
@@ -85,10 +86,10 @@ func runBackup(o *operatorContext, flags map[string]string) (int, error) {
 	}
 	manifest := backupManifest{
 		Format:        backupFormat,
-		Installation:  a.installation,
-		SchemaVersion: databaseVersion,
-		Mode:          a.mode,
-		Revision:      a.confirmed,
+		Installation:  a.Installation,
+		SchemaVersion: store.DatabaseVersion,
+		Mode:          a.Mode,
+		Revision:      a.Confirmed,
 		CreatedAt:     time.Now().UTC(),
 		SHA256:        sum,
 		Bytes:         size,
@@ -101,10 +102,10 @@ func runBackup(o *operatorContext, flags map[string]string) (int, error) {
 			removeFiles(manifestPath(output))
 		}
 	}()
-	if err := o.record(Event{Kind: "operator.backup", File: filepath.Base(output), Revision: a.confirmed}); err != nil {
+	if err := o.record(Event{Kind: "operator.backup", File: filepath.Base(output), Revision: a.Confirmed}); err != nil {
 		return 1, err
 	}
 	complete = true
-	fmt.Printf("backup %s written (revision %d, sha256 %s)\n", output, a.confirmed, sum)
+	fmt.Printf("backup %s written (revision %d, sha256 %s)\n", output, a.Confirmed, sum)
 	return 0, nil
 }

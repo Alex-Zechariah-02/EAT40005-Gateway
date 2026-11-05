@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // The lifecycle against the three fixture APIs, whose own receipts
@@ -80,9 +81,9 @@ func TestLifecycleWithFixtures(t *testing.T) {
 	}
 	code, body, _ := e.as(harness, http.MethodGet, "/admin/activations", "")
 	items := fromJSON[struct {
-		Items []activationRecord `json:"items"`
+		Items []store.ActivationRecord `json:"items"`
 	}](t, body).Items
-	if code != http.StatusOK || len(items) != 2 || items[0].Disposition != dispositionRolledBack || items[1].Disposition != dispositionConfirmed {
+	if code != http.StatusOK || len(items) != 2 || items[0].Disposition != store.DispositionRolledBack || items[1].Disposition != store.DispositionConfirmed {
 		t.Fatalf("activation history: %d %s", code, body)
 	}
 	for name, f := range fixtures {

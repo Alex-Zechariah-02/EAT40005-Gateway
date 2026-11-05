@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // reconcile rebuilds the runtime generation from committed authority. It never
@@ -15,7 +17,7 @@ import (
 // gateway serving no protected request.
 func (c *Controller) reconcile(now time.Time) {
 	ctx := context.Background()
-	a, err := c.store.load(ctx)
+	a, err := c.store.Load(ctx)
 	if err != nil {
 		c.unavailable(err.Error())
 		return
@@ -24,11 +26,11 @@ func (c *Controller) reconcile(now time.Time) {
 		c.unavailable(fmt.Sprintf("recording missing outcome events: %v", err))
 		return
 	}
-	if a.mode != modeNormal {
-		c.unavailable(a.mode)
+	if a.Mode != store.ModeNormal {
+		c.unavailable(a.Mode)
 		return
 	}
-	if now.Before(a.highWater.Add(-clockTolerance)) {
+	if now.Before(a.HighWater.Add(-clockTolerance)) {
 		c.unavailable("clock_regression")
 		return
 	}
@@ -38,16 +40,16 @@ func (c *Controller) reconcile(now time.Time) {
 	if !c.settle(ctx, now, true) {
 		return
 	}
-	a, err = c.store.load(ctx)
+	a, err = c.store.Load(ctx)
 	if err != nil {
 		c.unavailable(err.Error())
 		return
 	}
 	// A provisional base is served only while the base it returns to can
 	// still be restored with the active overrides.
-	if a.provisional != 0 {
-		if _, err := c.compileEffective(ctx, a.confirmed, time.Time{}, a.overrides); err != nil {
-			c.unavailable(fmt.Sprintf("rollback target revision %d: %v", a.confirmed, err))
+	if a.Provisional != 0 {
+		if _, err := c.compileEffective(ctx, a.Confirmed, time.Time{}, a.Overrides); err != nil {
+			c.unavailable(fmt.Sprintf("rollback target revision %d: %v", a.Confirmed, err))
 			return
 		}
 	}
@@ -55,18 +57,18 @@ func (c *Controller) reconcile(now time.Time) {
 	if c.current.Load() == nil && !c.publishAuthority(a) {
 		return
 	}
-	ids, err := c.store.unpublished(ctx)
+	ids, err := c.store.Unpublished(ctx)
 	if err != nil {
 		c.unavailable(fmt.Sprintf("reading publication receipts: %v", err))
 		return
 	}
 	for _, id := range ids {
-		if err := c.store.markPublished(ctx, id, "reconciliation", now); err != nil {
+		if err := c.store.MarkPublished(ctx, id, "reconciliation", now); err != nil {
 			c.unavailable(fmt.Sprintf("recording publication receipt: %v", err))
 			return
 		}
 	}
-	if err := c.store.raiseHighWater(ctx, now); err != nil {
+	if err := c.store.RaiseHighWater(ctx, now); err != nil {
 		c.unavailable(fmt.Sprintf("recording clock high-water mark: %v", err))
 		return
 	}
@@ -80,18 +82,18 @@ func (c *Controller) reconcile(now time.Time) {
 // event. The database holds the authoritative disposition; this restores the
 // missing security record from it.
 func (c *Controller) reconcileAudit(ctx context.Context, now time.Time) error {
-	ids, err := c.store.unaudited(ctx)
+	ids, err := c.store.Unaudited(ctx)
 	if err != nil {
 		return err
 	}
 	for _, id := range ids {
-		t, _, err := c.store.transition(ctx, id)
+		t, _, err := c.store.Transition(ctx, id)
 		if err != nil {
 			return err
 		}
 		event := Event{Kind: outcomeKind(t), Transition: t.ID, Actor: t.Actor, Target: t.Target, Revision: t.Revision, Candidate: t.Candidate, Reason: "reconciled"}
 		if strings.HasPrefix(t.Kind, "tpo.") {
-			o, found, err := c.store.overrideOf(ctx, t.ID)
+			o, found, err := c.store.OverrideOf(ctx, t.ID)
 			if err != nil || !found {
 				return fmt.Errorf("override of transition %s: %v", t.ID, err)
 			}
@@ -100,7 +102,7 @@ func (c *Controller) reconcileAudit(ctx context.Context, now time.Time) error {
 		if err := c.commitAudit(ctx, event); err != nil {
 			return err
 		}
-		if err := c.store.markAudited(ctx, id, now); err != nil {
+		if err := c.store.MarkAudited(ctx, id, now); err != nil {
 			return err
 		}
 	}
@@ -111,8 +113,8 @@ func (c *Controller) reconcileAudit(ctx context.Context, now time.Time) error {
 // processed. The same identity with a different request is refused, so a
 // retried request can never apply twice and a reused identity can never
 // change what was recorded.
-func (c *Controller) replay(ctx context.Context, t transitionRecord) (Outcome, int, bool) {
-	previous, found, err := c.store.transition(ctx, t.ID)
+func (c *Controller) replay(ctx context.Context, t store.TransitionRecord) (Outcome, int, bool) {
+	previous, found, err := c.store.Transition(ctx, t.ID)
 	if err != nil {
 		result, status := c.storeFailure(t.ID, err)
 		return result, status, true
@@ -131,7 +133,7 @@ func (c *Controller) replay(ctx context.Context, t transitionRecord) (Outcome, i
 	}
 	if strings.HasPrefix(previous.Kind, "cpa.") {
 		// The activation record holds the rest of a lifecycle receipt.
-		a, found, err := c.store.activation(ctx, "candidate", previous.Candidate)
+		a, found, err := c.store.Activation(ctx, "candidate", previous.Candidate)
 		if err != nil || !found {
 			result, status := c.storeFailure(t.ID, fmt.Errorf("activation of candidate %d: %v", previous.Candidate, err))
 			return result, status, true
@@ -143,7 +145,7 @@ func (c *Controller) replay(ctx context.Context, t transitionRecord) (Outcome, i
 	}
 	if strings.HasPrefix(previous.Kind, "tpo.") {
 		// The override record holds the rest of an override receipt.
-		o, found, err := c.store.overrideOf(ctx, previous.ID)
+		o, found, err := c.store.OverrideOf(ctx, previous.ID)
 		if err != nil || !found {
 			result, status := c.storeFailure(t.ID, fmt.Errorf("override of transition %s: %v", previous.ID, err))
 			return result, status, true

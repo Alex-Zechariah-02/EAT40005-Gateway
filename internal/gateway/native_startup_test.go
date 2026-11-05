@@ -16,6 +16,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // A resource the gateway cannot acquire stops its startup with status 1 and a
@@ -58,11 +60,11 @@ func TestNativeStartupResourceFailures(t *testing.T) {
 					t.Fatalf("%s is open after the failed start", addr)
 				}
 			}
-			st, err := openStore(e.database)
+			st, err := store.OpenStore(e.database)
 			if err != nil {
 				t.Fatalf("the database is held: %v", err)
 			}
-			st.close()
+			st.Close()
 		})
 	}
 
@@ -176,11 +178,11 @@ func assertNativeReleased(t *testing.T, e *env, writers, admins, servers int) {
 	if dialable(e.dataAddr) || dialable(e.admin) || dialable(e.metrics) {
 		t.Fatal("a listener is still open")
 	}
-	st, err := openStore(e.database)
+	st, err := store.OpenStore(e.database)
 	if err != nil {
 		t.Fatalf("the database is still held: %v", err)
 	}
-	st.close()
+	st.Close()
 }
 
 // The native process stops gracefully on Ctrl+Break (os.Interrupt): from the

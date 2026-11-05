@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // backup runs the backup command and returns the backup's manifest.
@@ -56,14 +58,14 @@ func (e *env) establishRecoveryBase(s adminSession) Outcome {
 	return outcome
 }
 
-func (e *env) historyItems(s adminSession) []historyEntry {
+func (e *env) historyItems(s adminSession) []store.HistoryEntry {
 	e.t.Helper()
 	code, body, _ := e.as(s, http.MethodGet, "/admin/history?limit=100", "")
 	if code != http.StatusOK {
 		e.t.Fatalf("history: %d %s", code, body)
 	}
 	return fromJSON[struct {
-		Items []historyEntry `json:"items"`
+		Items []store.HistoryEntry `json:"items"`
 	}](e.t, body).Items
 }
 
@@ -90,7 +92,7 @@ func TestBackupIncludesWALAndRestoresElsewhere(t *testing.T) {
 
 	output := filepath.Join(e.dir, "backup.db")
 	manifest := e.backup(output)
-	if manifest.Revision != 2 || manifest.Mode != modeNormal || manifest.SchemaVersion != databaseVersion || manifest.Format != backupFormat {
+	if manifest.Revision != 2 || manifest.Mode != store.ModeNormal || manifest.SchemaVersion != store.DatabaseVersion || manifest.Format != backupFormat {
 		t.Fatalf("manifest %+v", manifest)
 	}
 	if manifest.SHA256 != fileSHA256(t, output) || manifest.Installation != queryString(t, e.database, `SELECT installation FROM deployment`) {
@@ -140,7 +142,7 @@ func TestBackupIncludesWALAndRestoresElsewhere(t *testing.T) {
 	}
 
 	other.start(binaries.plain)
-	if health := other.health(); health != modeRecovery {
+	if health := other.health(); health != store.ModeRecovery {
 		t.Fatalf("health %q", health)
 	}
 	carol := issuer.tokenFor(t, "carol")
@@ -160,7 +162,7 @@ func TestBackupIncludesWALAndRestoresElsewhere(t *testing.T) {
 		t.Fatal("the change that was in the write-ahead log is missing from the restored history")
 	}
 	recovered := other.establishRecoveryBase(root)
-	if recovered.Revision != 3 || other.health() != modeNormal {
+	if recovered.Revision != 3 || other.health() != store.ModeNormal {
 		t.Fatalf("recovery base %+v", recovered)
 	}
 	if code, _ := other.get("/a/x", "Authorization", "Bearer "+carol); code != http.StatusForbidden {
@@ -224,7 +226,7 @@ func TestBackupRefusalsAndInterruption(t *testing.T) {
 	if n := queryInt(t, e.database, `SELECT COUNT(*) FROM revision`); n != liveRevisions {
 		t.Fatalf("live database revisions %d, want %d", n, liveRevisions)
 	}
-	if mode := queryString(t, e.database, `SELECT mode FROM deployment`); mode != modeNormal {
+	if mode := queryString(t, e.database, `SELECT mode FROM deployment`); mode != store.ModeNormal {
 		t.Fatalf("live mode %q", mode)
 	}
 	e.start(binaries.plain)

@@ -10,12 +10,13 @@ import (
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // StageCandidate validates a complete policy with the canonical compiler and
 // stores it as an immutable candidate. Nothing is published: the effective
 // policy and its generation are unchanged.
-func (c *Controller) StageCandidate(ctx context.Context, t transitionRecord, document []byte) (Outcome, int) {
+func (c *Controller) StageCandidate(ctx context.Context, t store.TransitionRecord, document []byte) (Outcome, int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	now := compile.TrustedNow()
@@ -26,13 +27,13 @@ func (c *Controller) StageCandidate(ctx context.Context, t transitionRecord, doc
 		return result, status
 	}
 
-	a, err := c.store.load(ctx)
+	a, err := c.store.Load(ctx)
 	if err != nil {
 		return c.storeFailure(t.ID, err)
 	}
 	var parent int64
-	if a.mode == modeNormal {
-		parent = a.confirmed
+	if a.Mode == store.ModeNormal {
+		parent = a.Confirmed
 	}
 	if t.Expected.Int64 != parent {
 		return c.reject(ctx, t, "PRECONDITION_FAILED", "", now)
@@ -50,8 +51,8 @@ func (c *Controller) StageCandidate(ctx context.Context, t transitionRecord, doc
 		return auditUnavailable(t.ID)
 	}
 	canonical, _ := json.Marshal(policy)
-	record := candidateRecord{Parent: parent, Document: canonical, Checksum: documentChecksum(canonical), DenyAll: compile.DenyAll(policy), Actor: t.Actor}
-	id, err := c.store.commitCandidate(ctx, t, record, now)
+	record := store.CandidateRecord{Parent: parent, Document: canonical, Checksum: store.DocumentChecksum(canonical), DenyAll: compile.DenyAll(policy), Actor: t.Actor}
+	id, err := c.store.CommitCandidate(ctx, t, record, now)
 	if err != nil {
 		return c.storeFailure(t.ID, err)
 	}
@@ -61,7 +62,7 @@ func (c *Controller) StageCandidate(ctx context.Context, t transitionRecord, doc
 }
 
 // WithdrawCandidate marks a validated candidate withdrawn.
-func (c *Controller) WithdrawCandidate(ctx context.Context, t transitionRecord, id int64) (Outcome, int) {
+func (c *Controller) WithdrawCandidate(ctx context.Context, t store.TransitionRecord, id int64) (Outcome, int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	now := compile.TrustedNow()
@@ -72,7 +73,7 @@ func (c *Controller) WithdrawCandidate(ctx context.Context, t transitionRecord, 
 		return result, status
 	}
 
-	record, found, err := c.store.candidate(ctx, id)
+	record, found, err := c.store.Candidate(ctx, id)
 	switch {
 	case err != nil:
 		return c.storeFailure(t.ID, err)
@@ -84,7 +85,7 @@ func (c *Controller) WithdrawCandidate(ctx context.Context, t transitionRecord, 
 	if err := c.commitAudit(ctx, Event{Kind: "transition.intent", Transition: t.ID, Actor: t.Actor}); err != nil {
 		return auditUnavailable(t.ID)
 	}
-	if err := c.store.commitWithdrawal(ctx, t, id, now); err != nil {
+	if err := c.store.CommitWithdrawal(ctx, t, id, now); err != nil {
 		return c.storeFailure(t.ID, err)
 	}
 	result := Outcome{Transition: t.ID, Outcome: "committed", Candidate: id}

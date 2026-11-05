@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // Stored overrides that do not fit the base they would apply to make startup
@@ -58,7 +60,7 @@ func TestDamagedOverrideStateAndAuditFailures(t *testing.T) {
 		e.stop()
 		e.start(binaries.fault, "GATEWAY_FAULT=audit-full")
 		harness = e.mustLogin(harnessAdmin, harnessPassword)
-		code, outcome, body := e.createOverride(harness, permitOverride(overrideException, "READER", "write-a", 600), `"r1"`, "audit-full-create-01")
+		code, outcome, body := e.createOverride(harness, permitOverride(store.OverrideException, "READER", "write-a", 600), `"r1"`, "audit-full-create-01")
 		if code != http.StatusServiceUnavailable || outcome.Reason != "AUDIT_UNAVAILABLE" {
 			t.Fatalf("creation without audit: %d %s", code, body)
 		}
@@ -73,7 +75,7 @@ func TestDamagedOverrideStateAndAuditFailures(t *testing.T) {
 		seed(t, e.database, e.protectedPolicy(), seedOptions{})
 		e.start(binaries.fault, "GATEWAY_FAULT=audit-fail-published")
 		harness := e.mustLogin(harnessAdmin, harnessPassword)
-		code, outcome, body := e.createOverride(harness, permitOverride(overrideException, "READER", "write-a", 600), `"r1"`, "audit-pending-create")
+		code, outcome, body := e.createOverride(harness, permitOverride(store.OverrideException, "READER", "write-a", 600), `"r1"`, "audit-pending-create")
 		if code != http.StatusServiceUnavailable || outcome.Outcome != "committed" || outcome.Reason != "OUTCOME_AUDIT_PENDING" {
 			t.Fatalf("creation with a lost outcome event: %d %s", code, body)
 		}
@@ -100,17 +102,17 @@ func TestDamagedOverrideStateAndAuditFailures(t *testing.T) {
 		seed(t, e.database, e.protectedPolicy(), seedOptions{})
 		e.start(binaries.plain)
 		harness := e.mustLogin(harnessAdmin, harnessPassword)
-		o := e.mustOverride(harness, permitOverride(overrideException, "READER", "write-a", 3), `"r1"`, "audit-expiry-create")
+		o := e.mustOverride(harness, permitOverride(store.OverrideException, "READER", "write-a", 3), `"r1"`, "audit-expiry-create")
 		// The audit file fails from now on: the expiry cannot be recorded.
 		e.stop()
 		e.start(binaries.fault, "GATEWAY_FAULT=audit-full")
-		if health := e.health(); health != modeNormal {
+		if health := e.health(); health != store.ModeNormal {
 			t.Fatalf("health %q before the expiry", health)
 		}
 		waitFor(t, o.Expires.Add(5*time.Second), "protected admission to stop", func() bool { return e.health() == "unavailable" })
 		e.expectNothingServed()
 		e.stop()
-		if list := storedOverrides(t, e.database); len(list) != 1 || list[0].Status != overrideActive {
+		if list := storedOverrides(t, e.database); len(list) != 1 || list[0].Status != store.OverrideActive {
 			t.Fatalf("an expiry that could not be recorded was committed: %+v", list)
 		}
 		// With the audit file working again, startup ends it before serving.
@@ -121,7 +123,7 @@ func TestDamagedOverrideStateAndAuditFailures(t *testing.T) {
 		}
 		e.assertReceipts(0, 0, 0)
 		e.stop()
-		if list := storedOverrides(t, e.database); list[0].Status != overrideExpired {
+		if list := storedOverrides(t, e.database); list[0].Status != store.OverrideExpired {
 			t.Fatalf("override after restart %+v", list[0])
 		}
 	})
@@ -131,7 +133,7 @@ func TestDamagedOverrideStateAndAuditFailures(t *testing.T) {
 		seed(t, e.database, e.protectedPolicy(), seedOptions{})
 		e.start(binaries.plain)
 		harness := e.mustLogin(harnessAdmin, harnessPassword)
-		o := e.mustOverride(harness, permitOverride(overrideException, "READER", "write-a", 600), `"r1"`, "audit-revoke-create")
+		o := e.mustOverride(harness, permitOverride(store.OverrideException, "READER", "write-a", 600), `"r1"`, "audit-revoke-create")
 		e.stop()
 		e.start(binaries.fault, "GATEWAY_FAULT=audit-full")
 		harness = e.mustLogin(harnessAdmin, harnessPassword)
@@ -149,7 +151,7 @@ func TestDamagedOverrideStateAndAuditFailures(t *testing.T) {
 		e.stop()
 		e.start(binaries.plain)
 		harness = e.mustLogin(harnessAdmin, harnessPassword)
-		if code, outcome, body := e.revokeOverride(harness, o.Override, "audit-revoke-retry-01"); code != http.StatusOK || outcome.Disposition != overrideRevoked {
+		if code, outcome, body := e.revokeOverride(harness, o.Override, "audit-revoke-retry-01"); code != http.StatusOK || outcome.Disposition != store.OverrideRevoked {
 			t.Fatalf("revocation after restart: %d %s", code, body)
 		}
 	})

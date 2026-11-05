@@ -7,6 +7,7 @@ import (
 
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 func TestFetchStoredVersion3IsNotMigrated(t *testing.T) {
@@ -15,7 +16,7 @@ func TestFetchStoredVersion3IsNotMigrated(t *testing.T) {
 	seed(t, e.database, policy, seedOptions{})
 	legacy := []byte(strings.Replace(string(mustJSON(policy)), `"schema_version":4`, `"schema_version":3`, 1))
 	db := inspect(t, e.database)
-	if _, err := db.Exec(`UPDATE revision SET document=?,checksum=? WHERE id=1`, legacy, documentChecksum(legacy)); err != nil {
+	if _, err := db.Exec(`UPDATE revision SET document=?,checksum=? WHERE id=1`, legacy, store.DocumentChecksum(legacy)); err != nil {
 		t.Fatal(err)
 	}
 	db.Close()

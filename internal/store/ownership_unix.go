@@ -1,6 +1,8 @@
 //go:build !windows
 
-package gateway
+// The deployment lock on other systems.
+
+package store
 
 import (
 	"os"

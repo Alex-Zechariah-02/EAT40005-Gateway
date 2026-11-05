@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // The limits read reports each built-in limit with its current use, taken
@@ -31,7 +32,7 @@ func TestAdminLimits(t *testing.T) {
 		t.Fatalf("limits body: %s (%v)", body, err)
 	}
 	want := map[string]int64{
-		"temporary_rules": maxActiveOverrides, "live_views": maxEventStreams, "administrator_sessions": maxSessions,
+		"temporary_rules": store.MaxActiveOverrides, "live_views": maxEventStreams, "administrator_sessions": maxSessions,
 		"rate_counters": compile.MaxCounters, "recent_requests": recentEventLimit,
 	}
 	for name, max := range want {

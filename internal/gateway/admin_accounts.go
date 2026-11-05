@@ -13,6 +13,7 @@ import (
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 func controlError(code string) json.RawMessage {
@@ -23,7 +24,7 @@ func controlError(code string) json.RawMessage {
 // replayControl uses the existing actor-scoped transition identity and digest;
 // its successful body is the original response, even after later mutations.
 // The caller holds c.mu.
-func (c *Controller) replayControl(ctx context.Context, t transitionRecord) (json.RawMessage, int, bool) {
+func (c *Controller) replayControl(ctx context.Context, t store.TransitionRecord) (json.RawMessage, int, bool) {
 	if !c.ready() {
 		return controlError("gateway_unavailable"), http.StatusServiceUnavailable, true
 	}
@@ -34,7 +35,7 @@ func (c *Controller) replayControl(ctx context.Context, t transitionRecord) (jso
 	if status != http.StatusOK {
 		return controlError(strings.ToLower(outcome.Reason)), status, true
 	}
-	body, err := c.store.controlResult(ctx, t.ID)
+	body, err := c.store.ControlResult(ctx, t.ID)
 	if err != nil {
 		c.logger.Error("reading control receipt", "error", err)
 		return controlError("gateway_unavailable"), http.StatusServiceUnavailable, true
@@ -42,7 +43,7 @@ func (c *Controller) replayControl(ctx context.Context, t transitionRecord) (jso
 	return body, status, true
 }
 
-func (c *Controller) rejectControl(ctx context.Context, t transitionRecord, reason string, now time.Time) (json.RawMessage, int) {
+func (c *Controller) rejectControl(ctx context.Context, t store.TransitionRecord, reason string, now time.Time) (json.RawMessage, int) {
 	outcome, status := c.reject(ctx, t, reason, "", now)
 	return controlError(strings.ToLower(outcome.Reason)), status
 }
@@ -50,7 +51,7 @@ func (c *Controller) rejectControl(ctx context.Context, t transitionRecord, reas
 // finishControl follows the same durable intent, commit, publication and audit
 // sequence as policy mutations. A lost acknowledgement is retried by identity;
 // it never re-applies a block or re-reads keys as a hidden retry.
-func (c *Controller) finishControl(ctx context.Context, t transitionRecord, result any, change func(*sql.Tx) error, publish func(), now time.Time) (json.RawMessage, int) {
+func (c *Controller) finishControl(ctx context.Context, t store.TransitionRecord, result any, change func(*sql.Tx) error, publish func(), now time.Time) (json.RawMessage, int) {
 	body, err := json.Marshal(result)
 	if err != nil {
 		return controlError("gateway_unavailable"), http.StatusServiceUnavailable
@@ -59,14 +60,14 @@ func (c *Controller) finishControl(ctx context.Context, t transitionRecord, resu
 		return controlError("gateway_unavailable"), http.StatusServiceUnavailable
 	}
 	fault.CrashPoint("before-commit")
-	if err := c.store.commitControl(ctx, t, body, change, now); err != nil {
+	if err := c.store.CommitControl(ctx, t, body, change, now); err != nil {
 		c.logger.Error("committing control change", "error", err)
 		return controlError("gateway_unavailable"), http.StatusServiceUnavailable
 	}
 	fault.CrashPoint("after-commit")
 	publish()
 	fault.CrashPoint("after-swap")
-	if err := c.store.markPublished(ctx, t.ID, "publisher", now); err != nil {
+	if err := c.store.MarkPublished(ctx, t.ID, "publisher", now); err != nil {
 		c.logger.Error("recording control publication receipt", "error", err)
 	}
 	fault.CrashPoint("after-receipt")
@@ -124,7 +125,7 @@ func (c *Controller) handleReloadKeys(w http.ResponseWriter, r *http.Request, wh
 	writeJSON(w, status, body)
 }
 
-func (c *Controller) reloadKeys(ctx context.Context, t transitionRecord) (json.RawMessage, int) {
+func (c *Controller) reloadKeys(ctx context.Context, t store.TransitionRecord) (json.RawMessage, int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if body, status, done := c.replayControl(ctx, t); done {
@@ -157,9 +158,9 @@ func (c *Controller) handleBlockedAccounts(w http.ResponseWriter, r *http.Reques
 	}
 	items := slices.Collect(maps.Values(*current))
 	if items == nil {
-		items = []blockedAccount{}
+		items = []store.BlockedAccount{}
 	}
-	slices.SortFunc(items, func(a, b blockedAccount) int { return strings.Compare(a.Subject, b.Subject) })
+	slices.SortFunc(items, func(a, b store.BlockedAccount) int { return strings.Compare(a.Subject, b.Subject) })
 	writeJSON(w, http.StatusOK, list{Items: items})
 }
 
@@ -179,7 +180,7 @@ func (c *Controller) handleBlockAccount(w http.ResponseWriter, r *http.Request, 
 	if !decodeBody(w, r, maxAdminBody, &request) {
 		return
 	}
-	if !validBlockReason(request.Reason) {
+	if !store.ValidBlockReason(request.Reason) {
 		adminError(w, http.StatusBadRequest, "bad_request", "reason")
 		return
 	}
@@ -206,7 +207,7 @@ func (c *Controller) handleUnblockAccount(w http.ResponseWriter, r *http.Request
 	writeJSON(w, status, body)
 }
 
-func (c *Controller) changeBlock(ctx context.Context, t transitionRecord, reason string) (json.RawMessage, int) {
+func (c *Controller) changeBlock(ctx context.Context, t store.TransitionRecord, reason string) (json.RawMessage, int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if body, status, done := c.replayControl(ctx, t); done {
@@ -222,7 +223,7 @@ func (c *Controller) changeBlock(ctx context.Context, t transitionRecord, reason
 	var result any
 	var change func(*sql.Tx) error
 	if t.Kind == "account.block" {
-		entry := blockedAccount{Subject: t.Target, Reason: reason, BlockedBy: t.Actor, BlockedAt: now}
+		entry := store.BlockedAccount{Subject: t.Target, Reason: reason, BlockedBy: t.Actor, BlockedAt: now}
 		if found && previous.Reason == reason {
 			entry = previous
 		}
@@ -249,31 +250,19 @@ func (c *Controller) changeBlock(ctx context.Context, t transitionRecord, reason
 }
 
 func (c *Controller) handleAdministrators(w http.ResponseWriter, r *http.Request, who caller) {
-	rows, err := c.store.db.QueryContext(r.Context(), `SELECT name, permissions, status FROM administrator ORDER BY name`)
+	entries, err := c.store.Administrators(r.Context())
 	if err != nil {
 		adminError(w, http.StatusServiceUnavailable, "gateway_unavailable", "")
 		return
 	}
-	defer rows.Close()
 	type view struct {
 		Name        string   `json:"name"`
 		Permissions []string `json:"permissions"`
 		Status      string   `json:"status"`
 	}
 	items := []view{}
-	for rows.Next() {
-		var entry view
-		var permissions permission
-		if err := rows.Scan(&entry.Name, &permissions, &entry.Status); err != nil {
-			adminError(w, http.StatusServiceUnavailable, "gateway_unavailable", "")
-			return
-		}
-		entry.Permissions = permissions.names()
-		items = append(items, entry)
-	}
-	if rows.Err() != nil {
-		adminError(w, http.StatusServiceUnavailable, "gateway_unavailable", "")
-		return
+	for _, entry := range entries {
+		items = append(items, view{Name: entry.Name, Permissions: entry.Permissions.Names(), Status: entry.Status})
 	}
 	writeJSON(w, http.StatusOK, list{Items: items})
 }

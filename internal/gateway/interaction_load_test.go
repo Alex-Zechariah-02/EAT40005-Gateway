@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // An activation and an override creation sent at the same moment are
@@ -45,10 +46,10 @@ func TestConcurrentOverridesAndActivation(t *testing.T) {
 		var activationCode, creationCode int
 		concurrently(
 			func() {
-				activationCode, activation, _ = e.activate(harness, staged.Candidate.candidateRecord, 60, `"r1"`, fmt.Sprintf("race-activate-%02d-xx", round))
+				activationCode, activation, _ = e.activate(harness, staged.Candidate.CandidateRecord, 60, `"r1"`, fmt.Sprintf("race-activate-%02d-xx", round))
 			},
 			func() {
-				creationCode, creation, _ = e.createOverride(harness, permitOverride(overrideException, "READER", "write-a", 600), `"r1"`, fmt.Sprintf("race-create-%02d-xxxx", round))
+				creationCode, creation, _ = e.createOverride(harness, permitOverride(store.OverrideException, "READER", "write-a", 600), `"r1"`, fmt.Sprintf("race-create-%02d-xxxx", round))
 			},
 		)
 		switch {
@@ -116,7 +117,7 @@ func TestConcurrentOverridesAndActivation(t *testing.T) {
 		}
 	}
 	for _, o := range storedOverrides(t, e.database) {
-		if o.Status == overrideActive {
+		if o.Status == store.OverrideActive {
 			t.Fatalf("override %+v still active", o)
 		}
 		if n := queryInt(t, e.database, `SELECT COUNT(*) FROM transition WHERE outcome = 'committed' AND kind IN ('tpo.revoke', 'tpo.expire') AND id = ?`, o.Resolution); n != 1 {
@@ -143,7 +144,7 @@ func TestRateOverrideAcrossActivation(t *testing.T) {
 	if got := e.sendAs("alice", http.MethodGet, "/a/x", "", 2); !statusesAre(got, 200, 200) {
 		t.Fatalf("alice under the base: %v", got)
 	}
-	raise := e.mustOverride(harness, rateOverride(overrideException, "read-a", 5, 600), `"r1"`, "rate-cpa-raise-0001")
+	raise := e.mustOverride(harness, rateOverride(store.OverrideException, "read-a", 5, 600), `"r1"`, "rate-cpa-raise-0001")
 	_, activated := e.provisionalFrom(harness, candidate, 1, 60, "rate-cpa-activate")
 	// C=2 under the provisional base with the exception to 5: three more.
 	if got := e.sendAs("alice", http.MethodGet, "/a/x", "", 4); !statusesAre(got, 200, 200, 200, 429) {
@@ -163,7 +164,7 @@ func TestRateOverrideAcrossActivation(t *testing.T) {
 
 	// A fresh window; an exception that expires while provisional.
 	clock.set(base + 180_000)
-	short := e.mustOverride(harness, rateOverride(overrideException, "read-a", 5, 2), `"r1"`, "rate-cpa-short-0001")
+	short := e.mustOverride(harness, rateOverride(store.OverrideException, "read-a", 5, 2), `"r1"`, "rate-cpa-short-0001")
 	_, activated = e.provisionalFrom(harness, candidate, 1, 60, "rate-cpa-activate-2")
 	if got := e.sendAs("alice", http.MethodGet, "/a/x", "", 4); !statusesAre(got, times(4, 200)...) {
 		t.Fatalf("alice under the short exception: %v", got)
@@ -239,7 +240,7 @@ func TestOverridesUnderLoad(t *testing.T) {
 	}
 	for round := range 6 {
 		time.Sleep(100 * time.Millisecond)
-		created := e.mustOverride(harness, permitOverride(overrideException, "READER", "write-a", 600), `"r1"`, fmt.Sprintf("load-create-%02d-xxxx", round))
+		created := e.mustOverride(harness, permitOverride(store.OverrideException, "READER", "write-a", 600), `"r1"`, fmt.Sprintf("load-create-%02d-xxxx", round))
 		withGrant[created.Generation] = true
 		time.Sleep(100 * time.Millisecond)
 		code, revoked, body := e.revokeOverride(harness, created.Override, fmt.Sprintf("load-revoke-%02d-xxxx", round))

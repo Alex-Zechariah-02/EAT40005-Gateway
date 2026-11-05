@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // Seeding writes test state directly with the production schema. It stands in
@@ -38,16 +39,16 @@ type seedOptions struct {
 func seed(t *testing.T, path string, policy policy.Policy, opts seedOptions) {
 	t.Helper()
 	if opts.mode == "" {
-		opts.mode = modeNormal
+		opts.mode = store.ModeNormal
 	}
 	if opts.highWater.IsZero() {
 		opts.highWater = time.Now()
 	}
 	var episode any
-	if opts.mode == modeRecovery {
+	if opts.mode == store.ModeRecovery {
 		episode = randomHex(16)
 	}
-	db, err := sql.Open("sqlite", databaseURI(path)+"?_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)")
+	db, err := sql.Open("sqlite", store.DatabaseURI(path)+"?_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,9 +60,9 @@ func seed(t *testing.T, path string, policy policy.Policy, opts seedOptions) {
 	}
 	defer tx.Rollback()
 	if opts.version == 0 {
-		opts.version = databaseVersion
+		opts.version = store.DatabaseVersion
 	}
-	if err := applyMigrations(ctx, tx, 0, opts.version); err != nil {
+	if err := store.ApplyMigrations(ctx, tx, 0, opts.version); err != nil {
 		t.Fatal(err)
 	}
 
@@ -74,7 +75,7 @@ func seed(t *testing.T, path string, policy policy.Policy, opts seedOptions) {
 			[]any{randomHex(16), opts.mode, episode, opts.highWater.UnixMilli()}},
 		{`INSERT INTO revision VALUES (1, NULL, 'genesis', ?, ?, 'seed', ?)`, revisionArgs(policy)},
 		{`INSERT INTO base VALUES (1, 1, NULL, NULL)`, nil},
-		{`INSERT INTO administrator VALUES (?, ?, ?, 'active', 1, ?)`, []any{harnessAdmin, permAll, harnessHash(), time.Now().UnixMilli()}},
+		{`INSERT INTO administrator VALUES (?, ?, ?, 'active', 1, ?)`, []any{harnessAdmin, store.PermAll, harnessHash(), time.Now().UnixMilli()}},
 	}
 	// A provisional revision 2 comes from candidate 1 and has the activation
 	// record the schema requires, with revision 1 as its rollback target.
@@ -104,13 +105,13 @@ func seed(t *testing.T, path string, policy policy.Policy, opts seedOptions) {
 
 func revisionArgs(p policy.Policy) []any {
 	document, _ := json.Marshal(p)
-	return []any{document, documentChecksum(document), time.Now().UnixMilli()}
+	return []any{document, store.DocumentChecksum(document), time.Now().UnixMilli()}
 }
 
 // inspect opens a stopped gateway's database for assertions.
 func inspect(t *testing.T, path string) *sql.DB {
 	t.Helper()
-	db, err := sql.Open("sqlite", databaseURI(path)+"?_pragma=foreign_keys(ON)")
+	db, err := sql.Open("sqlite", store.DatabaseURI(path)+"?_pragma=foreign_keys(ON)")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +123,7 @@ func inspect(t *testing.T, path string) *sql.DB {
 // again, so the next gateway start can take its exclusive lock.
 func queryInt(t *testing.T, path, query string, args ...any) int {
 	t.Helper()
-	db, err := sql.Open("sqlite", databaseURI(path))
+	db, err := sql.Open("sqlite", store.DatabaseURI(path))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +134,7 @@ func queryInt(t *testing.T, path, query string, args ...any) int {
 // queryString is queryInt for a text result.
 func queryString(t *testing.T, path, query string, args ...any) string {
 	t.Helper()
-	db, err := sql.Open("sqlite", databaseURI(path))
+	db, err := sql.Open("sqlite", store.DatabaseURI(path))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +150,7 @@ func queryString(t *testing.T, path, query string, args ...any) string {
 // every result row in Go syntax, so rows compare exactly, NULL included.
 func queryRows(t *testing.T, path, query string) []string {
 	t.Helper()
-	db, err := sql.Open("sqlite", databaseURI(path))
+	db, err := sql.Open("sqlite", store.DatabaseURI(path))
 	if err != nil {
 		t.Fatal(err)
 	}

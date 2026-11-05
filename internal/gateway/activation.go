@@ -10,6 +10,7 @@ import (
 
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // EstablishBase confirms a validated deny-all candidate as the first
@@ -23,16 +24,16 @@ func (c *Controller) EstablishBase(ctx context.Context, kind, actor string, cand
 	if !c.ready() {
 		return unavailableOutcome(kind)
 	}
-	a, err := c.store.load(ctx)
+	a, err := c.store.Load(ctx)
 	if err != nil {
 		return c.storeFailure(kind, err)
 	}
 
-	t := transitionRecord{ID: "genesis:" + a.installation, Kind: "genesis", Actor: actor, Target: fmt.Sprintf("candidate %d", candidate)}
-	requiredMode := modeBootstrap
+	t := store.TransitionRecord{ID: "genesis:" + a.Installation, Kind: "genesis", Actor: actor, Target: fmt.Sprintf("candidate %d", candidate)}
+	requiredMode := store.ModeBootstrap
 	if kind == "recovery_base" {
-		t.ID, t.Kind = "recovery:"+a.episode, "recovery_base"
-		requiredMode = modeRecovery
+		t.ID, t.Kind = "recovery:"+a.Episode, "recovery_base"
+		requiredMode = store.ModeRecovery
 	}
 	t.Digest = requestDigest(t.Kind, t.Target, sql.NullInt64{}, checksum)
 	if result, status, done := c.replay(ctx, t); done {
@@ -40,11 +41,11 @@ func (c *Controller) EstablishBase(ctx context.Context, kind, actor string, cand
 	}
 	// No override may be active when a base is established: none exists
 	// before genesis, and a declared restore quarantines every one.
-	if a.mode != requiredMode || (kind == "recovery_base" && a.episode == "") || len(a.overrides) > 0 {
+	if a.Mode != requiredMode || (kind == "recovery_base" && a.Episode == "") || len(a.Overrides) > 0 {
 		return c.reject(ctx, t, "INVALID_STATE", "", now)
 	}
 
-	record, found, err := c.store.candidate(ctx, candidate)
+	record, found, err := c.store.Candidate(ctx, candidate)
 	switch {
 	case err != nil:
 		return c.storeFailure(t.ID, err)
@@ -52,7 +53,7 @@ func (c *Controller) EstablishBase(ctx context.Context, kind, actor string, cand
 		return c.reject(ctx, t, "NOT_FOUND", "", now)
 	case record.Status != "validated":
 		return c.reject(ctx, t, "CANDIDATE_UNAVAILABLE", "", now)
-	case record.Checksum != checksum || documentChecksum(record.Document) != checksum:
+	case record.Checksum != checksum || store.DocumentChecksum(record.Document) != checksum:
 		return c.reject(ctx, t, "PRECONDITION_FAILED", "checksum", now)
 	}
 	policy, err := policy.DecodePolicy(record.Document)
@@ -63,7 +64,7 @@ func (c *Controller) EstablishBase(ctx context.Context, kind, actor string, cand
 	if !compile.DenyAll(policy) {
 		return c.reject(ctx, t, "NOT_DENY_ALL", "", now)
 	}
-	change := revisionChange{origin: t.Kind, actor: actor, mode: modeNormal, candidate: candidate}
+	change := store.RevisionChange{Origin: t.Kind, Actor: actor, Mode: store.ModeNormal, Candidate: candidate}
 	return c.publish(ctx, t, policy, change, nil, now)
 }
 
@@ -73,7 +74,7 @@ func (c *Controller) EstablishBase(ctx context.Context, kind, actor string, cand
 // administrator confirmed. It is decoded and compiled again in full before
 // anything is committed. Its deadline is persisted with the activation, so a
 // restart can neither extend nor forget it, and it is never extended.
-func (c *Controller) Activate(ctx context.Context, t transitionRecord, candidate int64, checksum string, seconds int64) (Outcome, int) {
+func (c *Controller) Activate(ctx context.Context, t store.TransitionRecord, candidate int64, checksum string, seconds int64) (Outcome, int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	now := compile.DeadlineNow()
@@ -84,27 +85,27 @@ func (c *Controller) Activate(ctx context.Context, t transitionRecord, candidate
 		return result, status
 	}
 	// Overrides that have expired by now must not block the candidate.
-	if c.state == modeNormal && !c.settle(ctx, now, false) {
+	if c.state == store.ModeNormal && !c.settle(ctx, now, false) {
 		return unavailableOutcome(t.ID)
 	}
 
-	a, err := c.store.load(ctx)
+	a, err := c.store.Load(ctx)
 	if err != nil {
 		return c.storeFailure(t.ID, err)
 	}
 	t.Candidate = candidate
 	switch {
-	case a.mode != modeNormal:
+	case a.Mode != store.ModeNormal:
 		return c.reject(ctx, t, "INVALID_STATE", "", now)
-	case a.provisional != 0:
+	case a.Provisional != 0:
 		return c.reject(ctx, t, "PROVISIONAL_ACTIVE", "", now)
-	case a.confirmed != t.Expected.Int64:
+	case a.Confirmed != t.Expected.Int64:
 		return c.reject(ctx, t, "PRECONDITION_FAILED", "", now)
 	case seconds < minConfirmSeconds || seconds > maxConfirmSeconds:
 		return c.reject(ctx, t, "INVALID_DEADLINE", "confirm_within_seconds", now)
 	}
 
-	record, found, err := c.store.candidate(ctx, candidate)
+	record, found, err := c.store.Candidate(ctx, candidate)
 	switch {
 	case err != nil:
 		return c.storeFailure(t.ID, err)
@@ -112,11 +113,11 @@ func (c *Controller) Activate(ctx context.Context, t transitionRecord, candidate
 		return c.reject(ctx, t, "NOT_FOUND", "", now)
 	case record.Status != "validated":
 		return c.reject(ctx, t, "CANDIDATE_UNAVAILABLE", "", now)
-	case record.Parent != a.confirmed:
+	case record.Parent != a.Confirmed:
 		return c.reject(ctx, t, "CANDIDATE_STALE", "", now)
 	case record.Checksum != checksum:
 		return c.reject(ctx, t, "PRECONDITION_FAILED", "checksum", now)
-	case documentChecksum(record.Document) != record.Checksum:
+	case store.DocumentChecksum(record.Document) != record.Checksum:
 		return c.reject(ctx, t, "CANDIDATE_INTEGRITY", "", now)
 	}
 	policy, err := policy.DecodePolicy(record.Document)
@@ -133,8 +134,8 @@ func (c *Controller) Activate(ctx context.Context, t transitionRecord, candidate
 	// The database keeps milliseconds, so the running deadline and the one a
 	// restart reads are the same instant.
 	deadline := time.UnixMilli(now.Add(time.Duration(seconds) * time.Second).UnixMilli())
-	change := revisionChange{parent: a.confirmed, origin: "publish", actor: t.Actor, deadline: deadline, mode: modeNormal, candidate: candidate}
-	return c.publish(ctx, t, policy, change, a.overrides, now)
+	change := store.RevisionChange{Parent: a.Confirmed, Origin: "publish", Actor: t.Actor, Deadline: deadline, Mode: store.ModeNormal, Candidate: candidate}
+	return c.publish(ctx, t, policy, change, a.Overrides, now)
 }
 
 // Resolve confirms or rolls back the current provisional base on an
@@ -143,7 +144,7 @@ func (c *Controller) Activate(ctx context.Context, t transitionRecord, candidate
 // request for any other state is refused. At or after the deadline neither is
 // possible: the request is refused and the automatic rollback runs instead,
 // however late its timer is.
-func (c *Controller) Resolve(ctx context.Context, t transitionRecord, provisional int64, disposition string) (Outcome, int) {
+func (c *Controller) Resolve(ctx context.Context, t store.TransitionRecord, provisional int64, disposition string) (Outcome, int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	now := compile.TrustedNow()
@@ -154,19 +155,19 @@ func (c *Controller) Resolve(ctx context.Context, t transitionRecord, provisiona
 		return result, status
 	}
 	// The base that follows is compiled with the overrides still active now.
-	if c.state == modeNormal && !c.settle(ctx, now, false) {
+	if c.state == store.ModeNormal && !c.settle(ctx, now, false) {
 		return unavailableOutcome(t.ID)
 	}
 
-	a, err := c.store.load(ctx)
+	a, err := c.store.Load(ctx)
 	if err != nil {
 		return c.storeFailure(t.ID, err)
 	}
-	if a.mode != modeNormal {
+	if a.Mode != store.ModeNormal {
 		return c.reject(ctx, t, "INVALID_STATE", "", now)
 	}
-	if a.provisional != provisional {
-		earlier, found, err := c.store.activation(ctx, "revision", provisional)
+	if a.Provisional != provisional {
+		earlier, found, err := c.store.Activation(ctx, "revision", provisional)
 		switch {
 		case err != nil:
 			return c.storeFailure(t.ID, err)
@@ -174,17 +175,17 @@ func (c *Controller) Resolve(ctx context.Context, t transitionRecord, provisiona
 			result, status := c.reject(ctx, t, "ALREADY_RESOLVED", "", now)
 			result.Disposition = earlier.Disposition
 			return result, status
-		case a.provisional == 0:
+		case a.Provisional == 0:
 			return c.reject(ctx, t, "NO_PROVISIONAL", "", now)
 		default:
 			return c.reject(ctx, t, "PROVISIONAL_MISMATCH", "", now)
 		}
 	}
-	t.Candidate = a.candidate
-	if a.confirmed != t.Expected.Int64 {
+	t.Candidate = a.Candidate
+	if a.Confirmed != t.Expected.Int64 {
 		return c.reject(ctx, t, "PRECONDITION_FAILED", "", now)
 	}
-	if !now.Before(a.deadline) {
+	if !now.Before(a.Deadline) {
 		result, status := c.reject(ctx, t, "DEADLINE_PASSED", "", now)
 		c.timeout(ctx, a, now)
 		return result, status

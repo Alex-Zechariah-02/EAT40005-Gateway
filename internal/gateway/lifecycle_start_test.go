@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // A deployment without usable authority, including a stored policy the
@@ -22,7 +24,7 @@ func TestControllerWithoutAuthorityServesNothing(t *testing.T) {
 	}{
 		{"missing database", func(e *env) {}, "missing or empty"},
 		{"earlier schema version", func(e *env) {
-			seed(e.t, e.database, e.policy(e.a, false), seedOptions{version: databaseVersion - 1})
+			seed(e.t, e.database, e.policy(e.a, false), seedOptions{version: store.DatabaseVersion - 1})
 		}, "run its migrate command"},
 		{"stored revision altered", func(e *env) {
 			seed(e.t, e.database, e.policy(e.a, false), seedOptions{})
@@ -38,7 +40,7 @@ func TestControllerWithoutAuthorityServesNothing(t *testing.T) {
 				`"apis":[{"id":"a","upstream":"A"}],` +
 				`"operations":[{"id":"read-a","api":"a","method":"GET","target":"/a/*","access":"allow","auth":"required"}]}`)
 			db := inspect(e.t, e.database)
-			if _, err := db.Exec(`UPDATE revision SET document = ?, checksum = ? WHERE id = 1`, earlier, documentChecksum(earlier)); err != nil {
+			if _, err := db.Exec(`UPDATE revision SET document = ?, checksum = ? WHERE id = 1`, earlier, store.DocumentChecksum(earlier)); err != nil {
 				e.t.Fatal(err)
 			}
 			db.Close()
@@ -103,7 +105,7 @@ func TestSecondControllerCannotOwnDeployment(t *testing.T) {
 	if dialable(second.AdminListen) {
 		t.Fatal("the refused controller opened a listener")
 	}
-	if first.Current() != g || e.health() != modeNormal {
+	if first.Current() != g || e.health() != store.ModeNormal {
 		t.Fatal("the first controller changed")
 	}
 

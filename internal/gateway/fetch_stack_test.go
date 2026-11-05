@@ -15,6 +15,7 @@ import (
 
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 	"github.com/Alex-Zechariah-02/apiward/internal/services"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // This test shares the gateway integration package's serial process harness so
@@ -209,7 +210,7 @@ func TestFetchStackScenarios(t *testing.T) {
 	if receiptCount(0) != before {
 		t.Fatal("unpermitted stock read reached Inventory")
 	}
-	e.mustOverride(root, permitOverride(overrideException, "CUSTOMER", "inventory.stock.read", 1), policyETag(revision), "fetch-stack-stock-grant")
+	e.mustOverride(root, permitOverride(store.OverrideException, "CUSTOMER", "inventory.stock.read", 1), policyETag(revision), "fetch-stack-stock-grant")
 	call("GET", "/inventory/stock/ITM-501", "", customer, 200)
 	if receiptCount(0) != before+1 {
 		t.Fatal("temporary stock grant did not reach Inventory exactly once")
@@ -229,7 +230,7 @@ func TestFetchStackScenarios(t *testing.T) {
 		t.Fatal("unpermitted report reached Reports")
 	}
 	for i, operation := range reportOperations {
-		e.mustOverride(root, permitOverride(overrideException, "CUSTOMER", operation.id, 5), policyETag(revision), fmt.Sprintf("fetch-report-grant-%d", i))
+		e.mustOverride(root, permitOverride(store.OverrideException, "CUSTOMER", operation.id, 5), policyETag(revision), fmt.Sprintf("fetch-report-grant-%d", i))
 	}
 	for _, operation := range reportOperations {
 		call("GET", operation.path, "", customer, 200)
@@ -307,7 +308,7 @@ func TestFetchStackScenarios(t *testing.T) {
 	if code != 200 || !strings.Contains(impact, `"operation":"orders.jobs"`) || !strings.Contains(impact, `"after":"refused"`) {
 		t.Fatalf("impact missed real rider flip: %d %s", code, impact)
 	}
-	if code, _, body = e.activate(root, staged.Candidate.candidateRecord, 1, policyETag(revision), "fetch-stack-bad-activate"); code != 200 {
+	if code, _, body = e.activate(root, staged.Candidate.CandidateRecord, 1, policyETag(revision), "fetch-stack-bad-activate"); code != 200 {
 		t.Fatalf("bad activation: %d %s", code, body)
 	}
 	refused(1, "GET", "/orders/jobs", "", rider, 403)

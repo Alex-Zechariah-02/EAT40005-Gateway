@@ -9,6 +9,7 @@ import (
 
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // OverrideRequest is an administrator's proposed override. Role and Count are
@@ -28,8 +29,8 @@ type OverrideRequest struct {
 // identity. Operations and roles are named by their policy identifiers, never
 // by a path, so no two spellings of one target exist.
 func overrideTarget(control, operation, role string) string {
-	if control == controlPermit {
-		return controlPermit + ":" + role + ":" + operation
+	if control == store.ControlPermit {
+		return store.ControlPermit + ":" + role + ":" + operation
 	}
 	return control + ":" + operation
 }
@@ -38,45 +39,45 @@ func overrideTarget(control, operation, role string) string {
 // members that control takes and no others, well-formed identifiers and a
 // lifetime within bounds. Whether the override fits the current policy is
 // checked by applyOverrides.
-func (r OverrideRequest) check() (override, error) {
-	if r.Type != overrideException && r.Type != overrideContainment {
-		return override{}, policy.Invalid("INVALID_VALUE", "type")
+func (r OverrideRequest) check() (store.Override, error) {
+	if r.Type != store.OverrideException && r.Type != store.OverrideContainment {
+		return store.Override{}, policy.Invalid("INVALID_VALUE", "type")
 	}
 	switch r.Control {
-	case controlPermit, controlRate:
-	case controlOperation:
+	case store.ControlPermit, store.ControlRate:
+	case store.ControlOperation:
 		// Allowing an operation the base denies would be a temporary bypass.
-		if r.Type != overrideContainment {
-			return override{}, policy.Invalid("UNSUPPORTED_ACTION", "type")
+		if r.Type != store.OverrideContainment {
+			return store.Override{}, policy.Invalid("UNSUPPORTED_ACTION", "type")
 		}
 	default:
-		return override{}, policy.Invalid("UNSUPPORTED_CONTROL", "control")
+		return store.Override{}, policy.Invalid("UNSUPPORTED_CONTROL", "control")
 	}
 	if err := policy.CheckID(r.Operation, "operation"); err != nil {
-		return override{}, err
+		return store.Override{}, err
 	}
 
-	o := override{Type: r.Type, Control: r.Control, Operation: r.Operation}
-	if (r.Role != nil) != (r.Control == controlPermit) {
-		return override{}, policy.Invalid("INVALID_VALUE", "role")
+	o := store.Override{Type: r.Type, Control: r.Control, Operation: r.Operation}
+	if (r.Role != nil) != (r.Control == store.ControlPermit) {
+		return store.Override{}, policy.Invalid("INVALID_VALUE", "role")
 	}
 	if r.Role != nil {
 		if err := policy.CheckID(*r.Role, "role"); err != nil {
-			return override{}, err
+			return store.Override{}, err
 		}
 		o.Role = *r.Role
 	}
-	if (r.Count != nil) != (r.Control == controlRate) {
-		return override{}, policy.Invalid("INVALID_VALUE", "count")
+	if (r.Count != nil) != (r.Control == store.ControlRate) {
+		return store.Override{}, policy.Invalid("INVALID_VALUE", "count")
 	}
 	if r.Count != nil {
 		if *r.Count < 1 || *r.Count > compile.MaxRateCount {
-			return override{}, policy.Invalid("INVALID_VALUE", "count")
+			return store.Override{}, policy.Invalid("INVALID_VALUE", "count")
 		}
 		o.Count = *r.Count
 	}
-	if r.ExpiresInSeconds < minOverrideSeconds || r.ExpiresInSeconds > maxOverrideSeconds {
-		return override{}, policy.Invalid("INVALID_EXPIRY", "expires_in_seconds")
+	if r.ExpiresInSeconds < store.MinOverrideSeconds || r.ExpiresInSeconds > store.MaxOverrideSeconds {
+		return store.Override{}, policy.Invalid("INVALID_EXPIRY", "expires_in_seconds")
 	}
 	o.Target = overrideTarget(o.Control, o.Operation, o.Role)
 	return o, nil
@@ -89,12 +90,12 @@ func (r OverrideRequest) check() (override, error) {
 // override's operation's path prefix: such an operation takes requests from
 // that prefix, or gives them back, so the override would no longer govern the
 // requests it was created for.
-func overrideConflict(before, after policy.Policy, overrides []override) *override {
+func overrideConflict(before, after policy.Policy, overrides []store.Override) *store.Override {
 	changed := map[string]bool{}
 	var movedTargets []string
 	for _, c := range compile.PolicyChanges(before, after) {
 		changed[c.Control+":"+c.Target] = true
-		if c.Control != controlOperation {
+		if c.Control != store.ControlOperation {
 			continue
 		}
 		// An operation that keeps its target keeps the paths it takes.
@@ -111,9 +112,9 @@ func overrideConflict(before, after policy.Policy, overrides []override) *overri
 		}
 	}
 
-	ordered := slices.SortedFunc(slices.Values(overrides), func(a, b override) int { return cmp.Compare(a.ID, b.ID) })
+	ordered := slices.SortedFunc(slices.Values(overrides), func(a, b store.Override) int { return cmp.Compare(a.ID, b.ID) })
 	for _, o := range ordered {
-		for _, target := range o.dependencies() {
+		for _, target := range o.Dependencies() {
 			if changed[target] {
 				return &o
 			}

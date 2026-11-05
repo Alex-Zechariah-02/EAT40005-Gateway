@@ -9,15 +9,17 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // The six membership regression scenarios now exercise independent account
 // containment. Version 4 has no membership routes or policy-owned accounts.
-func (e *env) blockAccount(s adminSession, id, reason, key string) (int, blockedAccount, string) {
+func (e *env) blockAccount(s adminSession, id, reason, key string) (int, store.BlockedAccount, string) {
 	e.t.Helper()
 	payload, _ := json.Marshal(map[string]string{"reason": reason})
 	code, body, _ := e.as(s, "PUT", "/admin/blocked-accounts/"+id, string(payload), "Idempotency-Key", key)
-	var entry blockedAccount
+	var entry store.BlockedAccount
 	json.Unmarshal([]byte(body), &entry)
 	return code, entry, body
 }
@@ -56,7 +58,7 @@ func TestMembershipChangePublishes(t *testing.T) {
 	}
 	for _, tc := range []struct{ key, kind string }{{"account-publish-block", "account.block"}, {"account-publish-unblock", "account.unblock"}} {
 		code, body, _ := e.as(admin, "GET", "/admin/history/admin:"+harnessAdmin+":"+tc.key, "")
-		history := fromJSON[historyEntry](t, body)
+		history := fromJSON[store.HistoryEntry](t, body)
 		if code != 200 || history.Actor != harnessAdmin || history.Kind != tc.kind || history.Target != "alice" || history.Revision != 0 || history.AuditedAt == nil {
 			t.Fatalf("history: %d %s", code, body)
 		}
@@ -127,7 +129,7 @@ func TestConcurrentMembershipEdits(t *testing.T) {
 	_, password := e.addAdmin(binaries.plain, "second", "read,manage_subjects")
 	admins := []adminSession{e.mustLogin(harnessAdmin, harnessPassword), e.mustLogin("second", password)}
 	for round := range 5 {
-		entries := make([]blockedAccount, 2)
+		entries := make([]store.BlockedAccount, 2)
 		codes := make([]int, 2)
 		var wg sync.WaitGroup
 		for i := range 2 {
@@ -141,7 +143,7 @@ func TestConcurrentMembershipEdits(t *testing.T) {
 		}
 		code, body, _ := e.as(admins[0], "GET", "/admin/blocked-accounts", "")
 		got := fromJSON[struct {
-			Items []blockedAccount `json:"items"`
+			Items []store.BlockedAccount `json:"items"`
 		}](t, body)
 		if code != 200 || len(got.Items) != 1 || !slices.Contains(entries, got.Items[0]) {
 			t.Fatalf("torn concurrent result: %d %s %+v", code, body, entries)

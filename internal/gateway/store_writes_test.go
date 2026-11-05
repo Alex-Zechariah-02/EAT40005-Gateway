@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // Concurrent changes against one revision and lock contention. One
@@ -35,7 +36,7 @@ func TestConcurrencyAndLockContention(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := range writers {
 		wg.Go(func() {
-			codes[i], outcomes[i], _ = e.activate(harness, staged.Candidate.candidateRecord, 60, `"r1"`, fmt.Sprintf("concurrent-activation-%04d", i))
+			codes[i], outcomes[i], _ = e.activate(harness, staged.Candidate.CandidateRecord, 60, `"r1"`, fmt.Sprintf("concurrent-activation-%04d", i))
 		})
 	}
 	wg.Wait()
@@ -61,7 +62,7 @@ func TestConcurrencyAndLockContention(t *testing.T) {
 		t.Fatalf("confirm: %d %s", code, body)
 	}
 	code, body, header := e.as(harness, "GET", "/admin/policy", "")
-	revision := fromJSON[revisionInfo](t, body)
+	revision := fromJSON[store.RevisionInfo](t, body)
 	if code != http.StatusOK || header.Get("ETag") != `"r2"` || revision.ID != 2 {
 		t.Fatalf("policy after activation race: %d %s", code, body)
 	}
@@ -132,7 +133,7 @@ func TestRejectedMutationsAreRecorded(t *testing.T) {
 
 	code, body, _ := e.as(reader, http.MethodGet, "/admin/history", "")
 	history := fromJSON[struct {
-		Items []historyEntry `json:"items"`
+		Items []store.HistoryEntry `json:"items"`
 	}](t, body)
 	if code != http.StatusOK {
 		t.Fatalf("history: %d %s", code, body)

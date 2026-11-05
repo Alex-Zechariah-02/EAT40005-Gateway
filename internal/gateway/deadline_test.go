@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // These tests cover the confirmation deadline: the clock rule itself, the
@@ -110,7 +111,7 @@ func TestTimeoutWithoutTraffic(t *testing.T) {
 	}
 	e.expectEnforced(false, baseGeneration)
 	code, _, body := e.resolve(harness, "confirm", 2, `"r1"`, "confirm-after-timeout")
-	if outcome := fromJSON[Outcome](t, body); code != http.StatusConflict || outcome.Reason != "ALREADY_RESOLVED" || outcome.Disposition != dispositionTimedOut {
+	if outcome := fromJSON[Outcome](t, body); code != http.StatusConflict || outcome.Reason != "ALREADY_RESOLVED" || outcome.Disposition != store.DispositionTimedOut {
 		t.Fatalf("confirmation after the timeout: %d %s", code, body)
 	}
 
@@ -140,7 +141,7 @@ func TestTimeoutWithoutTraffic(t *testing.T) {
 	}
 	e.stop()
 	list := storedActivations(t, e.database)
-	want := []string{dispositionTimedOut, dispositionConfirmed, dispositionRolledBack}
+	want := []string{store.DispositionTimedOut, store.DispositionConfirmed, store.DispositionRolledBack}
 	if len(list) != len(want) {
 		t.Fatalf("stored activations %+v", list)
 	}

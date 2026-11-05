@@ -7,6 +7,7 @@ import (
 	"errors"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // Start serves the Admin API on its loopback listener. Protected admission
@@ -88,7 +89,7 @@ func (c *Controller) shutdown(ctx context.Context) error {
 	defer cancel()
 	errs := []error{err, c.audit.close(drain)}
 	if c.store != nil {
-		errs = append(errs, c.store.close())
+		errs = append(errs, c.store.Close())
 	}
 	if c.ownership != nil {
 		errs = append(errs, c.ownership.Close())
@@ -107,8 +108,8 @@ func (c *Controller) admission() string {
 	state := c.state
 	c.mu.Unlock()
 	switch state {
-	case modeNormal:
-	case modeBootstrap, modeRecovery, stateStopping, stateStopped:
+	case store.ModeNormal:
+	case store.ModeBootstrap, store.ModeRecovery, stateStopping, stateStopped:
 		return state
 	default:
 		return "unavailable"
@@ -135,5 +136,5 @@ func (c *Controller) unavailable(reason string) {
 // ready reports whether mutations can be processed: the database is open and
 // its authority was read, whatever the deployment mode.
 func (c *Controller) ready() bool {
-	return c.store != nil && (c.state == modeNormal || c.state == modeBootstrap || c.state == modeRecovery)
+	return c.store != nil && (c.state == store.ModeNormal || c.state == store.ModeBootstrap || c.state == store.ModeRecovery)
 }

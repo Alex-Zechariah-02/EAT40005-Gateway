@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // Every refusal is decided at its stage, answered with its status, error code
@@ -28,7 +29,7 @@ func TestEnforcementRefusals(t *testing.T) {
 	)
 	p.Permits = append(p.Permits, policy.Permit{Role: "WRITER", Operation: "strict"})
 	controller, _, f := e.serveEnforcement(p, 0)
-	blocked := blockedAccounts{"carol": {Subject: "carol", Reason: "test containment"}}
+	blocked := store.BlockedAccounts{"carol": {Subject: "carol", Reason: "test containment"}}
 	controller.blocked.Store(&blocked)
 
 	bearer := func(subject string) string { return "Bearer " + issuer.tokenFor(t, subject) }

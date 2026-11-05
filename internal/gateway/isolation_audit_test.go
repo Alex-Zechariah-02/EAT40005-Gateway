@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 func copyFile(t *testing.T, from, to string) {
@@ -109,11 +111,11 @@ func TestAuditGateAndSecretSafety(t *testing.T) {
 				t.Fatal("a listener is open after the refused start")
 			}
 			e.assertReceipts(0, 0, 0)
-			st, err := openStore(e.database)
+			st, err := store.OpenStore(e.database)
 			if err != nil {
 				t.Fatalf("the database is held: %v", err)
 			}
-			st.close()
+			st.Close()
 		})
 	}
 
@@ -140,7 +142,7 @@ func TestAuditGateAndSecretSafety(t *testing.T) {
 			// The unauthenticated health check reports the stored mode only:
 			// it answers 200 and normal while every protected admission
 			// fails. The authenticated status below reports the failure.
-			if health := e.health(); health != modeNormal {
+			if health := e.health(); health != store.ModeNormal {
 				t.Fatalf("health %q with a failed audit log", health)
 			}
 			if code, _ := e.get("/zzz"); code != http.StatusNotFound {

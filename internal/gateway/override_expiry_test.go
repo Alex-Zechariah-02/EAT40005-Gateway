@@ -9,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // An override expires at its expiry time without any request or
@@ -24,7 +26,7 @@ func TestOverrideExpiry(t *testing.T) {
 
 	// Expiry with no traffic: only status reads while the time passes.
 	kept := e.mustOverride(harness, operationContainment("read-b", 600), `"r1"`, "expiry-kept-000001")
-	expiring := e.mustOverride(harness, permitOverride(overrideException, "READER", "write-a", 2), `"r1"`, "expiry-quiet-00001")
+	expiring := e.mustOverride(harness, permitOverride(store.OverrideException, "READER", "write-a", 2), `"r1"`, "expiry-quiet-00001")
 	waitFor(t, expiring.Expires.Add(5*time.Second), "the expiry", func() bool { return len(e.status().Overrides) == 1 })
 	s := e.status()
 	if !strings.HasPrefix(s.Generation, fmt.Sprintf("r1+o%d-", kept.Override)) {
@@ -36,7 +38,7 @@ func TestOverrideExpiry(t *testing.T) {
 	}
 	e.assertReceipts(0, 0, 0)
 	code, outcome, body := e.revokeOverride(harness, expiring.Override, "expiry-late-revoke")
-	if code != http.StatusConflict || outcome.Reason != "ALREADY_RESOLVED" || outcome.Disposition != overrideExpired {
+	if code != http.StatusConflict || outcome.Reason != "ALREADY_RESOLVED" || outcome.Disposition != store.OverrideExpired {
 		t.Fatalf("revocation after the expiry: %d %s", code, body)
 	}
 	if code, _, body := e.revokeOverride(harness, kept.Override, "expiry-kept-revoke"); code != http.StatusOK {
@@ -48,12 +50,12 @@ func TestOverrideExpiry(t *testing.T) {
 
 	// Revocations racing the expiry, several rounds.
 	for round := range 4 {
-		o := e.mustOverride(harness, permitOverride(overrideException, "READER", "write-a", 1), `"r1"`, fmt.Sprintf("expiry-race-%02d-xxx", round))
+		o := e.mustOverride(harness, permitOverride(store.OverrideException, "READER", "write-a", 1), `"r1"`, fmt.Sprintf("expiry-race-%02d-xxx", round))
 		time.Sleep(time.Until(o.Expires.Add(time.Duration(round*5-10) * time.Millisecond)))
 		code, outcome, body := e.revokeOverride(harness, o.Override, fmt.Sprintf("expiry-race-%02d-rev", round))
 		switch {
-		case code == http.StatusOK && outcome.Disposition == overrideRevoked:
-		case code == http.StatusConflict && outcome.Disposition == overrideExpired:
+		case code == http.StatusOK && outcome.Disposition == store.OverrideRevoked:
+		case code == http.StatusConflict && outcome.Disposition == store.OverrideExpired:
 		default:
 			t.Fatalf("round %d: %d %s", round, code, body)
 		}
@@ -69,12 +71,12 @@ func TestOverrideExpiry(t *testing.T) {
 	for _, o := range storedOverrides(t, e.database) {
 		resolution := fmt.Sprintf("auto-expire:%d", o.ID)
 		switch {
-		case o.Status == overrideExpired && o.ResolvedBy == "controller" && o.Resolution == resolution:
+		case o.Status == store.OverrideExpired && o.ResolvedBy == "controller" && o.Resolution == resolution:
 			// Expired no earlier than its expiry time, and promptly after it.
 			if o.ResolvedAt.Before(o.ExpiresAt) || o.ResolvedAt.Sub(o.ExpiresAt) > time.Second {
 				t.Fatalf("override %d expired %v after its expiry time", o.ID, o.ResolvedAt.Sub(o.ExpiresAt))
 			}
-		case o.Status == overrideRevoked && o.ResolvedBy == harnessAdmin:
+		case o.Status == store.OverrideRevoked && o.ResolvedBy == harnessAdmin:
 			if !o.ResolvedAt.Before(o.ExpiresAt) {
 				t.Fatalf("override %d revoked at or after its expiry time", o.ID)
 			}
@@ -104,7 +106,7 @@ func TestExpiredOverrideAdmitsNothing(t *testing.T) {
 	e.start(binaries.fault, "GATEWAY_FAULT=no-deadline-timer")
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 
-	o := e.mustOverride(harness, permitOverride(overrideException, "READER", "write-a", 2), `"r1"`, "late-timer-traffic")
+	o := e.mustOverride(harness, permitOverride(store.OverrideException, "READER", "write-a", 2), `"r1"`, "late-timer-traffic")
 	bobToken := "Bearer " + issuer.tokenFor(t, "bob")
 	e.resetReceivers()
 	var admittedBefore, refusedAfter, refusedStraddling, baseAfter int
@@ -140,7 +142,7 @@ func TestExpiredOverrideAdmitsNothing(t *testing.T) {
 	}
 
 	// Many requests see the expiry at once; one expiry happens.
-	crowded := e.mustOverride(harness, permitOverride(overrideException, "READER", "write-a", 1), `"r1"`, "late-timer-crowded")
+	crowded := e.mustOverride(harness, permitOverride(store.OverrideException, "READER", "write-a", 1), `"r1"`, "late-timer-crowded")
 	time.Sleep(time.Until(crowded.Expires.Add(50 * time.Millisecond)))
 	var wg sync.WaitGroup
 	start := make(chan struct{})
@@ -156,16 +158,16 @@ func TestExpiredOverrideAdmitsNothing(t *testing.T) {
 
 	// Revocations at the decision instant around the expiry time.
 	for i, offset := range []time.Duration{-40 * time.Millisecond, -10 * time.Millisecond, 0, 10 * time.Millisecond, 40 * time.Millisecond} {
-		o := e.mustOverride(harness, permitOverride(overrideException, "READER", "write-a", 1), `"r1"`, fmt.Sprintf("boundary-create-%02d", i))
+		o := e.mustOverride(harness, permitOverride(store.OverrideException, "READER", "write-a", 1), `"r1"`, fmt.Sprintf("boundary-create-%02d", i))
 		time.Sleep(time.Until(o.Expires.Add(offset)))
 		sent := time.Now()
 		code, outcome, body := e.revokeOverride(harness, o.Override, fmt.Sprintf("boundary-revoke-%02d", i))
 		switch {
-		case code == http.StatusOK && outcome.Disposition == overrideRevoked:
+		case code == http.StatusOK && outcome.Disposition == store.OverrideRevoked:
 			if !sent.Before(o.Expires) {
 				t.Fatalf("revocation sent %v after the expiry was committed", sent.Sub(o.Expires))
 			}
-		case code == http.StatusConflict && outcome.Disposition == overrideExpired:
+		case code == http.StatusConflict && outcome.Disposition == store.OverrideExpired:
 		default:
 			t.Fatalf("offset %v: %d %s", offset, code, body)
 		}
@@ -175,11 +177,11 @@ func TestExpiredOverrideAdmitsNothing(t *testing.T) {
 	e.stop()
 	for _, o := range storedOverrides(t, e.database) {
 		switch o.Status {
-		case overrideExpired:
+		case store.OverrideExpired:
 			if o.ResolvedAt.Before(o.ExpiresAt) || o.Resolution != fmt.Sprintf("auto-expire:%d", o.ID) {
 				t.Fatalf("expired override %+v", o)
 			}
-		case overrideRevoked:
+		case store.OverrideRevoked:
 			if !o.ResolvedAt.Before(o.ExpiresAt) {
 				t.Fatalf("revoked override %+v decided at or after its expiry", o)
 			}

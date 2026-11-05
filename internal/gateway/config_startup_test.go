@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // legacyCaddyFile is e's deployment as the retired Caddy-hosted gateway was
@@ -130,11 +132,11 @@ func TestNativeStartupRefusesConfiguration(t *testing.T) {
 			if _, err := os.Stat(e.auditLog); !os.IsNotExist(err) {
 				t.Fatalf("an audit file was created: %v", err)
 			}
-			st, err := openStore(e.database)
+			st, err := store.OpenStore(e.database)
 			if err != nil {
 				t.Fatalf("the database is held: %v", err)
 			}
-			st.close()
+			st.Close()
 		})
 	}
 

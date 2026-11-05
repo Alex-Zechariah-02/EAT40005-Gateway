@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 func TestFetchBlockedAccountBoundaries(t *testing.T) {
@@ -43,7 +45,7 @@ func TestFetchBlockedAccountBoundaries(t *testing.T) {
 		t.Fatalf("persisted Unicode: %d %s", code, body)
 	} else {
 		page := fromJSON[struct {
-			Items []blockedAccount `json:"items"`
+			Items []store.BlockedAccount `json:"items"`
 		}](t, body)
 		if len(page.Items) != 1 || page.Items[0].Reason != "\x00" {
 			t.Fatalf("stored Unicode changed: %s", body)

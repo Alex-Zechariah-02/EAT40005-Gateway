@@ -1,6 +1,6 @@
 // Database schema migrations and schema verification.
 
-package gateway
+package store
 
 import (
 	"context"
@@ -209,29 +209,29 @@ CREATE TABLE control_result (
 ) STRICT;
 `}
 
-// databaseVersion is the schema version this build reads and writes.
-var databaseVersion = len(migrations)
+// DatabaseVersion is the schema version this build reads and writes.
+var DatabaseVersion = len(migrations)
 
-// checkDatabaseSchema compares the database schema with the one the
+// CheckDatabaseSchema compares the database schema with the one the
 // migrations up to version create.
-func checkDatabaseSchema(db *sql.DB, version int) error {
+func CheckDatabaseSchema(db *sql.DB, version int) error {
 	actual, err := schemaFingerprint(db)
 	if err != nil {
-		return fmt.Errorf("%w: reading schema: %v", errUnavailable, err)
+		return fmt.Errorf("%w: reading schema: %v", ErrUnavailable, err)
 	}
 	expected, err := referenceFingerprint(version)
 	if err != nil {
 		return fmt.Errorf("building reference schema: %w", err)
 	}
 	if actual != expected {
-		return fmt.Errorf("%w: database schema differs from version %d", errUnavailable, version)
+		return fmt.Errorf("%w: database schema differs from version %d", ErrUnavailable, version)
 	}
 	return nil
 }
 
-// applyMigrations applies the migrations after schema version from up to
+// ApplyMigrations applies the migrations after schema version from up to
 // version to, and records the new version.
-func applyMigrations(ctx context.Context, tx *sql.Tx, from, to int) error {
+func ApplyMigrations(ctx context.Context, tx *sql.Tx, from, to int) error {
 	for _, migration := range migrations[from:to] {
 		if _, err := tx.ExecContext(ctx, migration); err != nil {
 			return err
@@ -277,7 +277,7 @@ func referenceFingerprint(version int) (string, error) {
 		return "", err
 	}
 	defer tx.Rollback()
-	if err := applyMigrations(ctx, tx, 0, version); err != nil {
+	if err := ApplyMigrations(ctx, tx, 0, version); err != nil {
 		return "", err
 	}
 	if err := tx.Commit(); err != nil {

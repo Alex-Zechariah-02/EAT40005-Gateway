@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // A crash at each step of creating, revoking or expiring an override leaves
@@ -30,7 +32,7 @@ func TestOverrideTransitionsSurviveCrash(t *testing.T) {
 			seed(t, e.database, e.protectedPolicy(), seedOptions{})
 			e.start(binaries.fault, "GATEWAY_FAULT="+p.name)
 			harness := e.mustLogin(harnessAdmin, harnessPassword)
-			request := permitOverride(overrideException, "READER", "write-a", 600)
+			request := permitOverride(store.OverrideException, "READER", "write-a", 600)
 			if code, _, body := e.createOverride(harness, request, `"r1"`, "crash-create-000001"); code != 0 {
 				t.Fatalf("the gateway answered %d %s instead of crashing", code, body)
 			}
@@ -74,7 +76,7 @@ func TestOverrideTransitionsSurviveCrash(t *testing.T) {
 			seed(t, e.database, e.protectedPolicy(), seedOptions{})
 			e.start(binaries.plain)
 			harness := e.mustLogin(harnessAdmin, harnessPassword)
-			o := e.mustOverride(harness, permitOverride(overrideException, "READER", "write-a", 600), `"r1"`, "crash-revoke-create")
+			o := e.mustOverride(harness, permitOverride(store.OverrideException, "READER", "write-a", 600), `"r1"`, "crash-revoke-create")
 			e.stop()
 			e.start(binaries.fault, "GATEWAY_FAULT="+p.name)
 			harness = e.mustLogin(harnessAdmin, harnessPassword)
@@ -94,7 +96,7 @@ func TestOverrideTransitionsSurviveCrash(t *testing.T) {
 				t.Fatalf("after restart: bob write %d, want %d", code, wantWrite)
 			}
 			code, outcome, body := e.revokeOverride(harness, o.Override, "crash-revoke-0000001")
-			if code != http.StatusOK || outcome.Disposition != overrideRevoked {
+			if code != http.StatusOK || outcome.Disposition != store.OverrideRevoked {
 				t.Fatalf("retry: %d %s", code, body)
 			}
 			if e.probe("bob", http.MethodPost, "/a/item") != http.StatusForbidden {
@@ -113,7 +115,7 @@ func TestOverrideTransitionsSurviveCrash(t *testing.T) {
 			seed(t, e.database, e.protectedPolicy(), seedOptions{})
 			e.start(binaries.fault, "GATEWAY_FAULT="+p.name)
 			harness := e.mustLogin(harnessAdmin, harnessPassword)
-			o := e.mustOverride(harness, permitOverride(overrideException, "READER", "write-a", 1), `"r1"`, "crash-expire-create")
+			o := e.mustOverride(harness, permitOverride(store.OverrideException, "READER", "write-a", 1), `"r1"`, "crash-expire-create")
 			// The expiry timer ends the override and the process dies there.
 			if code := e.waitExit(); code != crashExit {
 				t.Fatalf("exit code %d", code)
@@ -125,14 +127,14 @@ func TestOverrideTransitionsSurviveCrash(t *testing.T) {
 				t.Fatalf("first write after restarting past the expiry: %d", code)
 			}
 			e.assertReceipts(0, 0, 0)
-			got, found, _ := func() (override, bool, error) {
+			got, found, _ := func() (store.Override, bool, error) {
 				code, body, _ := e.as(harness, http.MethodGet, fmt.Sprintf("/admin/overrides/%d", o.Override), "")
 				if code != http.StatusOK {
-					return override{}, false, nil
+					return store.Override{}, false, nil
 				}
-				return fromJSON[override](t, body), true, nil
+				return fromJSON[store.Override](t, body), true, nil
 			}()
-			if !found || got.Status != overrideExpired || got.Resolution != fmt.Sprintf("auto-expire:%d", o.Override) || got.ResolvedAt.Before(got.ExpiresAt) {
+			if !found || got.Status != store.OverrideExpired || got.Resolution != fmt.Sprintf("auto-expire:%d", o.Override) || got.ResolvedAt.Before(got.ExpiresAt) {
 				t.Fatalf("override after restart %+v", got)
 			}
 			events := e.eventsWhen(func(events []map[string]any) bool { return countKind(events, "tpo.expired") >= 1 })
@@ -166,7 +168,7 @@ func TestRestartWithOverrides(t *testing.T) {
 		t.Fatal("override not enforced after restart")
 	}
 
-	short := e.mustOverride(harness, permitOverride(overrideException, "READER", "write-a", 2), `"r1"`, "restart-short-00001")
+	short := e.mustOverride(harness, permitOverride(store.OverrideException, "READER", "write-a", 2), `"r1"`, "restart-short-00001")
 	e.stop()
 	time.Sleep(time.Until(short.Expires.Add(500 * time.Millisecond)))
 	// Without the deadline timer, only startup itself can have ended the
@@ -183,7 +185,7 @@ func TestRestartWithOverrides(t *testing.T) {
 	}
 
 	// A provisional base with overrides restarts as it was.
-	expiring := e.mustOverride(harness, permitOverride(overrideContainment, "WRITER", "read-a", 3), `"r1"`, "restart-expiring-01")
+	expiring := e.mustOverride(harness, permitOverride(store.OverrideContainment, "WRITER", "read-a", 3), `"r1"`, "restart-expiring-01")
 	_, activated := e.provisionalFrom(harness, e.upstreamCandidate(), 1, 60, "restart-provisional")
 	e.stop()
 	e.start(binaries.plain)

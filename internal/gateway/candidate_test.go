@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // Failure to read metadata after a committed stage must retain its receipt.
@@ -52,14 +53,14 @@ func TestCandidateReceiptSurvivesMetadataReadFailure(t *testing.T) {
 }
 
 // candidateList reads every stored candidate.
-func (e *env) candidateList(s adminSession) []candidateRecord {
+func (e *env) candidateList(s adminSession) []store.CandidateRecord {
 	e.t.Helper()
 	code, body, _ := e.as(s, http.MethodGet, "/admin/candidates?limit=100", "")
 	if code != http.StatusOK {
 		e.t.Fatalf("listing candidates: %d %s", code, body)
 	}
 	return fromJSON[struct {
-		Items []candidateRecord `json:"items"`
+		Items []store.CandidateRecord `json:"items"`
 	}](e.t, body).Items
 }
 
@@ -92,11 +93,11 @@ func TestCandidateStagingChangesNothingEnforced(t *testing.T) {
 	// The stored document is the submitted policy, under its checksum.
 	code, body, _ = e.as(harness, http.MethodGet, fmt.Sprintf("/admin/candidates/%d", c.ID), "")
 	view := fromJSON[struct {
-		candidateRecord
+		store.CandidateRecord
 		Active   bool            `json:"active"`
 		Document json.RawMessage `json:"document"`
 	}](t, body)
-	if code != http.StatusOK || view.Active || string(view.Document) != string(mustJSON(moved)) || documentChecksum(view.Document) != c.Checksum {
+	if code != http.StatusOK || view.Active || string(view.Document) != string(mustJSON(moved)) || store.DocumentChecksum(view.Document) != c.Checksum {
 		t.Fatalf("candidate read: %d %s", code, body)
 	}
 
@@ -106,7 +107,7 @@ func TestCandidateStagingChangesNothingEnforced(t *testing.T) {
 		t.Fatalf("staging changed the status: %+v -> %+v", before, after)
 	}
 	_, body, header := e.as(harness, http.MethodGet, "/admin/policy", "")
-	confirmed, err := policy.DecodePolicy(fromJSON[revisionInfo](t, body).Document)
+	confirmed, err := policy.DecodePolicy(fromJSON[store.RevisionInfo](t, body).Document)
 	if err != nil || header.Get("ETag") != `"r1"` || confirmed.APIs[0].Upstream != "A" {
 		t.Fatalf("confirmed policy after staging: %v %s", err, body)
 	}
@@ -223,7 +224,7 @@ func TestCandidateRefusals(t *testing.T) {
 	// A refusal is recorded under its identity and replayed, never re-run.
 	id := "admin:" + harnessAdmin + ":invalid-candidate-04"
 	code, body, _ = e.as(harness, http.MethodGet, "/admin/history/"+id, "")
-	if entry := fromJSON[historyEntry](t, body); code != http.StatusOK || entry.Outcome != "rejected" || entry.Reason != "INVALID_UPSTREAM" || entry.Candidate != 0 {
+	if entry := fromJSON[store.HistoryEntry](t, body); code != http.StatusOK || entry.Outcome != "rejected" || entry.Reason != "INVALID_UPSTREAM" || entry.Candidate != 0 {
 		t.Fatalf("history of a refused candidate: %d %s", code, body)
 	}
 	if code, _, body := e.stage(harness, remoteName, `"r1"`, "invalid-candidate-04"); code != http.StatusBadRequest || !strings.Contains(body, "INVALID_UPSTREAM") {
@@ -281,7 +282,7 @@ func TestCandidateLifecycle(t *testing.T) {
 		t.Fatalf("withdrawing an unknown candidate: %d", code)
 	}
 	_, body, _ = e.as(harness, http.MethodGet, path, "")
-	view := fromJSON[candidateRecord](t, body)
+	view := fromJSON[store.CandidateRecord](t, body)
 	if view.Status != "withdrawn" || view.Checksum != first.Candidate.Checksum {
 		t.Fatalf("withdrawn candidate: %s", body)
 	}

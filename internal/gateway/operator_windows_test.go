@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // Inspect actual DACLs, including sidecars, rather than interpreting Unix
@@ -21,7 +23,7 @@ func TestNativeOperatorWindowsAccess(t *testing.T) {
 		t.Fatalf("backup exit %d: %s", code, out)
 	}
 	// An open store keeps the -wal and -shm sidecars present for inspection.
-	st, err := openStore(e.database)
+	st, err := store.OpenStore(e.database)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +46,7 @@ func TestNativeOperatorWindowsAccess(t *testing.T) {
 	t.Log("current user created, read and wrote this deployment; other-user access is NOT TESTED; administrative access is not excluded")
 	// The store's exclusive lock alone would make backup exit 1, so it is
 	// released before the probe and the refusal must name the denied access.
-	if err := st.close(); err != nil {
+	if err := st.Close(); err != nil {
 		t.Fatal(err)
 	}
 	before := fileSHA256(t, e.database)

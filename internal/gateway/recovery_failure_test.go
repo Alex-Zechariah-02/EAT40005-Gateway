@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // When the base a rollback must restore cannot be compiled, nothing
@@ -72,7 +74,7 @@ func TestFailedRollbackStopsAdmission(t *testing.T) {
 	e.expectEnforced(false, "")
 	e.stop()
 	list := storedActivations(t, e.database)
-	if len(list) != 2 || list[0].Disposition != dispositionRolledBack || list[1].Disposition != dispositionTimedOut {
+	if len(list) != 2 || list[0].Disposition != store.DispositionRolledBack || list[1].Disposition != store.DispositionTimedOut {
 		t.Fatalf("stored activations %+v", list)
 	}
 }
@@ -92,7 +94,7 @@ func TestLifecycleAuditFailure(t *testing.T) {
 	if code != http.StatusCreated {
 		t.Fatalf("staging: %d %s", code, body)
 	}
-	candidate := staged.Candidate.candidateRecord
+	candidate := staged.Candidate.CandidateRecord
 
 	// Fields carrying a token, a key marker and a forged record.
 	token := issuer.tokenFor(t, "alice")

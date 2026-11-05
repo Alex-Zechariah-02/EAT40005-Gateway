@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // A provisional base whose lifecycle state is missing, damaged or
@@ -46,7 +48,7 @@ func TestCorruptLifecycleStateAdmitsNothing(t *testing.T) {
 			e := newEnv(t)
 			candidate := e.cpaCandidate()
 			seed(t, e.database, e.protectedPolicy(), seedOptions{provisional: &candidate, deadline: time.Now().Add(time.Hour)})
-			db, err := sql.Open("sqlite", databaseURI(e.database))
+			db, err := sql.Open("sqlite", store.DatabaseURI(e.database))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -90,7 +92,7 @@ func mustExec(t *testing.T, db *sql.DB, statements ...string) {
 
 func corrupt(t *testing.T, path string) {
 	t.Helper()
-	db, _ := sql.Open("sqlite", databaseURI(path))
+	db, _ := sql.Open("sqlite", store.DatabaseURI(path))
 	db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
 	db.Close()
 	file, err := os.OpenFile(path, os.O_WRONLY, 0)

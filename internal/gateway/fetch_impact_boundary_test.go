@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 func TestFetchImpactPreservesRequestTarget(t *testing.T) {
@@ -47,7 +48,7 @@ func TestFetchImpactPreservesRequestTarget(t *testing.T) {
 			if code != 200 || json.Unmarshal([]byte(body), &impact) != nil || len(impact.Flips) != 0 {
 				t.Errorf("preview changed the request target's meaning: %d %s", code, body)
 			}
-			if code, _, body = e.activate(admin, staged.Candidate.candidateRecord, 60, `"r1"`, "impact-target-activate"); code != 200 {
+			if code, _, body = e.activate(admin, staged.Candidate.CandidateRecord, 60, `"r1"`, "impact-target-activate"); code != 200 {
 				t.Fatalf("activate: %d %s", code, body)
 			}
 			if code, _ := e.get(tc.path); code != tc.status {
@@ -79,7 +80,7 @@ func TestFetchImpactPreservesIndependentControls(t *testing.T) {
 				}
 				draft = withoutRole(draft, "WRITER")
 			} else {
-				e.mustOverride(admin, permitOverride(overrideException, "READER", "write-a", 60), `"r1"`, "impact-independent-override")
+				e.mustOverride(admin, permitOverride(store.OverrideException, "READER", "write-a", 60), `"r1"`, "impact-independent-override")
 				if code, _ := e.request("POST", "/a/item", "application/json", `{"n":1}`, bearer(t, "bob")...); code != 200 {
 					t.Fatalf("override probe: %d", code)
 				}
@@ -100,7 +101,7 @@ func TestFetchImpactPreservesIndependentControls(t *testing.T) {
 			if after := e.status(); after.Generation != before.Generation || after.Revision != before.Revision {
 				t.Fatal("preview changed authority")
 			}
-			code, _, body = e.activate(admin, staged.Candidate.candidateRecord, 60, `"r1"`, "impact-independent-activate")
+			code, _, body = e.activate(admin, staged.Candidate.CandidateRecord, 60, `"r1"`, "impact-independent-activate")
 			if code != 200 {
 				t.Fatalf("actual activation: %d %s", code, body)
 			}
@@ -149,7 +150,7 @@ func TestFetchImpactAccessGrantHasKnownOutcome(t *testing.T) {
 	if code != 200 || json.Unmarshal([]byte(body), &impact) != nil || impact.Window.Requests != 1 || impact.Window.Previewed != 0 || impact.Window.IdentityUnknown != 1 || len(impact.Flips) != 0 || !slices.Equal(impact.NotPreviewed, []string{"rate", "body", "unobserved_identity"}) {
 		t.Errorf("preview did not disclose unobserved identity: %d %s", code, body)
 	}
-	code, activation, body := e.activate(admin, staged.Candidate.candidateRecord, 60, `"r1"`, "impact-access-activate")
+	code, activation, body := e.activate(admin, staged.Candidate.CandidateRecord, 60, `"r1"`, "impact-access-activate")
 	if code != 200 {
 		t.Fatalf("activate: %d %s", code, body)
 	}
@@ -211,7 +212,7 @@ func TestFetchImpactIdentityCoverage(t *testing.T) {
 			if code != 200 || json.Unmarshal([]byte(body), &result) != nil || result.Window.Requests != 1 || result.Window.IdentityUnknown != tc.unknown || result.Window.Previewed != 1-tc.unknown || len(result.Flips) != tc.flips || slices.Contains(result.NotPreviewed, "unobserved_identity") != (tc.unknown > 0) {
 				t.Errorf("coverage: %d %s", code, body)
 			}
-			code, _, body = e.activate(admin, staged.Candidate.candidateRecord, 60, `"r1"`, "impact-coverage-activate")
+			code, _, body = e.activate(admin, staged.Candidate.CandidateRecord, 60, `"r1"`, "impact-coverage-activate")
 			if code != 200 {
 				t.Fatalf("activate: %d %s", code, body)
 			}

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // A staged candidate changes nothing. Its activation publishes it
@@ -31,7 +32,7 @@ func TestActivationAndConfirmation(t *testing.T) {
 	if code != http.StatusCreated {
 		t.Fatalf("staging: %d %s", code, body)
 	}
-	candidate := staged.Candidate.candidateRecord
+	candidate := staged.Candidate.CandidateRecord
 	if s := e.status(); s.Generation != base.Generation || s.Provisional != 0 {
 		t.Fatalf("staging changed the status: %+v", s)
 	}
@@ -58,7 +59,7 @@ func TestActivationAndConfirmation(t *testing.T) {
 	// The provisional view names the activation and every changed target.
 	code, body, header := e.as(harness, http.MethodGet, "/admin/provisional", "")
 	view := fromJSON[struct {
-		Activation activationRecord        `json:"activation"`
+		Activation store.ActivationRecord  `json:"activation"`
 		Generation string                  `json:"generation"`
 		Changes    []compile.ControlChange `json:"changes"`
 	}](t, body)
@@ -86,7 +87,7 @@ func TestActivationAndConfirmation(t *testing.T) {
 	if code != http.StatusCreated {
 		t.Fatalf("staging a second candidate: %d %s", code, body)
 	}
-	if code, _, body := e.activate(harness, other.Candidate.candidateRecord, 60, `"r1"`, "activate-confirm-path-2"); code != http.StatusConflict ||
+	if code, _, body := e.activate(harness, other.Candidate.CandidateRecord, 60, `"r1"`, "activate-confirm-path-2"); code != http.StatusConflict ||
 		!strings.Contains(body, "PROVISIONAL_ACTIVE") {
 		t.Fatalf("second activation: %d %s", code, body)
 	}
@@ -132,7 +133,7 @@ func TestActivationAndConfirmation(t *testing.T) {
 
 	// Explicit confirmation.
 	code, confirmed, body := e.resolve(harness, "confirm", 2, `"r1"`, "confirm-path-confirm")
-	if code != http.StatusOK || confirmed.Outcome != "committed" || confirmed.Disposition != dispositionConfirmed ||
+	if code != http.StatusOK || confirmed.Outcome != "committed" || confirmed.Disposition != store.DispositionConfirmed ||
 		confirmed.Revision != 2 || confirmed.Provisional != 2 || confirmed.RollbackTarget != 1 || confirmed.Generation == "" {
 		t.Fatalf("confirmation: %d %s", code, body)
 	}
@@ -151,12 +152,12 @@ func TestActivationAndConfirmation(t *testing.T) {
 	// The same request returns the recorded receipt; any other request for
 	// the resolved revision learns its disposition and changes nothing.
 	if code, again, body := e.resolve(harness, "confirm", 2, `"r1"`, "confirm-path-confirm"); code != http.StatusOK ||
-		again.Transition != confirmed.Transition || again.Disposition != dispositionConfirmed || again.Revision != 2 {
+		again.Transition != confirmed.Transition || again.Disposition != store.DispositionConfirmed || again.Revision != 2 {
 		t.Fatalf("retried confirmation: %d %s", code, body)
 	}
 	for _, action := range []string{"confirm", "rollback"} {
 		code, outcome, body := e.resolve(harness, action, 2, `"r2"`, "after-confirm-"+action+"-x")
-		if code != http.StatusConflict || outcome.Reason != "ALREADY_RESOLVED" || outcome.Disposition != dispositionConfirmed {
+		if code != http.StatusConflict || outcome.Reason != "ALREADY_RESOLVED" || outcome.Disposition != store.DispositionConfirmed {
 			t.Errorf("%s after confirmation: %d %s", action, code, body)
 		}
 	}
@@ -186,7 +187,7 @@ func TestActivationAndConfirmation(t *testing.T) {
 	e.stop()
 	list := storedActivations(t, e.database)
 	if len(list) != 1 || list[0].Revision != 2 || list[0].Candidate != candidate.ID || list[0].RollbackTarget != 1 ||
-		!list[0].Deadline.Equal(activated.Deadline) || list[0].Disposition != dispositionConfirmed ||
+		!list[0].Deadline.Equal(activated.Deadline) || list[0].Disposition != store.DispositionConfirmed ||
 		list[0].ResolvedBy != harnessAdmin || list[0].Resolution != confirmed.Transition || !list[0].ResolvedAt.Before(list[0].Deadline) {
 		t.Fatalf("stored activations %+v", list)
 	}

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // Activation is refused before anything is committed when the
@@ -25,12 +26,12 @@ func TestActivationRefusals(t *testing.T) {
 	if code != http.StatusCreated {
 		t.Fatalf("staging: %d %s", code, body)
 	}
-	good := staged.Candidate.candidateRecord
+	good := staged.Candidate.CandidateRecord
 	code, staged, body = e.stage(harness, e.cpaCandidate(), `"r1"`, "stage-refusals-withdrawn")
 	if code != http.StatusCreated {
 		t.Fatalf("staging: %d %s", code, body)
 	}
-	withdrawn := staged.Candidate.candidateRecord
+	withdrawn := staged.Candidate.CandidateRecord
 	if code, _, _ := e.as(harness, http.MethodDelete, fmt.Sprintf("/admin/candidates/%d", withdrawn.ID), "", "Idempotency-Key", "withdraw-refusals-x"); code != http.StatusOK {
 		t.Fatalf("withdrawal: %d", code)
 	}
@@ -69,7 +70,7 @@ func TestActivationRefusals(t *testing.T) {
 	for reason, p := range crafted {
 		document := mustJSON(p)
 		result, err := db.Exec(`INSERT INTO candidate (parent, document, checksum, deny_all, status, actor, created_at) VALUES (1, ?, ?, 0, 'validated', 'x', 0)`,
-			[]byte(document), documentChecksum(document))
+			[]byte(document), store.DocumentChecksum(document))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -90,17 +91,17 @@ func TestActivationRefusals(t *testing.T) {
 
 	cases := []struct {
 		name      string
-		candidate candidateRecord
+		candidate store.CandidateRecord
 		seconds   int64
 		ifMatch   string
 		status    int
 		reason    string
 		field     string
 	}{
-		{"unknown candidate", candidateRecord{ID: 999, Checksum: good.Checksum}, 60, `"r1"`, http.StatusNotFound, "NOT_FOUND", ""},
+		{"unknown candidate", store.CandidateRecord{ID: 999, Checksum: good.Checksum}, 60, `"r1"`, http.StatusNotFound, "NOT_FOUND", ""},
 		{"withdrawn candidate", withdrawn, 60, `"r1"`, http.StatusConflict, "CANDIDATE_UNAVAILABLE", ""},
-		{"checksum of another document", candidateRecord{ID: good.ID, Checksum: strings.Repeat("0", 64)}, 60, `"r1"`, http.StatusPreconditionFailed, "PRECONDITION_FAILED", "checksum"},
-		{"stored document altered", candidateRecord{ID: corruptID, Checksum: good.Checksum}, 60, `"r1"`, http.StatusConflict, "CANDIDATE_INTEGRITY", ""},
+		{"checksum of another document", store.CandidateRecord{ID: good.ID, Checksum: strings.Repeat("0", 64)}, 60, `"r1"`, http.StatusPreconditionFailed, "PRECONDITION_FAILED", "checksum"},
+		{"stored document altered", store.CandidateRecord{ID: corruptID, Checksum: good.Checksum}, 60, `"r1"`, http.StatusConflict, "CANDIDATE_INTEGRITY", ""},
 		{"stale precondition", good, 60, `"r0"`, http.StatusPreconditionFailed, "PRECONDITION_FAILED", ""},
 		{"zero period", good, 0, `"r1"`, http.StatusBadRequest, "INVALID_DEADLINE", "confirm_within_seconds"},
 		{"negative period", good, -5, `"r1"`, http.StatusBadRequest, "INVALID_DEADLINE", "confirm_within_seconds"},
@@ -110,13 +111,13 @@ func TestActivationRefusals(t *testing.T) {
 	for reason, id := range ids {
 		cases = append(cases, struct {
 			name      string
-			candidate candidateRecord
+			candidate store.CandidateRecord
 			seconds   int64
 			ifMatch   string
 			status    int
 			reason    string
 			field     string
-		}{"stored " + reason, candidateRecord{ID: id, Checksum: documentChecksum(mustJSON(crafted[reason]))}, 60, `"r1"`, http.StatusBadRequest, reason, ""})
+		}{"stored " + reason, store.CandidateRecord{ID: id, Checksum: store.DocumentChecksum(mustJSON(crafted[reason]))}, 60, `"r1"`, http.StatusBadRequest, reason, ""})
 	}
 	for i, tc := range cases {
 		code, outcome, body := e.activate(harness, tc.candidate, tc.seconds, tc.ifMatch, fmt.Sprintf("refused-activation-%02d", i))
@@ -168,7 +169,7 @@ func TestActivationRefusals(t *testing.T) {
 		t.Fatalf("stale candidate: %d %s", code, body)
 	}
 	e.stop()
-	if list := storedActivations(t, e.database); len(list) != 1 || list[0].Disposition != dispositionConfirmed {
+	if list := storedActivations(t, e.database); len(list) != 1 || list[0].Disposition != store.DispositionConfirmed {
 		t.Fatalf("refusals changed the one intentionally confirmed activation: %+v", list)
 	}
 	if n := queryInt(t, e.database, `SELECT COUNT(*) FROM transition WHERE kind = 'cpa.activate' AND outcome = 'rejected'`); n < len(cases)+1 {

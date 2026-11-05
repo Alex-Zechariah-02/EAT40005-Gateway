@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 const (
@@ -80,7 +81,7 @@ type Controller struct {
 
 	// Trust and account containment are published independently of policy.
 	verifier atomic.Pointer[verifier]
-	blocked  atomic.Pointer[blockedAccounts]
+	blocked  atomic.Pointer[store.BlockedAccounts]
 
 	// limiter holds the rate counters. They belong to the process, not to a
 	// generation, so publication never resets them; a restart does.
@@ -99,7 +100,7 @@ type Controller struct {
 	state     string // a deployment mode, or the reason no authority is served
 	stopping  bool   // set when the stop begins; see beginStop
 	ownership *os.File
-	store     *store
+	store     *store.DB
 	audit     *auditLog
 	timer     *time.Timer
 	admin     *http.Server
@@ -157,13 +158,13 @@ func NewController(cfg Config, logger *slog.Logger) (*Controller, error) {
 	// The database's exclusive lock is taken before the audit log is opened,
 	// so a second gateway for the same deployment stops here and never
 	// becomes a second writer of its audit log.
-	ownership, err := lockDeployment(cfg.Database)
+	ownership, err := store.LockDeployment(cfg.Database)
 	if err != nil {
 		return nil, err
 	}
 	c.ownership = ownership
-	st, err := openStore(cfg.Database)
-	if err != nil && !errors.Is(err, errUnavailable) {
+	st, err := store.OpenStore(cfg.Database)
+	if err != nil && !errors.Is(err, store.ErrUnavailable) {
 		ownership.Close()
 		return nil, err
 	}
@@ -176,7 +177,7 @@ func NewController(cfg Config, logger *slog.Logger) (*Controller, error) {
 		return c, nil
 	}
 	c.store = st
-	blocked, err := st.blockedAccounts(context.Background())
+	blocked, err := st.BlockedAccounts(context.Background())
 	if err != nil {
 		c.unavailable("reading blocked accounts: " + err.Error())
 		return c, nil

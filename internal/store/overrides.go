@@ -1,6 +1,6 @@
 // Override reads and commits.
 
-package gateway
+package store
 
 import (
 	"context"
@@ -14,16 +14,16 @@ import (
 const overrideColumns = `id, type, control, operation, coalesce(role, ''), coalesce(count, 0), target, base,
 	created_at, expires_at, actor, creation, status, resolved_at, coalesce(resolved_by, ''), coalesce(resolution, '')`
 
-// overrides reads the overrides selected by the WHERE and ORDER clause.
-func (s *store) overrides(ctx context.Context, clause string, args ...any) ([]override, error) {
+// Overrides reads the overrides selected by the WHERE and ORDER clause.
+func (s *DB) Overrides(ctx context.Context, clause string, args ...any) ([]Override, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT `+overrideColumns+` FROM override `+clause, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	list := []override{}
+	list := []Override{}
 	for rows.Next() {
-		var o override
+		var o Override
 		var created, expires int64
 		var resolved sql.NullInt64
 		err := rows.Scan(&o.ID, &o.Type, &o.Control, &o.Operation, &o.Role, &o.Count, &o.Target, &o.Base,
@@ -38,40 +38,40 @@ func (s *store) overrides(ctx context.Context, clause string, args ...any) ([]ov
 	return list, rows.Err()
 }
 
-// override reads one override by its identifier.
-func (s *store) override(ctx context.Context, id int64) (override, bool, error) {
-	list, err := s.overrides(ctx, `WHERE id = ?`, id)
+// Override reads one override by its identifier.
+func (s *DB) Override(ctx context.Context, id int64) (Override, bool, error) {
+	list, err := s.Overrides(ctx, `WHERE id = ?`, id)
 	if err != nil || len(list) == 0 {
-		return override{}, false, err
+		return Override{}, false, err
 	}
 	return list[0], true, nil
 }
 
-// overrideOf reads the override a temporary-override transition created,
+// OverrideOf reads the override a temporary-override transition created,
 // revoked or expired; the unique creation column and the override_resolution
 // index allow at most one of each. A restore transition, which can quarantine
 // several overrides, is not one.
-func (s *store) overrideOf(ctx context.Context, transition string) (override, bool, error) {
-	list, err := s.overrides(ctx, `WHERE creation = ? OR (resolution = ? AND status IN ('revoked', 'expired'))`, transition, transition)
+func (s *DB) OverrideOf(ctx context.Context, transition string) (Override, bool, error) {
+	list, err := s.Overrides(ctx, `WHERE creation = ? OR (resolution = ? AND status IN ('revoked', 'expired'))`, transition, transition)
 	if err != nil || len(list) == 0 {
-		return override{}, false, err
+		return Override{}, false, err
 	}
 	return list[0], true, nil
 }
 
-// nextOverrideID is the identifier the next override will have. Rows are
+// NextOverrideID is the identifier the next override will have. Rows are
 // never deleted and the controller is the only writer, so it is known before
 // the override is committed and can label the generation compiled for it.
-func (s *store) nextOverrideID(ctx context.Context) (int64, error) {
+func (s *DB) NextOverrideID(ctx context.Context) (int64, error) {
 	var id int64
 	err := s.db.QueryRowContext(ctx, `SELECT coalesce(max(id), 0) + 1 FROM override`).Scan(&id)
 	return id, err
 }
 
-// commitOverride stores a new active override with its committed transition.
+// CommitOverride stores a new active override with its committed transition.
 // The unique index on active targets refuses a second active override of the
 // same target even if a caller skipped the conflict check.
-func (s *store) commitOverride(ctx context.Context, t transitionRecord, o override, now time.Time) error {
+func (s *DB) CommitOverride(ctx context.Context, t TransitionRecord, o Override, now time.Time) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -82,10 +82,10 @@ func (s *store) commitOverride(ctx context.Context, t transitionRecord, o overri
 		return err
 	}
 	var role, count any
-	if o.Control == controlPermit {
+	if o.Control == ControlPermit {
 		role = o.Role
 	}
-	if o.Control == controlRate {
+	if o.Control == ControlRate {
 		count = o.Count
 	}
 	fault.CrashPoint("tpo-commit-partway")
@@ -100,10 +100,10 @@ func (s *store) commitOverride(ctx context.Context, t transitionRecord, o overri
 	return tx.Commit()
 }
 
-// commitOverrideEnd records the final status of an active override with its
+// CommitOverrideEnd records the final status of an active override with its
 // committed transition. The guarded update fails unless the override is still
 // active, so it can end only once.
-func (s *store) commitOverrideEnd(ctx context.Context, t transitionRecord, id int64, status string, now time.Time) error {
+func (s *DB) CommitOverrideEnd(ctx context.Context, t TransitionRecord, id int64, status string, now time.Time) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err

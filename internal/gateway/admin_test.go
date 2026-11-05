@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // testPassword returns a fresh administrator password for one test.
@@ -129,7 +130,7 @@ func TestBootstrapIsLocalAndOneTime(t *testing.T) {
 	if got := queryString(t, e.database, `SELECT secret FROM enrolment WHERE administrator = 'root'`); got != tokenHash(secret) {
 		t.Fatal("the stored enrolment is not the hash of the printed secret")
 	}
-	if mode := queryString(t, e.database, `SELECT mode FROM deployment`); mode != modeBootstrap {
+	if mode := queryString(t, e.database, `SELECT mode FROM deployment`); mode != store.ModeBootstrap {
 		t.Fatalf("installed mode %q", mode)
 	}
 
@@ -143,7 +144,7 @@ func TestBootstrapIsLocalAndOneTime(t *testing.T) {
 	}
 
 	e.start(binaries.plain)
-	if health := e.health(); health != modeBootstrap {
+	if health := e.health(); health != store.ModeBootstrap {
 		t.Fatalf("health %q", health)
 	}
 	for _, path := range []string{"/a/x", "/d", "/admin/status"} {

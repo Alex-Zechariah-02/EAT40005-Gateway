@@ -1,4 +1,6 @@
-package gateway
+// The deployment lock on Windows.
+
+package store
 
 import (
 	"os"

@@ -5,6 +5,8 @@ package gateway
 import (
 	"net/http"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 const crashExit = 86
@@ -117,7 +119,7 @@ func TestLifecycleSurvivesCrash(t *testing.T) {
 			if code != http.StatusCreated {
 				t.Fatalf("staging: %d %s", code, body)
 			}
-			candidate := staged.Candidate.candidateRecord
+			candidate := staged.Candidate.CandidateRecord
 			if tc.action != "activate" {
 				if code, _, body := e.activate(harness, candidate, 60, `"r1"`, "activate-before-crash"); code != http.StatusOK {
 					t.Fatalf("activation: %d %s", code, body)
@@ -197,7 +199,7 @@ func TestLifecycleSurvivesCrash(t *testing.T) {
 				t.Fatalf("%d %s events for %s, want 1", outcomes, kind, id)
 			}
 			list := storedActivations(t, e.database)
-			wantDisposition := map[string]string{"activate": "", "confirm": dispositionConfirmed, "rollback": dispositionRolledBack}[tc.action]
+			wantDisposition := map[string]string{"activate": "", "confirm": store.DispositionConfirmed, "rollback": store.DispositionRolledBack}[tc.action]
 			if len(list) != 1 || list[0].Disposition != wantDisposition {
 				t.Fatalf("stored activations %+v", list)
 			}
@@ -228,7 +230,7 @@ func TestTimeoutSurvivesCrash(t *testing.T) {
 				AND published_at IS NOT NULL AND audited_at IS NOT NULL`); n != 1 {
 				t.Fatalf("%d complete timeout records", n)
 			}
-			if list := storedActivations(t, e.database); len(list) != 1 || list[0].Disposition != dispositionTimedOut {
+			if list := storedActivations(t, e.database); len(list) != 1 || list[0].Disposition != store.DispositionTimedOut {
 				t.Fatalf("stored activations %+v", list)
 			}
 			if n := countKind(e.auditEvents(), "cpa.timed_out"); n != 1 {

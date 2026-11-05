@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // A declared historical restore of a backup taken while an override was
@@ -22,7 +24,7 @@ func TestHistoricalRestoreQuarantinesOverrides(t *testing.T) {
 	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 	e.start(binaries.plain)
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
-	grant := e.mustOverride(harness, permitOverride(overrideException, "READER", "write-a", 3600), `"r1"`, "restore-grant-00001")
+	grant := e.mustOverride(harness, permitOverride(store.OverrideException, "READER", "write-a", 3600), `"r1"`, "restore-grant-00001")
 
 	// Ordinary restart: the current database keeps the eligible override.
 	e.stop()
@@ -55,16 +57,16 @@ func TestHistoricalRestoreQuarantinesOverrides(t *testing.T) {
 	if out, code := e.runOperator(binaries.plain, nil, "restore", "--backup", backup); code != 0 {
 		t.Fatalf("restore exited %d: %s", code, out)
 	}
-	if mode := queryString(t, e.database, `SELECT mode FROM deployment`); mode != modeRecovery {
+	if mode := queryString(t, e.database, `SELECT mode FROM deployment`); mode != store.ModeRecovery {
 		t.Fatalf("restored mode %q", mode)
 	}
 	list := storedOverrides(t, e.database)
-	if len(list) != 1 || list[0].Status != overrideQuarantined || list[0].ResolvedBy != "operator" || !list[0].ExpiresAt.After(time.Now()) {
+	if len(list) != 1 || list[0].Status != store.OverrideQuarantined || list[0].ResolvedBy != "operator" || !list[0].ExpiresAt.After(time.Now()) {
 		t.Fatalf("restored overrides %+v", list)
 	}
 	for range 2 {
 		e.start(binaries.plain)
-		if health := e.health(); health != modeRecovery {
+		if health := e.health(); health != store.ModeRecovery {
 			t.Fatalf("health %q after the restore", health)
 		}
 		e.expectNothingServed()
@@ -78,11 +80,11 @@ func TestHistoricalRestoreQuarantinesOverrides(t *testing.T) {
 		t.Fatalf("overrides after recovery %+v", view)
 	}
 	e.expectNothingServed()
-	if code, outcome, body := e.revokeOverride(root, grant.Override, "restore-revoke-0002"); code != http.StatusConflict || outcome.Disposition != overrideQuarantined {
+	if code, outcome, body := e.revokeOverride(root, grant.Override, "restore-revoke-0002"); code != http.StatusConflict || outcome.Disposition != store.OverrideQuarantined {
 		t.Fatalf("revocation of the quarantined override: %d %s", code, body)
 	}
 	e.stop()
-	if list := storedOverrides(t, e.database); list[0].Status != overrideQuarantined {
+	if list := storedOverrides(t, e.database); list[0].Status != store.OverrideQuarantined {
 		t.Fatalf("override after recovery %+v", list[0])
 	}
 }
@@ -106,7 +108,7 @@ func TestHistoricalRestoreQuarantinesSeveralOverrides(t *testing.T) {
 			seed(t, e.database, e.protectedPolicy(), seedOptions{})
 			e.start(binaries.plain)
 			harness := e.mustLogin(harnessAdmin, harnessPassword)
-			grant := e.mustOverride(harness, permitOverride(overrideException, "READER", "write-a", 3600), `"r1"`, "several-grant-00001")
+			grant := e.mustOverride(harness, permitOverride(store.OverrideException, "READER", "write-a", 3600), `"r1"`, "several-grant-00001")
 			e.mustOverride(harness, operationContainment("read-b", 3600), `"r1"`, "several-contain-0001")
 			if withProvisional {
 				e.provisionalFrom(harness, e.upstreamCandidate(), 1, 3600, "several-provisional")
@@ -130,7 +132,7 @@ func TestHistoricalRestoreQuarantinesSeveralOverrides(t *testing.T) {
 			// already marked before it could have been promoted. Reading the
 			// stopped database first applies its write-ahead log, so the file
 			// hash compared below is the whole live state.
-			if mode := queryString(t, e.database, `SELECT mode FROM deployment`); mode != modeNormal {
+			if mode := queryString(t, e.database, `SELECT mode FROM deployment`); mode != store.ModeNormal {
 				t.Fatalf("live mode %q", mode)
 			}
 			live := fileSHA256(t, e.database)
@@ -143,11 +145,11 @@ func TestHistoricalRestoreQuarantinesSeveralOverrides(t *testing.T) {
 			if retired, _ := filepath.Glob(e.database + ".replaced-*"); len(retired) != 0 {
 				t.Fatalf("the interrupted restore retired the live database: %v", retired)
 			}
-			if mode := queryString(t, e.database+".restore", `SELECT mode FROM deployment`); mode != modeRecovery {
+			if mode := queryString(t, e.database+".restore", `SELECT mode FROM deployment`); mode != store.ModeRecovery {
 				t.Fatalf("staged copy mode %q", mode)
 			}
 			e.start(binaries.plain)
-			if health := e.health(); health != modeNormal {
+			if health := e.health(); health != store.ModeNormal {
 				t.Fatalf("health %q after the interrupted restore", health)
 			}
 			if a, b := e.probe("bob", http.MethodPost, "/a/item"), e.probe("bob", http.MethodGet, "/b/x"); a != http.StatusForbidden || b != http.StatusForbidden {
@@ -158,11 +160,11 @@ func TestHistoricalRestoreQuarantinesSeveralOverrides(t *testing.T) {
 			}
 			e.stop()
 
-			if mode := queryString(t, e.database, `SELECT mode FROM deployment`); mode != modeNormal {
+			if mode := queryString(t, e.database, `SELECT mode FROM deployment`); mode != store.ModeNormal {
 				t.Fatalf("live mode %q before the restore", mode)
 			}
 			live = fileSHA256(t, e.database)
-			if out, code := e.runOperator(binaries.plain, nil, "restore", "--backup", backup); code != 0 || !strings.Contains(out, modeRecovery) {
+			if out, code := e.runOperator(binaries.plain, nil, "restore", "--backup", backup); code != 0 || !strings.Contains(out, store.ModeRecovery) {
 				t.Fatalf("restore exited %d: %s", code, out)
 			}
 			if retired, _ := filepath.Glob(e.database + ".replaced-*"); len(retired) != 1 || fileSHA256(t, retired[0]) != live {
@@ -178,8 +180,8 @@ func TestHistoricalRestoreQuarantinesSeveralOverrides(t *testing.T) {
 			resolution := restored[0].Resolution
 			for i, o := range restored {
 				unchanged := o
-				unchanged.Status, unchanged.ResolvedAt, unchanged.ResolvedBy, unchanged.Resolution = overrideActive, nil, "", ""
-				if unchanged != backedUp[i] || o.Status != overrideQuarantined || o.ResolvedBy != "operator" || o.ResolvedAt == nil ||
+				unchanged.Status, unchanged.ResolvedAt, unchanged.ResolvedBy, unchanged.Resolution = store.OverrideActive, nil, "", ""
+				if unchanged != backedUp[i] || o.Status != store.OverrideQuarantined || o.ResolvedBy != "operator" || o.ResolvedAt == nil ||
 					o.Resolution != resolution || !o.ExpiresAt.After(time.Now()) {
 					t.Fatalf("override restored as %+v from %+v", o, backedUp[i])
 				}
@@ -209,7 +211,7 @@ func TestHistoricalRestoreQuarantinesSeveralOverrides(t *testing.T) {
 
 			for range 2 {
 				e.start(binaries.plain)
-				if health := e.health(); health != modeRecovery {
+				if health := e.health(); health != store.ModeRecovery {
 					t.Fatalf("health %q after the restore", health)
 				}
 				e.expectNothingServed()
@@ -232,7 +234,7 @@ func TestHistoricalRestoreQuarantinesSeveralOverrides(t *testing.T) {
 			e.expectNothingServed()
 			recovery := e.establishRecoveryBase(root)
 			code, body, _ := e.as(root, http.MethodGet, "/admin/status", "")
-			if s := fromJSON[status](t, body); code != http.StatusOK || s.State != modeNormal || s.Confirmed != recovery.Revision || s.Provisional != 0 || len(s.Overrides) != 0 {
+			if s := fromJSON[status](t, body); code != http.StatusOK || s.State != store.ModeNormal || s.Confirmed != recovery.Revision || s.Provisional != 0 || len(s.Overrides) != 0 {
 				t.Fatalf("status after the recovery base: %d %s", code, body)
 			}
 			if view := e.activeOverrides(root); len(view.Overrides) != 0 || len(view.GenerationOverrides) != 0 {
@@ -241,13 +243,13 @@ func TestHistoricalRestoreQuarantinesSeveralOverrides(t *testing.T) {
 			e.expectNothingServed()
 			for i, o := range restored {
 				code, outcome, body := e.revokeOverride(root, o.ID, fmt.Sprintf("several-after-revoke-%d", i))
-				if code != http.StatusConflict || outcome.Reason != "ALREADY_RESOLVED" || outcome.Disposition != overrideQuarantined {
+				if code != http.StatusConflict || outcome.Reason != "ALREADY_RESOLVED" || outcome.Disposition != store.OverrideQuarantined {
 					t.Fatalf("revocation of quarantined override %d: %d %s", o.ID, code, body)
 				}
 			}
 			if withProvisional {
 				code, outcome, body := e.resolve(root, "confirm", 2, policyETag(recovery.Revision), "several-confirm-0001")
-				if code != http.StatusConflict || outcome.Reason != "ALREADY_RESOLVED" || outcome.Disposition != dispositionQuarantined {
+				if code != http.StatusConflict || outcome.Reason != "ALREADY_RESOLVED" || outcome.Disposition != store.DispositionQuarantined {
 					t.Fatalf("confirmation of the quarantined provisional base: %d %s", code, body)
 				}
 			}

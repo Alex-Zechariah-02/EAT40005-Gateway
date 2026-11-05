@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // A schema version 2 database, including one with a provisional base, is
@@ -23,7 +25,7 @@ func TestMigrateFromVersionTwo(t *testing.T) {
 		t.Fatalf("reason %q", reason)
 	}
 	e.stop()
-	if out, code := e.runOperator(binaries.plain, nil, "migrate"); code != 0 || !strings.Contains(out, fmt.Sprintf("from schema version 2 to %d", databaseVersion)) {
+	if out, code := e.runOperator(binaries.plain, nil, "migrate"); code != 0 || !strings.Contains(out, fmt.Sprintf("from schema version 2 to %d", store.DatabaseVersion)) {
 		t.Fatalf("migrate exited %d: %s", code, out)
 	}
 	e.start(binaries.plain)
@@ -45,7 +47,7 @@ func TestMigrateFromVersionTwo(t *testing.T) {
 
 // version3Grant is the request that created the active override written by
 // writeVersion3Overrides.
-var version3Grant = permitOverride(overrideException, "READER", "write-a", 3600)
+var version3Grant = permitOverride(store.OverrideException, "READER", "write-a", 3600)
 
 // writeVersion3Overrides adds to a seeded database the override history a
 // schema version 3 gateway records: override 1 revoked, 2 expired, 3
@@ -83,14 +85,14 @@ func writeVersion3Overrides(t *testing.T, path string) {
 	override := `INSERT INTO override (id, type, control, operation, role, target, base, created_at, expires_at, actor, creation, status, resolved_at, resolved_by, resolution)
 		VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, 'harness', ?, ?, ?, ?, ?)`
 	overrides := [][]any{
-		{1, overrideException, controlPermit, "write-a", "READER", "permit:READER:write-a", ms(-2 * time.Hour), ms(-110 * time.Minute),
-			"admin:harness:version3-grant-00001", overrideRevoked, ms(-119 * time.Minute), harnessAdmin, "admin:harness:version3-revoke-0001"},
-		{2, overrideContainment, controlOperation, "read-b", nil, "operation:read-b", ms(-2 * time.Hour), ms(-119 * time.Minute),
-			"admin:harness:version3-close-00001", overrideExpired, ms(-119 * time.Minute), "controller", "auto-expire:2"},
-		{3, overrideContainment, controlPermit, "read-a", "READER", "permit:READER:read-a", ms(-2 * time.Hour), ms(time.Hour),
-			"admin:harness:version3-limit-00001", overrideQuarantined, ms(-118 * time.Minute), "operator", "operator:restore:" + strings.Repeat("e", 32)},
-		{4, overrideException, controlPermit, "write-a", "READER", "permit:READER:write-a", ms(-time.Minute), ms(59 * time.Minute),
-			"admin:harness:version3-grant-00002", overrideActive, nil, nil, nil},
+		{1, store.OverrideException, store.ControlPermit, "write-a", "READER", "permit:READER:write-a", ms(-2 * time.Hour), ms(-110 * time.Minute),
+			"admin:harness:version3-grant-00001", store.OverrideRevoked, ms(-119 * time.Minute), harnessAdmin, "admin:harness:version3-revoke-0001"},
+		{2, store.OverrideContainment, store.ControlOperation, "read-b", nil, "operation:read-b", ms(-2 * time.Hour), ms(-119 * time.Minute),
+			"admin:harness:version3-close-00001", store.OverrideExpired, ms(-119 * time.Minute), "controller", "auto-expire:2"},
+		{3, store.OverrideContainment, store.ControlPermit, "read-a", "READER", "permit:READER:read-a", ms(-2 * time.Hour), ms(time.Hour),
+			"admin:harness:version3-limit-00001", store.OverrideQuarantined, ms(-118 * time.Minute), "operator", "operator:restore:" + strings.Repeat("e", 32)},
+		{4, store.OverrideException, store.ControlPermit, "write-a", "READER", "permit:READER:write-a", ms(-time.Minute), ms(59 * time.Minute),
+			"admin:harness:version3-grant-00002", store.OverrideActive, nil, nil, nil},
 	}
 	for _, o := range overrides {
 		if _, err := db.Exec(override, o...); err != nil {
@@ -118,7 +120,7 @@ func TestMigrateFromVersionThree(t *testing.T) {
 	expectVersion3 := func(stage string) {
 		t.Helper()
 		db := inspect(t, e.database)
-		if err := checkDatabaseSchema(db, 3); err != nil || count(t, db, `PRAGMA user_version`) != 3 {
+		if err := store.CheckDatabaseSchema(db, 3); err != nil || count(t, db, `PRAGMA user_version`) != 3 {
 			t.Fatalf("%s: not the version 3 schema: %v", stage, err)
 		}
 		db.Close()
@@ -136,7 +138,7 @@ func TestMigrateFromVersionThree(t *testing.T) {
 	e.stop()
 
 	// The database is held as a running gateway holds its own.
-	held, err := connect(e.database, "WAL")
+	held, err := store.Connect(e.database, "WAL")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +152,7 @@ func TestMigrateFromVersionThree(t *testing.T) {
 	}
 	expectVersion3("after an interrupted migration")
 
-	if out, code := e.runOperator(binaries.plain, nil, "migrate"); code != 0 || !strings.Contains(out, fmt.Sprintf("from schema version 3 to %d", databaseVersion)) {
+	if out, code := e.runOperator(binaries.plain, nil, "migrate"); code != 0 || !strings.Contains(out, fmt.Sprintf("from schema version 3 to %d", store.DatabaseVersion)) {
 		t.Fatalf("migrate exited %d: %s", code, out)
 	}
 	if out, code := e.runOperator(binaries.plain, nil, "migrate"); code == 0 || !strings.Contains(out, "cannot be migrated") {
@@ -178,7 +180,7 @@ func TestMigrateFromVersionThree(t *testing.T) {
 		}
 	}
 	for query, want := range map[string]int{
-		`PRAGMA user_version`: databaseVersion,
+		`PRAGMA user_version`: store.DatabaseVersion,
 		`SELECT COUNT(*) FROM transition WHERE kind = 'operator.migrate' AND outcome = 'committed' AND audited_at IS NOT NULL`: 1,
 		`SELECT COUNT(*) FROM pragma_foreign_key_check`: 0,
 	} {
@@ -192,11 +194,11 @@ func TestMigrateFromVersionThree(t *testing.T) {
 
 	e.start(binaries.plain)
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
-	if s := e.status(); s.State != modeNormal || !slices.Equal(s.Overrides, []int64{4}) {
+	if s := e.status(); s.State != store.ModeNormal || !slices.Equal(s.Overrides, []int64{4}) {
 		t.Fatalf("status after migration %+v", s)
 	}
 	code, replayed, body := e.revokeOverride(harness, 1, "version3-revoke-0001")
-	if code != http.StatusOK || replayed.Transition != "admin:harness:version3-revoke-0001" || replayed.Override != 1 || replayed.Disposition != overrideRevoked {
+	if code != http.StatusOK || replayed.Transition != "admin:harness:version3-revoke-0001" || replayed.Override != 1 || replayed.Disposition != store.OverrideRevoked {
 		t.Fatalf("replayed revocation: %d %s", code, body)
 	}
 	code, replayed, body = e.createOverride(harness, version3Grant, `"r1"`, "version3-grant-00002")
@@ -206,14 +208,14 @@ func TestMigrateFromVersionThree(t *testing.T) {
 	if code := e.probe("bob", http.MethodPost, "/a/item"); code != http.StatusOK {
 		t.Fatalf("active override after migration: %d", code)
 	}
-	if code, ended, body := e.revokeOverride(harness, 4, "version4-revoke-0001"); code != http.StatusOK || ended.Disposition != overrideRevoked {
+	if code, ended, body := e.revokeOverride(harness, 4, "version4-revoke-0001"); code != http.StatusOK || ended.Disposition != store.OverrideRevoked {
 		t.Fatalf("revocation after migration: %d %s", code, body)
 	}
 	if code := e.probe("bob", http.MethodPost, "/a/item"); code != http.StatusForbidden {
 		t.Fatalf("revoked override after migration: %d", code)
 	}
 	e.stop()
-	if list := storedOverrides(t, e.database); len(list) != 4 || list[3].Status != overrideRevoked || list[3].Resolution != "admin:harness:version4-revoke-0001" {
+	if list := storedOverrides(t, e.database); len(list) != 4 || list[3].Status != store.OverrideRevoked || list[3].Resolution != "admin:harness:version4-revoke-0001" {
 		t.Fatalf("overrides after the revocation %+v", list)
 	}
 
@@ -238,9 +240,9 @@ func TestMigrateFromVersionThree(t *testing.T) {
 		damage  func(db *sql.DB)
 		reason  string
 	}{
-		{"newer schema version", databaseVersion, func(db *sql.DB) {
-			mustExec(t, db, fmt.Sprintf(`PRAGMA user_version = %d`, databaseVersion+1))
-		}, fmt.Sprintf("schema version %d cannot be migrated", databaseVersion+1)},
+		{"newer schema version", store.DatabaseVersion, func(db *sql.DB) {
+			mustExec(t, db, fmt.Sprintf(`PRAGMA user_version = %d`, store.DatabaseVersion+1))
+		}, fmt.Sprintf("schema version %d cannot be migrated", store.DatabaseVersion+1)},
 		{"override naming a missing revision", 3, func(db *sql.DB) {
 			withoutGuards(db, []string{"override_fixed"}, `PRAGMA foreign_keys = OFF`, `UPDATE override SET base = 99 WHERE id = 4`)
 		}, "FOREIGN KEY constraint failed"},
@@ -260,7 +262,7 @@ func TestMigrateFromVersionThree(t *testing.T) {
 		if r.version == 3 {
 			writeVersion3Overrides(t, other.database)
 		}
-		db, err := sql.Open("sqlite", databaseURI(other.database))
+		db, err := sql.Open("sqlite", store.DatabaseURI(other.database))
 		if err != nil {
 			t.Fatal(err)
 		}

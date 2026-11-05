@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // Every lifecycle operation needs an authenticated administrator
@@ -31,7 +33,7 @@ func TestLifecycleNeedsAuthorisedAdministrator(t *testing.T) {
 	if code != http.StatusCreated {
 		t.Fatalf("staging: %d %s", code, body)
 	}
-	c := staged.Candidate.candidateRecord
+	c := staged.Candidate.CandidateRecord
 	activation := string(mustJSON(map[string]any{"candidate": c.ID, "checksum": c.Checksum, "confirm_within_seconds": 60}))
 	resolution := `{"revision":2}`
 	apiToken := "Bearer " + issuer.tokenFor(t, "alice")
@@ -129,10 +131,10 @@ func TestOneProvisionalAndOneDisposition(t *testing.T) {
 	var outcomes [2]Outcome
 	concurrently(
 		func() {
-			codes[0], outcomes[0], _ = e.activate(harness, first.Candidate.candidateRecord, 60, `"r1"`, "race-activation-one")
+			codes[0], outcomes[0], _ = e.activate(harness, first.Candidate.CandidateRecord, 60, `"r1"`, "race-activation-one")
 		},
 		func() {
-			codes[1], outcomes[1], _ = e.activate(harness, second.Candidate.candidateRecord, 60, `"r1"`, "race-activation-two")
+			codes[1], outcomes[1], _ = e.activate(harness, second.Candidate.CandidateRecord, 60, `"r1"`, "race-activation-two")
 		},
 	)
 	slices.Sort(codes[:])
@@ -157,10 +159,10 @@ func TestOneProvisionalAndOneDisposition(t *testing.T) {
 	_, third, _ := e.stage(harness, e.cpaCandidate(), `"r1"`, "stage-race-third")
 	concurrently(
 		func() {
-			codes[0], outcomes[0], _ = e.activate(harness, third.Candidate.candidateRecord, 60, `"r1"`, "race-same-key-0001")
+			codes[0], outcomes[0], _ = e.activate(harness, third.Candidate.CandidateRecord, 60, `"r1"`, "race-same-key-0001")
 		},
 		func() {
-			codes[1], outcomes[1], _ = e.activate(harness, third.Candidate.candidateRecord, 60, `"r1"`, "race-same-key-0001")
+			codes[1], outcomes[1], _ = e.activate(harness, third.Candidate.CandidateRecord, 60, `"r1"`, "race-same-key-0001")
 		},
 	)
 	if codes != [2]int{http.StatusOK, http.StatusOK} || outcomes[0].Transition != outcomes[1].Transition ||
@@ -170,7 +172,7 @@ func TestOneProvisionalAndOneDisposition(t *testing.T) {
 	if s := e.status(); !s.Deadline.Equal(outcomes[0].Deadline) {
 		t.Fatalf("deadline %v, receipt %v", s.Deadline, outcomes[0].Deadline)
 	}
-	if code, _, body := e.activate(harness, first.Candidate.candidateRecord, 60, `"r1"`, "race-same-key-0001"); code != http.StatusUnprocessableEntity ||
+	if code, _, body := e.activate(harness, first.Candidate.CandidateRecord, 60, `"r1"`, "race-same-key-0001"); code != http.StatusUnprocessableEntity ||
 		!strings.Contains(body, "TRANSITION_ID_REUSED") {
 		t.Fatalf("same key, other candidate: %d %s", code, body)
 	}
@@ -209,7 +211,7 @@ func TestOneProvisionalAndOneDisposition(t *testing.T) {
 			outcomes[lost].Disposition != outcomes[won].Disposition {
 			t.Fatalf("round %d (%v): %v %+v", round, actions, codes, outcomes)
 		}
-		if outcomes[won].Disposition == dispositionConfirmed {
+		if outcomes[won].Disposition == store.DispositionConfirmed {
 			confirmed, candidateConfirmed = activated.Provisional, !candidateConfirmed
 		}
 		if s := e.status(); s.Confirmed != confirmed || s.Provisional != 0 || s.Generation != outcomes[won].Generation {
@@ -224,7 +226,7 @@ func TestOneProvisionalAndOneDisposition(t *testing.T) {
 		t.Fatalf("%d activations stored, want 8", len(list))
 	}
 	for _, a := range list {
-		if a.Disposition != dispositionConfirmed && a.Disposition != dispositionRolledBack {
+		if a.Disposition != store.DispositionConfirmed && a.Disposition != store.DispositionRolledBack {
 			t.Fatalf("activation %+v has no single explicit disposition", a)
 		}
 		n := queryInt(t, e.database, `SELECT COUNT(*) FROM transition WHERE kind IN ('cpa.confirm', 'cpa.rollback', 'cpa.timeout')

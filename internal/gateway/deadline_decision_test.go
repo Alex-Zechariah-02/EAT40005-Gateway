@@ -8,6 +8,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // Without its timer (fault build), an expired provisional base still
@@ -102,7 +104,7 @@ func TestExpiredProvisionalAdmitsNothing(t *testing.T) {
 		t.Fatalf("stored activations %+v", list)
 	}
 	for _, a := range list {
-		if a.Disposition != dispositionTimedOut || a.Resolution != fmt.Sprintf("auto-rollback:%d", a.Revision) || a.ResolvedAt.Before(a.Deadline) {
+		if a.Disposition != store.DispositionTimedOut || a.Resolution != fmt.Sprintf("auto-rollback:%d", a.Revision) || a.ResolvedAt.Before(a.Deadline) {
 			t.Fatalf("activation %+v", a)
 		}
 	}
@@ -133,7 +135,7 @@ func TestDecisionAtDeadline(t *testing.T) {
 		sent := time.Now()
 		code, outcome, body := e.resolve(harness, "confirm", activated.Provisional, policyETag(confirmed), fmt.Sprintf("boundary-confirm-%02d", i))
 		switch {
-		case code == http.StatusOK && outcome.Disposition == dispositionConfirmed:
+		case code == http.StatusOK && outcome.Disposition == store.DispositionConfirmed:
 			if !sent.Before(activated.Deadline) {
 				t.Fatalf("confirmation sent %v after the deadline was committed", sent.Sub(activated.Deadline))
 			}
@@ -149,11 +151,11 @@ func TestDecisionAtDeadline(t *testing.T) {
 	e.stop()
 	for _, a := range storedActivations(t, e.database) {
 		switch a.Disposition {
-		case dispositionConfirmed:
+		case store.DispositionConfirmed:
 			if !a.ResolvedAt.Before(a.Deadline) || answers[a.Revision] != http.StatusOK {
 				t.Fatalf("confirmed activation %+v decided at or after its deadline (answer %d)", a, answers[a.Revision])
 			}
-		case dispositionTimedOut:
+		case store.DispositionTimedOut:
 			if a.ResolvedAt.Before(a.Deadline) || answers[a.Revision] != http.StatusConflict {
 				t.Fatalf("timed-out activation %+v decided before its deadline (answer %d)", a, answers[a.Revision])
 			}
@@ -202,7 +204,7 @@ func TestRestartAroundDeadline(t *testing.T) {
 	e.expectEnforced(false, "")
 	e.stop()
 	list := storedActivations(t, e.database)
-	if len(list) != 2 || list[1].Disposition != dispositionTimedOut || list[1].ResolvedBy != "controller" || list[1].ResolvedAt.Before(list[1].Deadline) {
+	if len(list) != 2 || list[1].Disposition != store.DispositionTimedOut || list[1].ResolvedBy != "controller" || list[1].ResolvedAt.Before(list[1].Deadline) {
 		t.Fatalf("stored activations %+v", list)
 	}
 }

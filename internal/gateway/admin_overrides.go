@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // handleOverrides reports the overrides active now and the effective policy
@@ -14,25 +16,25 @@ import (
 // revisions and the serving generation, whose identity names the base and
 // every applied override.
 func (c *Controller) handleOverrides(w http.ResponseWriter, r *http.Request, who caller) {
-	a, err := c.store.load(r.Context())
+	a, err := c.store.Load(r.Context())
 	if err != nil {
 		c.logger.Error("reading authority", "error", err)
 		adminError(w, http.StatusServiceUnavailable, "unavailable", "")
 		return
 	}
 	view := map[string]any{
-		"revision":  a.revision,
-		"confirmed": a.confirmed,
-		"overrides": append([]override{}, a.overrides...),
+		"revision":  a.Revision,
+		"confirmed": a.Confirmed,
+		"overrides": append([]store.Override{}, a.Overrides...),
 	}
-	if a.provisional != 0 {
-		view["provisional"] = a.provisional
+	if a.Provisional != 0 {
+		view["provisional"] = a.Provisional
 	}
 	if g := c.current.Load(); g != nil {
 		view["generation"] = g.ID
 		view["generation_overrides"] = append([]int64{}, g.Overrides...)
 	}
-	w.Header().Set("ETag", policyETag(a.confirmed))
+	w.Header().Set("ETag", policyETag(a.Confirmed))
 	writeJSON(w, http.StatusOK, view)
 }
 
@@ -41,7 +43,7 @@ func (c *Controller) handleOverride(w http.ResponseWriter, r *http.Request, who 
 	if !ok {
 		return
 	}
-	o, found, err := c.store.override(r.Context(), id)
+	o, found, err := c.store.Override(r.Context(), id)
 	switch {
 	case err != nil:
 		adminError(w, http.StatusServiceUnavailable, "unavailable", "")
@@ -62,7 +64,7 @@ func (c *Controller) handleOverrideHistory(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	items, err := c.store.overrides(r.Context(), `WHERE id > ? ORDER BY id LIMIT ?`, cursor, limit)
+	items, err := c.store.Overrides(r.Context(), `WHERE id > ? ORDER BY id LIMIT ?`, cursor, limit)
 	if err != nil {
 		adminError(w, http.StatusServiceUnavailable, "unavailable", "")
 		return
@@ -111,8 +113,8 @@ func (c *Controller) handleCreateOverride(w http.ResponseWriter, r *http.Request
 	case http.StatusOK:
 		status = http.StatusCreated
 	case http.StatusPreconditionFailed:
-		if a, err := c.store.load(r.Context()); err == nil && a.mode == modeNormal {
-			w.Header().Set("ETag", policyETag(a.confirmed))
+		if a, err := c.store.Load(r.Context()); err == nil && a.Mode == store.ModeNormal {
+			w.Header().Set("ETag", policyETag(a.Confirmed))
 		}
 	}
 	writeJSON(w, status, outcome)

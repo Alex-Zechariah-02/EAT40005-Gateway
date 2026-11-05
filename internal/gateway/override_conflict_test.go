@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // A candidate conflicts with an active override when it changes the
@@ -22,10 +23,10 @@ func TestOverrideConflictWithCandidate(t *testing.T) {
 	e := &env{a: &receiver{name: "A", addr: "127.0.0.1:1"}, b: &receiver{name: "B", addr: "127.0.0.1:2"}}
 	before := e.protectedPolicy()
 	before.Operations[0].Rate = rate(4, 60)
-	overrides := []override{
-		{ID: 3, Type: overrideException, Control: controlPermit, Role: "READER", Operation: "write-a", Target: "permit:READER:write-a"},
-		{ID: 4, Type: overrideContainment, Control: controlOperation, Operation: "read-b", Target: "operation:read-b"},
-		{ID: 5, Type: overrideException, Control: controlRate, Operation: "read-a", Count: 9, Target: "rate:read-a"},
+	overrides := []store.Override{
+		{ID: 3, Type: store.OverrideException, Control: store.ControlPermit, Role: "READER", Operation: "write-a", Target: "permit:READER:write-a"},
+		{ID: 4, Type: store.OverrideContainment, Control: store.ControlOperation, Operation: "read-b", Target: "operation:read-b"},
+		{ID: 5, Type: store.OverrideException, Control: store.ControlRate, Operation: "read-a", Count: 9, Target: "rate:read-a"},
 	}
 	change := func(edit func(p *policy.Policy)) policy.Policy {
 		p := before
@@ -107,18 +108,18 @@ func TestOverrideConflicts(t *testing.T) {
 	e.start(binaries.plain)
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 
-	first := e.mustOverride(harness, rateOverride(overrideException, "read-a", 8, 600), `"r1"`, "conflict-first-001")
+	first := e.mustOverride(harness, rateOverride(store.OverrideException, "read-a", 8, 600), `"r1"`, "conflict-first-001")
 	refused := []struct {
 		name    string
 		request OverrideRequest
 		reason  string
 	}{
-		{"same target", rateOverride(overrideException, "read-a", 8, 600), "OVERRIDE_CONFLICT"},
-		{"same target, other action", rateOverride(overrideContainment, "read-a", 1, 60), "OVERRIDE_CONFLICT"},
-		{"same target, other count and expiry", rateOverride(overrideException, "read-a", 100, 30), "OVERRIDE_CONFLICT"},
-		{"case variant", rateOverride(overrideException, "Read-a", 8, 600), "UNKNOWN_REFERENCE"},
-		{"path instead of identifier", rateOverride(overrideException, "/a/*", 8, 600), "INVALID_VALUE"},
-		{"trailing space", rateOverride(overrideException, "read-a ", 8, 600), "INVALID_VALUE"},
+		{"same target", rateOverride(store.OverrideException, "read-a", 8, 600), "OVERRIDE_CONFLICT"},
+		{"same target, other action", rateOverride(store.OverrideContainment, "read-a", 1, 60), "OVERRIDE_CONFLICT"},
+		{"same target, other count and expiry", rateOverride(store.OverrideException, "read-a", 100, 30), "OVERRIDE_CONFLICT"},
+		{"case variant", rateOverride(store.OverrideException, "Read-a", 8, 600), "UNKNOWN_REFERENCE"},
+		{"path instead of identifier", rateOverride(store.OverrideException, "/a/*", 8, 600), "INVALID_VALUE"},
+		{"trailing space", rateOverride(store.OverrideException, "read-a ", 8, 600), "INVALID_VALUE"},
 	}
 	for i, r := range refused {
 		code, outcome, body := e.createOverride(harness, r.request, `"r1"`, fmt.Sprintf("conflict-refused-%02d", i))
@@ -129,10 +130,10 @@ func TestOverrideConflicts(t *testing.T) {
 
 	// Independent targets on the same operations coexist.
 	independent := []OverrideRequest{
-		permitOverride(overrideContainment, "READER", "read-a", 600),
-		permitOverride(overrideContainment, "WRITER", "read-a", 600),
+		permitOverride(store.OverrideContainment, "READER", "read-a", 600),
+		permitOverride(store.OverrideContainment, "WRITER", "read-a", 600),
 		operationContainment("read-a", 600),
-		permitOverride(overrideException, "READER", "write-a", 600),
+		permitOverride(store.OverrideException, "READER", "write-a", 600),
 	}
 	var last Outcome
 	for i, r := range independent {
@@ -177,7 +178,7 @@ func TestOverrideConflicts(t *testing.T) {
 	list := storedOverrides(t, e.database)
 	active := map[string]int{}
 	for _, o := range list {
-		if o.Status == overrideActive {
+		if o.Status == store.OverrideActive {
 			active[o.Target]++
 		}
 	}

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // A database of the previous schema version is not served until the
@@ -52,7 +54,7 @@ func TestMigrateFromVersionOne(t *testing.T) {
 	// lifecycle.
 	e.start(binaries.plain)
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
-	if s := e.status(); s.State != modeNormal || s.Revision != 1 || s.Confirmed != 1 {
+	if s := e.status(); s.State != store.ModeNormal || s.Revision != 1 || s.Confirmed != 1 {
 		t.Fatalf("status after migration: %+v", s)
 	}
 	if out, code := e.runOperator(binaries.plain, nil, "migrate"); code == 0 || !strings.Contains(out, "held by another gateway process") {

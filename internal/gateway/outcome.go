@@ -10,10 +10,11 @@ import (
 	"time"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // outcomeKind names the outcome event of a committed transition.
-func outcomeKind(t transitionRecord) string {
+func outcomeKind(t store.TransitionRecord) string {
 	switch t.Kind {
 	case "account.block", "account.unblock", "keys.reload":
 		return t.Kind
@@ -82,10 +83,10 @@ func auditUnavailable(id string) (Outcome, int) {
 // retry returns the same answer. Server-chosen identities (genesis, recovery,
 // enrolment) are not recorded: one refused attempt must not block the
 // transition they name.
-func (c *Controller) reject(ctx context.Context, t transitionRecord, reason, field string, now time.Time) (Outcome, int) {
+func (c *Controller) reject(ctx context.Context, t store.TransitionRecord, reason, field string, now time.Time) (Outcome, int) {
 	if !serverIdentity(t.ID) {
 		t.Reason = reason
-		if err := c.store.recordRejection(ctx, t, now); err != nil {
+		if err := c.store.RecordRejection(ctx, t, now); err != nil {
 			return c.storeFailure(t.ID, err)
 		}
 	}

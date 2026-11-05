@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // An installed database has exactly the current schema: the eleven STRICT
@@ -106,22 +108,22 @@ func TestConnectionAndConstraints(t *testing.T) {
 	e := newEnv(t)
 	seed(t, e.database, e.protectedPolicy(), seedOptions{})
 
-	plain, err := sql.Open("sqlite", databaseURI(e.database))
+	plain, err := sql.Open("sqlite", store.DatabaseURI(e.database))
 	if err != nil {
 		t.Fatal(err)
 	}
 	plain.SetMaxOpenConns(1)
-	if err := verify(plain); err == nil || !strings.Contains(err.Error(), "foreign key enforcement is not active") {
+	if err := store.Verify(plain); err == nil || !strings.Contains(err.Error(), "foreign key enforcement is not active") {
 		t.Fatalf("verify without foreign keys: %v", err)
 	}
 	plain.Close()
 
-	db, err := connect(e.database, "WAL")
+	db, err := store.Connect(e.database, "WAL")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if err := verify(db); err != nil {
+	if err := store.Verify(db); err != nil {
 		t.Fatalf("verify on a production connection: %v", err)
 	}
 	violations := []struct {
@@ -166,29 +168,29 @@ func TestConnectionAndConstraints(t *testing.T) {
 func TestOverrideResolutionConstraints(t *testing.T) {
 	e := newEnv(t)
 	seed(t, e.database, e.protectedPolicy(), seedOptions{})
-	db, err := connect(e.database, "WAL")
+	db, err := store.Connect(e.database, "WAL")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	s := &store{db: db}
+	s := store.Adopt(db)
 	ctx := t.Context()
 	now := time.Now()
-	create := func(id int64, o override) {
+	create := func(id int64, o store.Override) {
 		t.Helper()
 		o.ID, o.Base, o.CreatedAt, o.ExpiresAt, o.Actor = id, 1, now, now.Add(time.Hour), harnessAdmin
 		o.Target = overrideTarget(o.Control, o.Operation, o.Role)
-		creation := transitionRecord{ID: fmt.Sprintf("create-%d", id), Kind: "tpo.create", Actor: harnessAdmin, Target: "override", Digest: "d"}
-		if err := s.commitOverride(ctx, creation, o, now); err != nil {
+		creation := store.TransitionRecord{ID: fmt.Sprintf("create-%d", id), Kind: "tpo.create", Actor: harnessAdmin, Target: "override", Digest: "d"}
+		if err := s.CommitOverride(ctx, creation, o, now); err != nil {
 			t.Fatalf("creating override %d: %v", id, err)
 		}
 	}
-	grant := override{Type: overrideException, Control: controlPermit, Operation: "write-a", Role: "READER"}
+	grant := store.Override{Type: store.OverrideException, Control: store.ControlPermit, Operation: "write-a", Role: "READER"}
 	create(1, grant)
-	create(2, override{Type: overrideContainment, Control: controlOperation, Operation: "read-b"})
-	create(3, override{Type: overrideContainment, Control: controlOperation, Operation: "read-a"})
-	revoke := transitionRecord{ID: "revoke-1", Kind: "tpo.revoke", Actor: harnessAdmin, Target: "override 1", Digest: "d"}
-	if err := s.commitOverrideEnd(ctx, revoke, 1, overrideRevoked, now); err != nil {
+	create(2, store.Override{Type: store.OverrideContainment, Control: store.ControlOperation, Operation: "read-b"})
+	create(3, store.Override{Type: store.OverrideContainment, Control: store.ControlOperation, Operation: "read-a"})
+	revoke := store.TransitionRecord{ID: "revoke-1", Kind: "tpo.revoke", Actor: harnessAdmin, Target: "override 1", Digest: "d"}
+	if err := s.CommitOverrideEnd(ctx, revoke, 1, store.OverrideRevoked, now); err != nil {
 		t.Fatal(err)
 	}
 	end := `UPDATE override SET status = ?, resolved_at = 1, resolved_by = 'x', resolution = ? WHERE id = ?`
@@ -198,26 +200,26 @@ func TestOverrideResolutionConstraints(t *testing.T) {
 			t.Errorf("%s: %v, want %q", name, err, failure)
 		}
 	}
-	refused("expiry naming a revocation", "UNIQUE constraint failed: override.resolution", end, overrideExpired, "revoke-1", 2)
-	refused("quarantine naming a revocation", "a resolution is shared only by overrides quarantined together", end, overrideQuarantined, "revoke-1", 2)
+	refused("expiry naming a revocation", "UNIQUE constraint failed: override.resolution", end, store.OverrideExpired, "revoke-1", 2)
+	refused("quarantine naming a revocation", "a resolution is shared only by overrides quarantined together", end, store.OverrideQuarantined, "revoke-1", 2)
 
-	restore := transitionRecord{ID: "operator:restore:" + strings.Repeat("a", 32), Kind: "operator.restore", Actor: "operator", Target: "backup", Digest: "d"}
-	if err := s.declareRecovery(ctx, restore, strings.Repeat("a", 32), now); err != nil {
+	restore := store.TransitionRecord{ID: "operator:restore:" + strings.Repeat("a", 32), Kind: "operator.restore", Actor: "operator", Target: "backup", Digest: "d"}
+	if err := s.DeclareRecovery(ctx, restore, strings.Repeat("a", 32), now); err != nil {
 		t.Fatalf("quarantining two active overrides: %v", err)
 	}
 	create(4, grant)
-	refused("revocation naming a restore", "a resolution is shared only by overrides quarantined together", end, overrideRevoked, restore.ID, 4)
+	refused("revocation naming a restore", "a resolution is shared only by overrides quarantined together", end, store.OverrideRevoked, restore.ID, 4)
 	refused("revoked override changed", "exactly one final disposition", `UPDATE override SET status = 'expired' WHERE id = 1`)
 	refused("quarantined override moved to another transition", "exactly one final disposition", `UPDATE override SET resolution = 'create-3' WHERE id = 2`)
 	refused("override deleted", "history is kept", `DELETE FROM override WHERE id = 3`)
-	again := transitionRecord{ID: "revoke-2", Kind: "tpo.revoke", Actor: harnessAdmin, Target: "override 2", Digest: "d"}
-	if err := s.commitOverrideEnd(ctx, again, 2, overrideRevoked, now); !errors.Is(err, errNotUpdated) {
+	again := store.TransitionRecord{ID: "revoke-2", Kind: "tpo.revoke", Actor: harnessAdmin, Target: "override 2", Digest: "d"}
+	if err := s.CommitOverrideEnd(ctx, again, 2, store.OverrideRevoked, now); !errors.Is(err, store.ErrNotUpdated) {
 		t.Errorf("revoking a quarantined override: %v", err)
 	}
 
-	statuses := map[int64]string{1: overrideRevoked, 2: overrideQuarantined, 3: overrideQuarantined, 4: overrideActive}
+	statuses := map[int64]string{1: store.OverrideRevoked, 2: store.OverrideQuarantined, 3: store.OverrideQuarantined, 4: store.OverrideActive}
 	resolutions := map[int64]string{1: "revoke-1", 2: restore.ID, 3: restore.ID, 4: ""}
-	list, err := s.overrides(ctx, `ORDER BY id`)
+	list, err := s.Overrides(ctx, `ORDER BY id`)
 	if err != nil || len(list) != 4 {
 		t.Fatalf("overrides %+v %v", list, err)
 	}
@@ -230,7 +232,7 @@ func TestOverrideResolutionConstraints(t *testing.T) {
 		t.Error("the refused revocation left its transition")
 	}
 	for transition, want := range map[string]int64{"create-1": 1, "revoke-1": 1, "create-2": 2, "create-4": 4, restore.ID: 0} {
-		o, found, err := s.overrideOf(ctx, transition)
+		o, found, err := s.OverrideOf(ctx, transition)
 		if err != nil || found != (want != 0) || o.ID != want {
 			t.Errorf("overrideOf(%s) = %d %v %v, want %d", transition, o.ID, found, err, want)
 		}

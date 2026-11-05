@@ -16,6 +16,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // These tests own the controller in the test process, as the gateway
@@ -107,19 +109,19 @@ func assertReleased(t *testing.T, c *Controller, cfg Config) {
 	if dialable(cfg.AdminListen) {
 		t.Fatal("the admin listener is still open")
 	}
-	if c.store != nil && c.store.db.Ping() == nil {
+	if c.store != nil && c.store.Ping() == nil {
 		t.Fatal("the database is still open")
 	}
 	if c.audit.file != nil && !errors.Is(c.audit.file.Close(), os.ErrClosed) {
 		t.Fatal("the audit file is still open")
 	}
 	if _, err := os.Stat(cfg.Database); err == nil {
-		st, err := openStore(cfg.Database)
-		if err != nil && !errors.Is(err, errUnavailable) {
+		st, err := store.OpenStore(cfg.Database)
+		if err != nil && !errors.Is(err, store.ErrUnavailable) {
 			t.Fatalf("the database lock is still held: %v", err)
 		}
 		if st != nil {
-			st.close()
+			st.Close()
 		}
 	}
 }
@@ -152,10 +154,10 @@ func TestControllerOwnedByApplication(t *testing.T) {
 	if err := c.Start(); err != nil {
 		t.Fatal(err)
 	}
-	if health := e.health(); health != modeNormal {
+	if health := e.health(); health != store.ModeNormal {
 		t.Fatalf("health %q", health)
 	}
-	if s := e.status(); s.State != modeNormal || s.Generation != g.ID || s.Confirmed != 1 {
+	if s := e.status(); s.State != store.ModeNormal || s.Generation != g.ID || s.Confirmed != 1 {
 		t.Fatalf("status %+v", s)
 	}
 	if err := c.Start(); err == nil || !strings.Contains(err.Error(), "already started") {
@@ -248,11 +250,11 @@ func TestControllerRefusesInvalidConfiguration(t *testing.T) {
 			if dialable(e.admin) {
 				t.Fatal("a listener is open")
 			}
-			st, err := openStore(e.database)
+			st, err := store.OpenStore(e.database)
 			if err != nil {
 				t.Fatalf("the database is held: %v", err)
 			}
-			st.close()
+			st.Close()
 		})
 	}
 

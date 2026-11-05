@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // Every sensitive read needs a session, every operation
@@ -109,15 +110,15 @@ func TestProtectedReads(t *testing.T) {
 	seed(t, e.database, seeded, seedOptions{})
 	e.start(binaries.plain)
 	before := e.status()
-	if before.Revision != 1 || before.State != modeNormal {
+	if before.Revision != 1 || before.State != store.ModeNormal {
 		t.Fatalf("status %+v", before)
 	}
 	code, body, header := e.harnessCall(http.MethodGet, "/admin/policy", "")
 	if code != http.StatusOK || header.Get("ETag") != `"r1"` {
 		t.Fatalf("policy: %d %s", code, header.Get("ETag"))
 	}
-	revision := fromJSON[revisionInfo](t, body)
-	if string(revision.Document) != string(mustJSON(seeded)) || revision.Origin != "genesis" || revision.Checksum != documentChecksum(revision.Document) {
+	revision := fromJSON[store.RevisionInfo](t, body)
+	if string(revision.Document) != string(mustJSON(seeded)) || revision.Origin != "genesis" || revision.Checksum != store.DocumentChecksum(revision.Document) {
 		t.Fatalf("policy read differs from the confirmed revision: %+v", revision)
 	}
 
@@ -134,8 +135,8 @@ func TestProtectedReads(t *testing.T) {
 		}
 		code, body, _ := e.harnessCall(http.MethodGet, path, "")
 		page := fromJSON[struct {
-			Items []revisionInfo `json:"items"`
-			Next  string         `json:"next"`
+			Items []store.RevisionInfo `json:"items"`
+			Next  string               `json:"next"`
 		}](t, body)
 		if code != http.StatusOK || len(page.Items) > 3 || pages > 3 {
 			t.Fatalf("page %s: %d %s", path, code, body)
@@ -153,7 +154,7 @@ func TestProtectedReads(t *testing.T) {
 	}
 	code, body, _ = e.harnessCall(http.MethodGet, "/admin/revisions?limit=100", "")
 	revisions := fromJSON[struct {
-		Items []revisionInfo `json:"items"`
+		Items []store.RevisionInfo `json:"items"`
 	}](t, body)
 	if code != http.StatusOK || len(revisions.Items) != 6 || revisions.Items[5].Origin != "publish" || revisions.Items[5].Actor != harnessAdmin {
 		t.Fatalf("revisions: %d %s", code, body)

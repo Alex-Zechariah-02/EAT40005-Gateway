@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // Restoring an older backup over a newer database of the same
@@ -57,7 +59,7 @@ func TestHistoricalRestore(t *testing.T) {
 
 	e.start(binaries.plain)
 	aliceToken := issuer.tokenFor(t, "alice")
-	if health := e.health(); health != modeRecovery {
+	if health := e.health(); health != store.ModeRecovery {
 		t.Fatalf("health %q", health)
 	}
 	// alice is active with WRITER in the restored policy, yet not admitted.
@@ -80,7 +82,7 @@ func TestHistoricalRestore(t *testing.T) {
 		t.Fatalf("independent containment during recovery: %d %s", code, body)
 	}
 	e.establishRecoveryBase(root)
-	if health := e.health(); health != modeNormal {
+	if health := e.health(); health != store.ModeNormal {
 		t.Fatalf("health after the recovery base %q", health)
 	}
 	if code, _ := e.request(http.MethodPost, "/a/item", "application/json", `{"n":1}`, "Authorization", "Bearer "+aliceToken); code != http.StatusForbidden {
@@ -162,8 +164,8 @@ func TestRestoreRefusals(t *testing.T) {
 		{"truncated", write("truncated.db", goodData[:len(goodData)/2], goodManifest), "does not match its manifest"},
 		{"missing manifest", write("bare.db", goodData, nil), "reading the backup manifest"},
 		{"not a manifest", write("odd.db", goodData, []byte(`{"format":"other"}`)), "not a gateway backup manifest"},
-		{"manifest with another schema version", seal(write("future.db", goodData, nil), func(m *backupManifest) { m.SchemaVersion = databaseVersion + 1 }), fmt.Sprintf("schema version %d", databaseVersion+1)},
-		{"database with another schema version", alter("version.db", fmt.Sprintf(`PRAGMA user_version = %d`, databaseVersion+1)), fmt.Sprintf("schema version %d", databaseVersion+1)},
+		{"manifest with another schema version", seal(write("future.db", goodData, nil), func(m *backupManifest) { m.SchemaVersion = store.DatabaseVersion + 1 }), fmt.Sprintf("schema version %d", store.DatabaseVersion+1)},
+		{"database with another schema version", alter("version.db", fmt.Sprintf(`PRAGMA user_version = %d`, store.DatabaseVersion+1)), fmt.Sprintf("schema version %d", store.DatabaseVersion+1)},
 		{"altered schema", alter("altered.db", `CREATE INDEX extra ON revision (actor)`), "schema differs"},
 		{"another installation", otherInstallation, "belongs to installation"},
 		{"the live database itself", e.database, "cannot be the live database"},
@@ -186,11 +188,11 @@ func TestRestoreRefusals(t *testing.T) {
 	if code == 0 || !strings.Contains(out, "held by another gateway process") {
 		t.Errorf("restore beside a running gateway: %d %s", code, out)
 	}
-	if e.health() != modeNormal {
+	if e.health() != store.ModeNormal {
 		t.Fatal("the refused restore changed the running gateway")
 	}
 	e.stop()
-	if mode := queryString(t, e.database, `SELECT mode FROM deployment`); mode != modeNormal {
+	if mode := queryString(t, e.database, `SELECT mode FROM deployment`); mode != store.ModeNormal {
 		t.Fatalf("live mode %q after the refusals", mode)
 	}
 	leftovers, _ := filepath.Glob(e.database + ".re*")

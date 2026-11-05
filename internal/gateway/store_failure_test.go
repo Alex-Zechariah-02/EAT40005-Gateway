@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // Startup refuses a database it must not trust, admits
@@ -21,7 +23,7 @@ func TestStartupRefusesUntrustedDatabase(t *testing.T) {
 		{"extra index", []string{`CREATE INDEX extra ON revision (actor)`}, "schema differs"},
 		{"added column", []string{`ALTER TABLE revision ADD COLUMN note TEXT`}, "schema differs"},
 		{"dropped table", []string{`DROP TABLE enrolment`}, "schema differs"},
-		{"newer schema version", []string{fmt.Sprintf(`PRAGMA user_version = %d`, databaseVersion+1)}, fmt.Sprintf("schema version %d", databaseVersion+1)},
+		{"newer schema version", []string{fmt.Sprintf(`PRAGMA user_version = %d`, store.DatabaseVersion+1)}, fmt.Sprintf("schema version %d", store.DatabaseVersion+1)},
 		{"altered stored policy", []string{`UPDATE revision SET document = CAST('{"schema_version":4}' AS BLOB) WHERE id = 1`}, "checksum mismatch"},
 		{"dangling confirmed base", []string{`PRAGMA foreign_keys = OFF`, `UPDATE base SET confirmed = 99`}, "foreign key check failed"},
 		{"dangling revision parent", []string{`PRAGMA foreign_keys = OFF`, `UPDATE revision SET parent = 99 WHERE id = 1`}, "foreign key check failed"},
@@ -30,7 +32,7 @@ func TestStartupRefusesUntrustedDatabase(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newEnv(t)
 			seed(t, e.database, e.protectedPolicy(), seedOptions{})
-			db, err := sql.Open("sqlite", databaseURI(e.database))
+			db, err := sql.Open("sqlite", store.DatabaseURI(e.database))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -203,7 +205,7 @@ func TestMembershipChangeSurvivesCrash(t *testing.T) {
 				t.Fatalf("retry: %d %s", code, body)
 			}
 			_, body, _ := e.harnessCall("GET", "/admin/history/admin:"+harnessAdmin+":membership-crash-key", "")
-			if history := fromJSON[historyEntry](t, body); history.PublishedBy != tc.publishedBy || history.AuditedAt == nil {
+			if history := fromJSON[store.HistoryEntry](t, body); history.PublishedBy != tc.publishedBy || history.AuditedAt == nil {
 				t.Fatalf("history %s", body)
 			}
 			if code, _ := e.get("/a/x", bearer(t, "alice")...); code != 403 {

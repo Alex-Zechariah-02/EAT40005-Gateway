@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"os"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // Local operator commands. They run only on the gateway host, never over
@@ -68,7 +70,7 @@ func randomHex(n int) string {
 
 func runInstall(o *operatorContext, flags map[string]string) (int, error) {
 	name := flags["admin"]
-	if !isAdminName(name) {
+	if !store.IsAdminName(name) {
 		return 1, fmt.Errorf("administrator name %q is not valid", name)
 	}
 	o.openAudit()
@@ -76,92 +78,92 @@ func runInstall(o *operatorContext, flags map[string]string) (int, error) {
 	now := time.Now()
 	installation := randomHex(16)
 	secret := newToken()
-	first := enrolment{Name: name, Secret: tokenHash(secret), Permissions: permAll, ExpiresAt: now.Add(enrolmentLifetime)}
-	t := transitionRecord{ID: "operator:install:" + installation, Kind: "operator.install", Actor: "operator", Target: name, Digest: "operator"}
+	first := store.Enrolment{Name: name, Secret: tokenHash(secret), Permissions: store.PermAll, ExpiresAt: now.Add(enrolmentLifetime)}
+	t := store.TransitionRecord{ID: "operator:install:" + installation, Kind: "operator.install", Actor: "operator", Target: name, Digest: "operator"}
 	if err := o.record(Event{Kind: "transition.intent", Transition: t.ID}); err != nil {
 		return 1, err
 	}
-	st, err := createStore(o.config.Database, installation, first, t, now)
+	st, err := store.CreateStore(o.config.Database, installation, first, t, now)
 	if err != nil {
 		return 1, fmt.Errorf("installing: %w", err)
 	}
-	defer st.close()
+	defer st.Close()
 	if err := o.record(Event{Kind: "transition.committed", Transition: t.ID}); err != nil {
 		return 1, err
 	}
-	if err := st.markAudited(context.Background(), t.ID, time.Now()); err != nil {
+	if err := st.MarkAudited(context.Background(), t.ID, time.Now()); err != nil {
 		return 1, err
 	}
 
-	fmt.Printf("installed %s (installation %s, mode %s)\n", o.config.Database, installation, modeBootstrap)
+	fmt.Printf("installed %s (installation %s, mode %s)\n", o.config.Database, installation, store.ModeBootstrap)
 	fmt.Printf("enrolment secret for %s, valid until %s: %s\n", name, first.ExpiresAt.UTC().Format(time.RFC3339), secret)
 	return 0, nil
 }
 
 func runEnrol(o *operatorContext, flags map[string]string) (int, error) {
 	name := flags["admin"]
-	if !isAdminName(name) {
+	if !store.IsAdminName(name) {
 		return 1, fmt.Errorf("administrator name %q is not valid", name)
 	}
-	permissions, err := parsePermissions(flags["permissions"])
+	permissions, err := store.ParsePermissions(flags["permissions"])
 	if err != nil {
 		return 1, err
 	}
-	st, err := openStore(o.config.Database)
+	st, err := store.OpenStore(o.config.Database)
 	if err != nil {
 		return 1, err
 	}
-	defer st.close()
+	defer st.Close()
 	o.openAudit()
 
 	now := time.Now()
 	secret := newToken()
-	e := enrolment{Name: name, Secret: tokenHash(secret), Permissions: permissions, ExpiresAt: now.Add(enrolmentLifetime)}
-	t := transitionRecord{ID: fmt.Sprintf("operator:enrol:%s:%s", name, randomHex(8)), Kind: "operator.enrol", Actor: "operator", Target: name, Digest: "operator"}
+	e := store.Enrolment{Name: name, Secret: tokenHash(secret), Permissions: permissions, ExpiresAt: now.Add(enrolmentLifetime)}
+	t := store.TransitionRecord{ID: fmt.Sprintf("operator:enrol:%s:%s", name, randomHex(8)), Kind: "operator.enrol", Actor: "operator", Target: name, Digest: "operator"}
 	if err := o.record(Event{Kind: "transition.intent", Transition: t.ID}); err != nil {
 		return 1, err
 	}
-	if err := st.issueEnrolment(context.Background(), t, e, now); err != nil {
+	if err := st.IssueEnrolment(context.Background(), t, e, now); err != nil {
 		return 1, err
 	}
 	if err := o.record(Event{Kind: "transition.committed", Transition: t.ID}); err != nil {
 		return 1, err
 	}
-	if err := st.markAudited(context.Background(), t.ID, time.Now()); err != nil {
+	if err := st.MarkAudited(context.Background(), t.ID, time.Now()); err != nil {
 		return 1, err
 	}
-	fmt.Printf("enrolment secret for %s (%v), valid until %s: %s\n", name, permissions.names(), e.ExpiresAt.UTC().Format(time.RFC3339), secret)
+	fmt.Printf("enrolment secret for %s (%v), valid until %s: %s\n", name, permissions.Names(), e.ExpiresAt.UTC().Format(time.RFC3339), secret)
 	return 0, nil
 }
 
 func runMigrate(o *operatorContext) (int, error) {
-	st, from, err := openForMigration(o.config.Database)
+	st, from, err := store.OpenForMigration(o.config.Database)
 	if err != nil {
 		return 1, err
 	}
-	defer st.close()
+	defer st.Close()
 	o.openAudit()
 
-	t := transitionRecord{
-		ID:     fmt.Sprintf("operator:migrate:%d:%s", databaseVersion, randomHex(8)),
+	t := store.TransitionRecord{
+		ID:     fmt.Sprintf("operator:migrate:%d:%s", store.DatabaseVersion, randomHex(8)),
 		Kind:   "operator.migrate",
 		Actor:  "operator",
-		Target: fmt.Sprintf("schema version %d", databaseVersion),
+		Target: fmt.Sprintf("schema version %d", store.DatabaseVersion),
 		Digest: "operator",
 	}
 	if err := o.record(Event{Kind: "transition.intent", Transition: t.ID}); err != nil {
 		return 1, err
 	}
-	if err := st.migrate(context.Background(), from, t, time.Now()); err != nil {
+	if err := st.Migrate(context.Background(), from, t, time.Now()); err != nil {
 		return 1, fmt.Errorf("migrating: %w", err)
 	}
 	if err := o.record(Event{Kind: "transition.committed", Transition: t.ID}); err != nil {
 		return 1, err
 	}
-	if err := st.markAudited(context.Background(), t.ID, time.Now()); err != nil {
+	if err := st.MarkAudited(context.Background(), t.ID, time.Now()); err != nil {
 		return 1, err
 	}
-	fmt.Printf("migrated %s from schema version %d to %d\n", o.config.Database, from, databaseVersion)
+	fmt.Printf("migrated %s from schema version %d to %d\n", o.config.Database, from, store.DatabaseVersion)
 	return 0, nil
 }
 
@@ -170,7 +172,7 @@ func executeOperator(command string, o *operatorContext, flags map[string]string
 	if err := operatorPaths(flags["config"], o.config, command, flags); err != nil {
 		return 1, err
 	}
-	lock, err := lockDeployment(o.config.Database)
+	lock, err := store.LockDeployment(o.config.Database)
 	if err != nil {
 		return 1, err
 	}

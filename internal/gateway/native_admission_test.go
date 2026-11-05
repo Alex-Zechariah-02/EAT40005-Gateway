@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // The five controls run in the native process as in the shared enforcement
@@ -129,7 +130,7 @@ func TestNativeAdmissionStatus(t *testing.T) {
 		}
 		e.start(binaries.plain)
 		e.waitOutput(`"msg":"protected admission","admission":"bootstrap_locked"`)
-		if health := e.health(); health != modeBootstrap {
+		if health := e.health(); health != store.ModeBootstrap {
 			t.Fatalf("health %q", health)
 		}
 		unavailableAtCapture(e)
@@ -137,10 +138,10 @@ func TestNativeAdmissionStatus(t *testing.T) {
 
 	t.Run("recovery required", func(t *testing.T) {
 		e := newEnv(t)
-		seed(t, e.database, e.policy(e.a, false), seedOptions{mode: modeRecovery})
+		seed(t, e.database, e.policy(e.a, false), seedOptions{mode: store.ModeRecovery})
 		e.start(binaries.plain)
 		e.waitOutput(`"admission":"recovery_required"`)
-		if s := e.status(); s.Admission != modeRecovery || s.State != modeRecovery || e.health() != modeRecovery {
+		if s := e.status(); s.Admission != store.ModeRecovery || s.State != store.ModeRecovery || e.health() != store.ModeRecovery {
 			t.Fatalf("status %+v", s)
 		}
 		unavailableAtCapture(e)
@@ -153,7 +154,7 @@ func TestNativeAdmissionStatus(t *testing.T) {
 	}{
 		{"missing database", func(e *env) {}, "missing or empty"},
 		{"earlier schema version", func(e *env) {
-			seed(e.t, e.database, e.policy(e.a, false), seedOptions{version: databaseVersion - 1})
+			seed(e.t, e.database, e.policy(e.a, false), seedOptions{version: store.DatabaseVersion - 1})
 		}, "run its migrate command"},
 		{"stored revision altered", func(e *env) {
 			seed(e.t, e.database, e.policy(e.a, false), seedOptions{})
@@ -205,7 +206,7 @@ func TestNativeAdmissionStatus(t *testing.T) {
 			t.Fatalf("first request: %d", code)
 		}
 		waitFor(t, time.Now().Add(10*time.Second), "the audit failure", func() bool { return e.status().AuditFailed })
-		if s := e.status(); s.Admission != "audit_failed" || s.State != modeNormal || e.health() != modeNormal {
+		if s := e.status(); s.Admission != "audit_failed" || s.State != store.ModeNormal || e.health() != store.ModeNormal {
 			t.Fatalf("after the failure %+v, health %q", s, e.health())
 		}
 		if code, _ := e.get("/a/x"); code != http.StatusServiceUnavailable {

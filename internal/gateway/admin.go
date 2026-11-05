@@ -10,6 +10,8 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 const (
@@ -29,7 +31,7 @@ const (
 
 // caller is the authenticated administrator of one admin request.
 type caller struct {
-	admin   administrator
+	admin   store.Administrator
 	session session
 	token   string
 }
@@ -52,44 +54,44 @@ func (c *Controller) startAdmin() error {
 	c.route(mux, "GET /admin/session", 0, c.handleWhoAmI)
 	c.route(mux, "DELETE /admin/session", 0, c.handleLogout)
 	c.route(mux, "PUT /admin/password", 0, c.handlePassword)
-	c.route(mux, "GET /admin/status", permRead, c.handleStatus)
-	c.route(mux, "GET /admin/policy", permRead, c.handlePolicy)
-	c.route(mux, "GET /admin/revisions", permRead, c.handleRevisions)
-	c.route(mux, "GET /admin/revisions/{id}", permRead, c.handleRevision)
-	c.route(mux, "GET /admin/keys", permRead, c.handleKeys)
-	c.route(mux, "POST /admin/keys/reload", permManagePolicy, c.handleReloadKeys)
-	c.route(mux, "GET /admin/blocked-accounts", permRead, c.handleBlockedAccounts)
-	c.route(mux, "PUT /admin/blocked-accounts/{subject}", permManageSubjects, c.handleBlockAccount)
-	c.route(mux, "DELETE /admin/blocked-accounts/{subject}", permManageSubjects, c.handleUnblockAccount)
-	c.route(mux, "GET /admin/administrators", permRead, c.handleAdministrators)
-	c.route(mux, "GET /admin/events", permRead, c.handleEvents)
-	c.route(mux, "GET /admin/events/stream", permRead, c.handleEventStream)
-	c.route(mux, "GET /admin/traffic", permRead, c.handleTraffic)
-	c.route(mux, "GET /admin/limits", permRead, c.handleLimits)
-	c.route(mux, "POST /admin/access-check", permRead, c.handleAccessCheck)
-	c.route(mux, "GET /admin/advice", permRead, c.handleAdvice)
-	c.route(mux, "GET /admin/alerts", permRead, c.handleAlerts)
-	c.route(mux, "POST /admin/candidates/{id}/impact", permRead, c.handleImpact)
-	c.route(mux, "GET /admin/candidates", permRead, c.handleCandidates)
-	c.route(mux, "GET /admin/candidates/{id}", permRead, c.handleCandidate)
-	c.route(mux, "POST /admin/candidates", permManagePolicy, c.handlePostCandidate)
-	c.route(mux, "DELETE /admin/candidates/{id}", permManagePolicy, c.handleWithdrawCandidate)
-	c.route(mux, "POST /admin/genesis", permManagePolicy, c.handleEstablish("genesis"))
-	c.route(mux, "POST /admin/recovery-base", permManagePolicy, c.handleEstablish("recovery_base"))
-	c.route(mux, "GET /admin/provisional", permRead, c.handleProvisional)
-	c.route(mux, "POST /admin/provisional", permManagePolicy, c.handleActivate)
-	c.route(mux, "POST /admin/provisional/confirm", permManagePolicy, c.handleResolve("cpa.confirm", dispositionConfirmed))
-	c.route(mux, "POST /admin/provisional/rollback", permManagePolicy, c.handleResolve("cpa.rollback", dispositionRolledBack))
-	c.route(mux, "GET /admin/activations", permReadHistory, c.handleActivations)
-	c.route(mux, "GET /admin/overrides", permRead, c.handleOverrides)
-	c.route(mux, "GET /admin/overrides/history", permReadHistory, c.handleOverrideHistory)
-	c.route(mux, "GET /admin/overrides/{id}", permRead, c.handleOverride)
-	c.route(mux, "POST /admin/overrides/validate", permManagePolicy, c.handleValidateOverride)
-	c.route(mux, "POST /admin/overrides", permManagePolicy, c.handleCreateOverride)
-	c.route(mux, "DELETE /admin/overrides/{id}", permManagePolicy, c.handleRevokeOverride)
-	c.route(mux, "GET /admin/history", permReadHistory, c.handleHistory)
-	c.route(mux, "GET /admin/history/{id}", permReadHistory, c.handleHistoryEntry)
-	c.route(mux, "GET /admin/security-log", permReadHistory, c.handleSecurityLog)
+	c.route(mux, "GET /admin/status", store.PermRead, c.handleStatus)
+	c.route(mux, "GET /admin/policy", store.PermRead, c.handlePolicy)
+	c.route(mux, "GET /admin/revisions", store.PermRead, c.handleRevisions)
+	c.route(mux, "GET /admin/revisions/{id}", store.PermRead, c.handleRevision)
+	c.route(mux, "GET /admin/keys", store.PermRead, c.handleKeys)
+	c.route(mux, "POST /admin/keys/reload", store.PermManagePolicy, c.handleReloadKeys)
+	c.route(mux, "GET /admin/blocked-accounts", store.PermRead, c.handleBlockedAccounts)
+	c.route(mux, "PUT /admin/blocked-accounts/{subject}", store.PermManageSubjects, c.handleBlockAccount)
+	c.route(mux, "DELETE /admin/blocked-accounts/{subject}", store.PermManageSubjects, c.handleUnblockAccount)
+	c.route(mux, "GET /admin/administrators", store.PermRead, c.handleAdministrators)
+	c.route(mux, "GET /admin/events", store.PermRead, c.handleEvents)
+	c.route(mux, "GET /admin/events/stream", store.PermRead, c.handleEventStream)
+	c.route(mux, "GET /admin/traffic", store.PermRead, c.handleTraffic)
+	c.route(mux, "GET /admin/limits", store.PermRead, c.handleLimits)
+	c.route(mux, "POST /admin/access-check", store.PermRead, c.handleAccessCheck)
+	c.route(mux, "GET /admin/advice", store.PermRead, c.handleAdvice)
+	c.route(mux, "GET /admin/alerts", store.PermRead, c.handleAlerts)
+	c.route(mux, "POST /admin/candidates/{id}/impact", store.PermRead, c.handleImpact)
+	c.route(mux, "GET /admin/candidates", store.PermRead, c.handleCandidates)
+	c.route(mux, "GET /admin/candidates/{id}", store.PermRead, c.handleCandidate)
+	c.route(mux, "POST /admin/candidates", store.PermManagePolicy, c.handlePostCandidate)
+	c.route(mux, "DELETE /admin/candidates/{id}", store.PermManagePolicy, c.handleWithdrawCandidate)
+	c.route(mux, "POST /admin/genesis", store.PermManagePolicy, c.handleEstablish("genesis"))
+	c.route(mux, "POST /admin/recovery-base", store.PermManagePolicy, c.handleEstablish("recovery_base"))
+	c.route(mux, "GET /admin/provisional", store.PermRead, c.handleProvisional)
+	c.route(mux, "POST /admin/provisional", store.PermManagePolicy, c.handleActivate)
+	c.route(mux, "POST /admin/provisional/confirm", store.PermManagePolicy, c.handleResolve("cpa.confirm", store.DispositionConfirmed))
+	c.route(mux, "POST /admin/provisional/rollback", store.PermManagePolicy, c.handleResolve("cpa.rollback", store.DispositionRolledBack))
+	c.route(mux, "GET /admin/activations", store.PermReadHistory, c.handleActivations)
+	c.route(mux, "GET /admin/overrides", store.PermRead, c.handleOverrides)
+	c.route(mux, "GET /admin/overrides/history", store.PermReadHistory, c.handleOverrideHistory)
+	c.route(mux, "GET /admin/overrides/{id}", store.PermRead, c.handleOverride)
+	c.route(mux, "POST /admin/overrides/validate", store.PermManagePolicy, c.handleValidateOverride)
+	c.route(mux, "POST /admin/overrides", store.PermManagePolicy, c.handleCreateOverride)
+	c.route(mux, "DELETE /admin/overrides/{id}", store.PermManagePolicy, c.handleRevokeOverride)
+	c.route(mux, "GET /admin/history", store.PermReadHistory, c.handleHistory)
+	c.route(mux, "GET /admin/history/{id}", store.PermReadHistory, c.handleHistoryEntry)
+	c.route(mux, "GET /admin/security-log", store.PermReadHistory, c.handleSecurityLog)
 	if c.ui != nil {
 		// Only the page and its flat assets directory exist: no fallback page
 		// can answer an unknown path, so an API path never receives HTML.
@@ -169,7 +171,7 @@ func unsafeMethod(method string) bool {
 // holding the required permission (0: any administrator, for their own
 // session). A state-changing request also needs the admin origin and the
 // session's CSRF token.
-func (c *Controller) route(mux *http.ServeMux, pattern string, required permission, handler adminHandler) {
+func (c *Controller) route(mux *http.ServeMux, pattern string, required store.Permission, handler adminHandler) {
 	mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 		who, ok := c.authenticate(w, r)
 		if !ok {
@@ -208,7 +210,7 @@ func (c *Controller) authenticate(w http.ResponseWriter, r *http.Request) (calle
 		who.session, reason = c.sessions.lookup(cookie.Value, time.Now())
 	}
 	if reason == "" {
-		admin, found, err := c.store.administrator(r.Context(), who.session.admin)
+		admin, found, err := c.store.Administrator(r.Context(), who.session.admin)
 		if err != nil {
 			c.logger.Error("reading administrator", "error", err)
 			adminError(w, http.StatusServiceUnavailable, "unavailable", "")
@@ -252,7 +254,7 @@ func (c *Controller) handleHealth(w http.ResponseWriter, r *http.Request) {
 	c.mu.Lock()
 	state := c.state
 	c.mu.Unlock()
-	if state != modeNormal && state != modeBootstrap && state != modeRecovery {
+	if state != store.ModeNormal && state != store.ModeBootstrap && state != store.ModeRecovery {
 		state = "unavailable"
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"state": state})

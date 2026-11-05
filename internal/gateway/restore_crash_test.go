@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // A backup taken while a provisional base was active, whether its
@@ -42,7 +44,7 @@ func TestHistoricalRestoreQuarantinesProvisional(t *testing.T) {
 				t.Fatalf("restore exited %d: %s", code, out)
 			}
 			list := storedActivations(t, e.database)
-			if len(list) != 1 || list[0].Disposition != dispositionQuarantined || list[0].ResolvedBy != "operator" ||
+			if len(list) != 1 || list[0].Disposition != store.DispositionQuarantined || list[0].ResolvedBy != "operator" ||
 				!strings.HasPrefix(list[0].Resolution, "operator:restore:") {
 				t.Fatalf("restored activations %+v", list)
 			}
@@ -51,7 +53,7 @@ func TestHistoricalRestoreQuarantinesProvisional(t *testing.T) {
 			}
 
 			e.start(binaries.plain)
-			if health := e.health(); health != modeRecovery {
+			if health := e.health(); health != store.ModeRecovery {
 				t.Fatalf("health %q", health)
 			}
 			e.expectNothingServed()
@@ -68,14 +70,14 @@ func TestHistoricalRestoreQuarantinesProvisional(t *testing.T) {
 			// The quarantined revision cannot be confirmed or rolled back.
 			for _, action := range []string{"confirm", "rollback"} {
 				code, outcome, body := e.resolve(root, action, 2, policyETag(recovery.Revision), "restored-"+action+"-xxxxx")
-				if code != http.StatusConflict || outcome.Reason != "ALREADY_RESOLVED" || outcome.Disposition != dispositionQuarantined {
+				if code != http.StatusConflict || outcome.Reason != "ALREADY_RESOLVED" || outcome.Disposition != store.DispositionQuarantined {
 					t.Fatalf("%s of the quarantined revision: %d %s", action, code, body)
 				}
 			}
 			code, body, _ = e.as(root, http.MethodGet, "/admin/activations", "")
 			if items := fromJSON[struct {
-				Items []activationRecord `json:"items"`
-			}](t, body).Items; code != http.StatusOK || len(items) != 1 || items[0].Disposition != dispositionQuarantined {
+				Items []store.ActivationRecord `json:"items"`
+			}](t, body).Items; code != http.StatusOK || len(items) != 1 || items[0].Disposition != store.DispositionQuarantined {
 				t.Fatalf("activation history: %d %s", code, body)
 			}
 		})
@@ -105,9 +107,9 @@ func TestRestoreSurvivesCrash(t *testing.T) {
 		point  string
 		health string // after the crash, before the restore is repeated
 	}{
-		{"restore-before-promote", modeNormal},
+		{"restore-before-promote", store.ModeNormal},
 		{"restore-after-retire", "unavailable"},
-		{"restore-after-promote", modeRecovery},
+		{"restore-after-promote", store.ModeRecovery},
 	} {
 		t.Run(tc.point, func(t *testing.T) {
 			e := newEnv(t)
@@ -119,7 +121,7 @@ func TestRestoreSurvivesCrash(t *testing.T) {
 				t.Fatalf("restore exit code %d", code)
 			}
 			if staged, err := os.Stat(e.database + ".restore"); err == nil && staged.Size() > 0 {
-				if mode := queryString(t, e.database+".restore", `SELECT mode FROM deployment`); mode != modeRecovery {
+				if mode := queryString(t, e.database+".restore", `SELECT mode FROM deployment`); mode != store.ModeRecovery {
 					t.Fatalf("the staged copy is not marked: %q", mode)
 				}
 			}
@@ -129,7 +131,7 @@ func TestRestoreSurvivesCrash(t *testing.T) {
 				t.Fatalf("health after the crash %q, want %q", health, tc.health)
 			}
 			want := http.StatusServiceUnavailable
-			if tc.health == modeNormal {
+			if tc.health == store.ModeNormal {
 				want = http.StatusOK
 			}
 			if code, _ := e.get("/a/x", "Authorization", "Bearer "+issuer.tokenFor(t, "alice")); code != want {
@@ -158,7 +160,7 @@ func TestRestoreSurvivesCrash(t *testing.T) {
 				t.Fatalf("repeated restore exited %d: %s", code, out)
 			}
 			e.start(binaries.plain)
-			if health := e.health(); health != modeRecovery {
+			if health := e.health(); health != store.ModeRecovery {
 				t.Fatalf("health after the repeated restore %q", health)
 			}
 			e.stop()

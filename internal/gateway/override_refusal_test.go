@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // A refused or malformed override request changes nothing: no row, no
@@ -43,18 +44,18 @@ func TestOverrideRefusals(t *testing.T) {
 		{"route allow", operationContainment("denied", 60), `"r1"`, 400, "INVALID_VALUE", "operation"},
 		{"route exception", `{"type":"exception","control":"operation","operation":"denied","expires_in_seconds":60}`, `"r1"`, 400, "UNSUPPORTED_ACTION", "type"},
 		{"unknown operation", operationContainment("delete-everything", 60), `"r1"`, 400, "UNKNOWN_REFERENCE", "operation"},
-		{"unknown role", permitOverride(overrideException, "ADMIN", "write-a", 60), `"r1"`, 400, "UNKNOWN_REFERENCE", "role"},
-		{"token as role", permitOverride(overrideException, apiToken, "write-a", 60), `"r1"`, 400, "INVALID_VALUE", "role"},
-		{"record injection in a role", permitOverride(overrideException, "READER\r\n{\"kind\":\"tpo.created\",\"forged\":true}", "write-a", 60), `"r1"`, 400, "INVALID_VALUE", "role"},
+		{"unknown role", permitOverride(store.OverrideException, "ADMIN", "write-a", 60), `"r1"`, 400, "UNKNOWN_REFERENCE", "role"},
+		{"token as role", permitOverride(store.OverrideException, apiToken, "write-a", 60), `"r1"`, 400, "INVALID_VALUE", "role"},
+		{"record injection in a role", permitOverride(store.OverrideException, "READER\r\n{\"kind\":\"tpo.created\",\"forged\":true}", "write-a", 60), `"r1"`, 400, "INVALID_VALUE", "role"},
 		{"record injection in an operation", operationContainment("read-b\n{\"forged\":true}", 60), `"r1"`, 400, "INVALID_VALUE", "operation"},
-		{"already granted", permitOverride(overrideException, "WRITER", "write-a", 60), `"r1"`, 400, "INVALID_VALUE", "role"},
-		{"rate exception lowering", rateOverride(overrideException, "read-a", 2, 60), `"r1"`, 400, "INVALID_VALUE", "count"},
-		{"rate on an unrated operation", rateOverride(overrideContainment, "write-a", 1, 60), `"r1"`, 400, "INVALID_VALUE", "operation"},
-		{"unlimited rate", rateOverride(overrideException, "read-a", compile.MaxRateCount+1, 60), `"r1"`, 400, "INVALID_VALUE", "count"},
+		{"already granted", permitOverride(store.OverrideException, "WRITER", "write-a", 60), `"r1"`, 400, "INVALID_VALUE", "role"},
+		{"rate exception lowering", rateOverride(store.OverrideException, "read-a", 2, 60), `"r1"`, 400, "INVALID_VALUE", "count"},
+		{"rate on an unrated operation", rateOverride(store.OverrideContainment, "write-a", 1, 60), `"r1"`, 400, "INVALID_VALUE", "operation"},
+		{"unlimited rate", rateOverride(store.OverrideException, "read-a", compile.MaxRateCount+1, 60), `"r1"`, 400, "INVALID_VALUE", "count"},
 		{"no expiry", `{"type":"exception","control":"permit","operation":"write-a","role":"READER"}`, `"r1"`, 400, "INVALID_EXPIRY", "expires_in_seconds"},
-		{"expired already", permitOverride(overrideException, "READER", "write-a", -1), `"r1"`, 400, "INVALID_EXPIRY", "expires_in_seconds"},
-		{"expiry above a day", permitOverride(overrideException, "READER", "write-a", 86401), `"r1"`, 400, "INVALID_EXPIRY", "expires_in_seconds"},
-		{"stale precondition", permitOverride(overrideException, "READER", "write-a", 60), `"r0"`, 412, "PRECONDITION_FAILED", ""},
+		{"expired already", permitOverride(store.OverrideException, "READER", "write-a", -1), `"r1"`, 400, "INVALID_EXPIRY", "expires_in_seconds"},
+		{"expiry above a day", permitOverride(store.OverrideException, "READER", "write-a", 86401), `"r1"`, 400, "INVALID_EXPIRY", "expires_in_seconds"},
+		{"stale precondition", permitOverride(store.OverrideException, "READER", "write-a", 60), `"r0"`, 412, "PRECONDITION_FAILED", ""},
 	}
 	for i, r := range refusals {
 		code, outcome, body := e.createOverride(harness, r.request, r.ifMatch, fmt.Sprintf("refusal-%02d-xxxxxxxx", i))
@@ -84,7 +85,7 @@ func TestOverrideRefusals(t *testing.T) {
 			t.Errorf("malformed %s: %d %s", body, code, data)
 		}
 	}
-	good := string(mustJSON(permitOverride(overrideException, "READER", "write-a", 60)))
+	good := string(mustJSON(permitOverride(store.OverrideException, "READER", "write-a", 60)))
 	if code, _, _ := e.as(harness, http.MethodPost, "/admin/overrides", good, "Idempotency-Key", "no-if-match-0001"); code != http.StatusPreconditionRequired {
 		t.Errorf("without If-Match: %d", code)
 	}
@@ -141,7 +142,7 @@ func TestOverrideRefusals(t *testing.T) {
 	if valid := fromJSON[Outcome](t, body); code != http.StatusOK || valid.Outcome != "valid" || valid.Target != "permit:READER:write-a" || valid.Expires.IsZero() {
 		t.Fatalf("validation: %d %s", code, body)
 	}
-	bad := string(mustJSON(permitOverride(overrideException, "ADMIN", "write-a", 60)))
+	bad := string(mustJSON(permitOverride(store.OverrideException, "ADMIN", "write-a", 60)))
 	if code, body, _ := e.as(harness, http.MethodPost, "/admin/overrides/validate", bad, "If-Match", `"r1"`); code != http.StatusBadRequest ||
 		!strings.Contains(body, "UNKNOWN_REFERENCE") {
 		t.Fatalf("validation of an unknown role: %d %s", code, body)
@@ -150,11 +151,11 @@ func TestOverrideRefusals(t *testing.T) {
 	// The longest lifetime is accepted. The same key with another body is
 	// refused; the first is kept.
 	before24h := time.Now()
-	first := e.mustOverride(harness, permitOverride(overrideException, "READER", "write-a", maxOverrideSeconds), `"r1"`, "reused-key-000001")
+	first := e.mustOverride(harness, permitOverride(store.OverrideException, "READER", "write-a", store.MaxOverrideSeconds), `"r1"`, "reused-key-000001")
 	if first.Expires.Before(before24h.Add(24*time.Hour).Add(-time.Millisecond)) || first.Expires.After(time.Now().Add(24*time.Hour)) {
 		t.Fatalf("expiry %v is not a day after the creation", first.Expires)
 	}
-	if code, outcome, body := e.createOverride(harness, permitOverride(overrideException, "READER", "write-a", 120), `"r1"`, "reused-key-000001"); code != http.StatusUnprocessableEntity ||
+	if code, outcome, body := e.createOverride(harness, permitOverride(store.OverrideException, "READER", "write-a", 120), `"r1"`, "reused-key-000001"); code != http.StatusUnprocessableEntity ||
 		outcome.Reason != "TRANSITION_ID_REUSED" {
 		t.Fatalf("reused key: %d %s", code, body)
 	}

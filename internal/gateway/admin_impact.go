@@ -17,7 +17,7 @@ import (
 // as an activation would, beside the generation in force. It settles no
 // deadline and publishes nothing. On failure it has answered the request.
 func (c *Controller) candidateGeneration(w http.ResponseWriter, r *http.Request, id int64) (current, candidate *compile.Generation, ok bool) {
-	stored, found, err := c.store.candidate(r.Context(), id)
+	stored, found, err := c.store.Candidate(r.Context(), id)
 	if err != nil {
 		adminError(w, http.StatusServiceUnavailable, "gateway_unavailable", "")
 		return nil, nil, false
@@ -41,13 +41,13 @@ func (c *Controller) candidateGeneration(w http.ResponseWriter, r *http.Request,
 		adminError(w, 503, "gateway_unavailable", "")
 		return nil, nil, false
 	}
-	authority, err := c.store.load(r.Context())
+	authority, err := c.store.Load(r.Context())
 	c.mu.Unlock()
 	if err != nil {
 		adminError(w, 503, "gateway_unavailable", "")
 		return nil, nil, false
 	}
-	candidate, err = effectiveGeneration(policy, stored.Parent, time.Time{}, authority.overrides)
+	candidate, err = effectiveGeneration(policy, stored.Parent, time.Time{}, authority.Overrides)
 	if err != nil {
 		adminError(w, http.StatusUnprocessableEntity, "candidate_invalid", "")
 		return nil, nil, false

@@ -1,6 +1,6 @@
 // Store modes, errors and stored record types.
 
-package gateway
+package store
 
 import (
 	"database/sql"
@@ -12,51 +12,51 @@ import (
 // Deployment modes. Only normal may serve traffic; the other two allow only
 // the administrator flows that establish a new confirmed base.
 const (
-	modeBootstrap = "bootstrap_locked"
-	modeNormal    = "normal"
-	modeRecovery  = "recovery_required"
+	ModeBootstrap = "bootstrap_locked"
+	ModeNormal    = "normal"
+	ModeRecovery  = "recovery_required"
 )
 
-// errUnavailable marks state that must never be served: missing, empty,
+// ErrUnavailable marks state that must never be served: missing, empty,
 // corrupt or unrecognised authority.
-var errUnavailable = errors.New("authoritative state unavailable")
+var ErrUnavailable = errors.New("authoritative state unavailable")
 
 // Final dispositions of a provisional base. Confirmed keeps its policy as the
 // new confirmed base; the others restore the rollback target. Quarantined
 // marks a provisional base found in a restored historical database.
 const (
-	dispositionConfirmed   = "confirmed"
-	dispositionRolledBack  = "rolled_back"
-	dispositionTimedOut    = "timed_out"
-	dispositionQuarantined = "quarantined"
+	DispositionConfirmed   = "confirmed"
+	DispositionRolledBack  = "rolled_back"
+	DispositionTimedOut    = "timed_out"
+	DispositionQuarantined = "quarantined"
 )
 
-// store is the single writer of control-plane state. The exclusive locking
+// DB is the single writer of control-plane state. The exclusive locking
 // mode keeps a second gateway process, or an operator command, from opening
 // the same database while it is in use.
-type store struct {
+type DB struct {
 	db *sql.DB
 }
 
-// authority is the committed state from which a generation is compiled.
-type authority struct {
-	mode         string
-	installation string
-	episode      string // recovery episode, when one was declared
-	highWater    time.Time
-	confirmed    int64 // 0 until a base has been established
-	revision     int64 // active base: provisional if present, else confirmed
-	provisional  int64
-	candidate    int64 // the candidate the provisional base was activated from
-	deadline     time.Time
-	document     []byte     // active base document; read only in normal mode
-	overrides    []override // active overrides in identifier order
+// Authority is the committed state from which a generation is compiled.
+type Authority struct {
+	Mode         string
+	Installation string
+	Episode      string // recovery episode, when one was declared
+	HighWater    time.Time
+	Confirmed    int64 // 0 until a base has been established
+	Revision     int64 // active base: provisional if present, else confirmed
+	Provisional  int64
+	Candidate    int64 // the candidate the provisional base was activated from
+	Deadline     time.Time
+	Document     []byte     // active base document; read only in normal mode
+	Overrides    []Override // active overrides in identifier order
 }
 
-// activationRecord is the durable lifecycle record of one provisional base:
+// ActivationRecord is the durable lifecycle record of one provisional base:
 // the candidate it came from, the confirmed revision it replaced and returns
 // to on rollback, its deadline and its single final disposition.
-type activationRecord struct {
+type ActivationRecord struct {
 	Revision       int64      `json:"revision"`
 	Candidate      int64      `json:"candidate"`
 	RollbackTarget int64      `json:"rollback_target"`
@@ -69,10 +69,10 @@ type activationRecord struct {
 	Resolution     string     `json:"resolution,omitempty"`
 }
 
-// transitionRecord is the durable history entry and idempotency record of one
+// TransitionRecord is the durable history entry and idempotency record of one
 // mutation. Its ID is the mutation identity: a repeated ID returns this record
 // instead of applying the mutation again.
-type transitionRecord struct {
+type TransitionRecord struct {
 	ID        string
 	Kind      string
 	Actor     string
@@ -89,19 +89,19 @@ type transitionRecord struct {
 	Override int64
 }
 
-// revisionChange is a new active base and the state committed with it.
-type revisionChange struct {
-	parent    int64 // 0: no parent
-	origin    string
-	document  []byte
-	actor     string
-	deadline  time.Time // zero: the revision becomes the confirmed base; else provisional until then
-	mode      string    // deployment mode after the commit
-	candidate int64     // candidate this revision establishes, if any
+// RevisionChange is a new active base and the state committed with it.
+type RevisionChange struct {
+	Parent    int64 // 0: no parent
+	Origin    string
+	Document  []byte
+	Actor     string
+	Deadline  time.Time // zero: the revision becomes the confirmed base; else provisional until then
+	Mode      string    // deployment mode after the commit
+	Candidate int64     // candidate this revision establishes, if any
 }
 
-// candidateRecord is an immutable staged policy and its validation result.
-type candidateRecord struct {
+// CandidateRecord is an immutable staged policy and its validation result.
+type CandidateRecord struct {
 	ID        int64     `json:"id"`
 	Parent    int64     `json:"parent,omitempty"`
 	Checksum  string    `json:"checksum"`
@@ -112,24 +112,24 @@ type candidateRecord struct {
 	Document  []byte    `json:"-"`
 }
 
-type administrator struct {
+type Administrator struct {
 	Name        string
-	Permissions permission
+	Permissions Permission
 	Password    string // argon2id PHC string
 	Status      string
 	Credential  int64 // incremented by every credential change
 }
 
-type enrolment struct {
+type Enrolment struct {
 	Name        string
 	Secret      string // SHA-256 of the enrolment secret
-	Permissions permission
+	Permissions Permission
 	ExpiresAt   time.Time
 }
 
-// revisionInfo describes a stored revision; Document is set only when one
+// RevisionInfo describes a stored revision; Document is set only when one
 // revision is read.
-type revisionInfo struct {
+type RevisionInfo struct {
 	ID        int64           `json:"id"`
 	Parent    int64           `json:"parent,omitempty"`
 	Origin    string          `json:"origin"`
@@ -139,8 +139,8 @@ type revisionInfo struct {
 	Document  json.RawMessage `json:"document,omitempty"`
 }
 
-// historyEntry is one transition as administrators see it.
-type historyEntry struct {
+// HistoryEntry is one transition as administrators see it.
+type HistoryEntry struct {
 	Seq         int64      `json:"seq"`
 	ID          string     `json:"transition_id"`
 	Kind        string     `json:"kind"`

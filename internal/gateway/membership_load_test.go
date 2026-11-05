@@ -15,6 +15,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 func TestMembershipRemovalDuringRequest(t *testing.T) {
@@ -102,7 +104,7 @@ func TestMembershipChangesUnderLoad(t *testing.T) {
 			}
 			code, body, _ := e.adminSend("GET", "/admin/blocked-accounts", "", reader.headers(e)...)
 			var page struct {
-				Items []blockedAccount `json:"items"`
+				Items []store.BlockedAccount `json:"items"`
 			}
 			if code != 200 || json.Unmarshal([]byte(body), &page) != nil || len(page.Items) > 1 {
 				unexpected.Add(1)

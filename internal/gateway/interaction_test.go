@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // These tests cover temporary overrides together with confirmed policy
@@ -47,8 +48,8 @@ func TestCandidateAgainstActiveOverrides(t *testing.T) {
 	if code != http.StatusCreated {
 		t.Fatalf("staging: %d %s", code, body)
 	}
-	grant := e.mustOverride(harness, permitOverride(overrideException, "READER", "write-a", 600), `"r1"`, "candidate-grant-0001")
-	raise := e.mustOverride(harness, rateOverride(overrideException, "read-a", 8, 600), `"r1"`, "candidate-raise-0001")
+	grant := e.mustOverride(harness, permitOverride(store.OverrideException, "READER", "write-a", 600), `"r1"`, "candidate-grant-0001")
+	raise := e.mustOverride(harness, rateOverride(store.OverrideException, "read-a", 8, 600), `"r1"`, "candidate-raise-0001")
 	closeB := e.mustOverride(harness, operationContainment("read-b", 600), `"r1"`, "candidate-close-0001")
 	before := e.status()
 
@@ -91,13 +92,13 @@ func TestCandidateAgainstActiveOverrides(t *testing.T) {
 
 	i := 0
 	for name, r := range refused {
-		staged := early.Candidate.candidateRecord
+		staged := early.Candidate.CandidateRecord
 		if name != "same permit as an override" {
 			code, s, body := e.stage(harness, r.policy, `"r1"`, fmt.Sprintf("stage-conflict-%02d-xxxx", i))
 			if code != http.StatusCreated {
 				t.Fatalf("%s: staging %d %s", name, code, body)
 			}
-			staged = s.Candidate.candidateRecord
+			staged = s.Candidate.CandidateRecord
 		}
 		code, outcome, body := e.activate(harness, staged, 60, `"r1"`, fmt.Sprintf("activate-conflict-%02d-x", i))
 		if code != http.StatusConflict || outcome.Reason != "OVERRIDE_CONFLICT" || outcome.Override != r.holder {
@@ -117,7 +118,7 @@ func TestCandidateAgainstActiveOverrides(t *testing.T) {
 	if code, _, body := e.revokeOverride(harness, grant.Override, "candidate-grant-revoke"); code != http.StatusOK {
 		t.Fatalf("revocation: %d %s", code, body)
 	}
-	code, activated, body := e.activate(harness, early.Candidate.candidateRecord, 60, `"r1"`, "activate-after-revoke")
+	code, activated, body := e.activate(harness, early.Candidate.CandidateRecord, 60, `"r1"`, "activate-after-revoke")
 	if code != http.StatusOK || !strings.HasPrefix(activated.Generation, fmt.Sprintf("r2+o%d.%d-", raise.Override, closeB.Override)) {
 		t.Fatalf("activation after the revocation: %d %s", code, body)
 	}
@@ -170,8 +171,8 @@ func TestProvisionalRestrictsOverrides(t *testing.T) {
 	harness := e.mustLogin(harnessAdmin, harnessPassword)
 
 	closeB := e.mustOverride(harness, operationContainment("read-b", 600), `"r1"`, "provisional-close-01")
-	grant := e.mustOverride(harness, permitOverride(overrideException, "READER", "write-a", 4), `"r1"`, "provisional-grant-01")
-	limitAlice := e.mustOverride(harness, permitOverride(overrideContainment, "WRITER", "read-a", 600), `"r1"`, "provisional-limit-01")
+	grant := e.mustOverride(harness, permitOverride(store.OverrideException, "READER", "write-a", 4), `"r1"`, "provisional-grant-01")
+	limitAlice := e.mustOverride(harness, permitOverride(store.OverrideContainment, "WRITER", "read-a", 600), `"r1"`, "provisional-limit-01")
 	earlierGenerations := map[string]bool{e.status().Generation: true}
 
 	_, activated := e.provisionalFrom(harness, e.upstreamCandidate(), 1, 60, "provisional-restrict")
@@ -188,9 +189,9 @@ func TestProvisionalRestrictsOverrides(t *testing.T) {
 	// No creation, extension or broadening while provisional.
 	for i, r := range []OverrideRequest{
 		operationContainment("write-a", 600),
-		permitOverride(overrideException, "READER", "write-a", 3600), // same target, longer: an extension
-		rateOverride(overrideException, "read-a", 100, 60),           // a broadening
-		permitOverride(overrideContainment, "READER", "read-a", 60),  // even a restriction
+		permitOverride(store.OverrideException, "READER", "write-a", 3600), // same target, longer: an extension
+		rateOverride(store.OverrideException, "read-a", 100, 60),           // a broadening
+		permitOverride(store.OverrideContainment, "READER", "read-a", 60),  // even a restriction
 	} {
 		code, outcome, body := e.createOverride(harness, r, `"r1"`, fmt.Sprintf("provisional-create-%02d", i))
 		if code != http.StatusConflict || outcome.Reason != "PROVISIONAL_ACTIVE" {
@@ -240,7 +241,7 @@ func TestProvisionalRestrictsOverrides(t *testing.T) {
 	e.assertReceipts(1, 1, 0)
 
 	// Timeout with an override that expired first: it is not revived.
-	shortGrant := e.mustOverride(harness, permitOverride(overrideException, "READER", "write-a", 1), `"r1"`, "provisional-grant-02")
+	shortGrant := e.mustOverride(harness, permitOverride(store.OverrideException, "READER", "write-a", 1), `"r1"`, "provisional-grant-02")
 	_, timed := e.provisionalFrom(harness, e.upstreamCandidate(), 1, 3, "provisional-timeout")
 	waitFor(t, timed.Deadline.Add(5*time.Second), "the timeout", func() bool { return e.status().Provisional == 0 })
 	s = e.status()
@@ -255,13 +256,13 @@ func TestProvisionalRestrictsOverrides(t *testing.T) {
 
 	e.stop()
 	for _, o := range storedOverrides(t, e.database) {
-		want := map[int64]string{closeB.Override: overrideRevoked, grant.Override: overrideExpired, limitAlice.Override: overrideActive, shortGrant.Override: overrideExpired}[o.ID]
+		want := map[int64]string{closeB.Override: store.OverrideRevoked, grant.Override: store.OverrideExpired, limitAlice.Override: store.OverrideActive, shortGrant.Override: store.OverrideExpired}[o.ID]
 		if o.Status != want {
 			t.Fatalf("override %d status %s, want %s", o.ID, o.Status, want)
 		}
 	}
 	list := storedActivations(t, e.database)
-	if len(list) != 2 || list[0].Disposition != dispositionRolledBack || list[1].Disposition != dispositionTimedOut {
+	if len(list) != 2 || list[0].Disposition != store.DispositionRolledBack || list[1].Disposition != store.DispositionTimedOut {
 		t.Fatalf("activations %+v", list)
 	}
 }

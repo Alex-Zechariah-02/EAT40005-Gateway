@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // handleHistory lists recorded transitions, oldest first unless order=desc,
@@ -30,7 +31,7 @@ func (c *Controller) handleHistory(w http.ResponseWriter, r *http.Request, who c
 		adminError(w, http.StatusBadRequest, "bad_request", "page")
 		return
 	}
-	items, err := c.store.history(r.Context(), filter, cursor, limit)
+	items, err := c.store.History(r.Context(), filter, cursor, limit)
 	if err != nil {
 		adminError(w, http.StatusServiceUnavailable, "unavailable", "")
 		return
@@ -47,34 +48,34 @@ const maxHistoryKinds = 16
 
 // historyFilterOf reads the history order and filters, which page has
 // admitted as single parameters. A parameter that is present must be valid.
-func historyFilterOf(r *http.Request) (historyFilter, bool) {
+func historyFilterOf(r *http.Request) (store.HistoryFilter, bool) {
 	query := r.URL.Query()
-	var filter historyFilter
+	var filter store.HistoryFilter
 	if query.Has("order") {
 		switch query.Get("order") {
 		case "asc":
 		case "desc":
-			filter.newestFirst = true
+			filter.NewestFirst = true
 		default:
 			return filter, false
 		}
 	}
 	if query.Has("kind") {
-		filter.kinds = strings.Split(query.Get("kind"), ",")
+		filter.Kinds = strings.Split(query.Get("kind"), ",")
 		invalid := func(kind string) bool { return !historyKind(kind) }
-		if len(filter.kinds) > maxHistoryKinds || slices.ContainsFunc(filter.kinds, invalid) {
+		if len(filter.Kinds) > maxHistoryKinds || slices.ContainsFunc(filter.Kinds, invalid) {
 			return filter, false
 		}
 	}
 	if query.Has("outcome") {
-		filter.outcome = query.Get("outcome")
-		if filter.outcome != "committed" && filter.outcome != "rejected" {
+		filter.Outcome = query.Get("outcome")
+		if filter.Outcome != "committed" && filter.Outcome != "rejected" {
 			return filter, false
 		}
 	}
 	if query.Has("actor") {
-		filter.actor = query.Get("actor")
-		if filter.actor == "" || len(filter.actor) > policy.MaxIDLength || !utf8.ValidString(filter.actor) {
+		filter.Actor = query.Get("actor")
+		if filter.Actor == "" || len(filter.Actor) > policy.MaxIDLength || !utf8.ValidString(filter.Actor) {
 			return filter, false
 		}
 	}
@@ -97,7 +98,7 @@ func historyKind(kind string) bool {
 }
 
 func (c *Controller) handleHistoryEntry(w http.ResponseWriter, r *http.Request, who caller) {
-	entry, found, err := c.store.historyEntry(r.Context(), r.PathValue("id"))
+	entry, found, err := c.store.HistoryEntry(r.Context(), r.PathValue("id"))
 	switch {
 	case err != nil:
 		adminError(w, http.StatusServiceUnavailable, "unavailable", "")

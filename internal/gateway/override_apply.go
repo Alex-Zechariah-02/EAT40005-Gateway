@@ -9,6 +9,7 @@ import (
 
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // applyOverrides returns a copy of base with every override applied. Each
@@ -19,12 +20,12 @@ import (
 // longer fits, reject the whole result. The overrides are applied in
 // identifier order and govern distinct targets, so neither the order they are
 // given in nor any precedence decides the outcome. base itself is not changed.
-func applyOverrides(base policy.Policy, overrides []override) (policy.Policy, error) {
+func applyOverrides(base policy.Policy, overrides []store.Override) (policy.Policy, error) {
 	p := base
 	p.Operations = slices.Clone(base.Operations)
 	p.Permits = slices.Clone(base.Permits)
 
-	ordered := slices.SortedFunc(slices.Values(overrides), func(a, b override) int { return cmp.Compare(a.ID, b.ID) })
+	ordered := slices.SortedFunc(slices.Values(overrides), func(a, b store.Override) int { return cmp.Compare(a.ID, b.ID) })
 	targets := map[string]bool{}
 	for _, o := range ordered {
 		if targets[o.Target] {
@@ -40,16 +41,16 @@ func applyOverrides(base policy.Policy, overrides []override) (policy.Policy, er
 
 // applyOverride applies one override to p, whose operation and permit slices
 // belong to the caller.
-func applyOverride(p *policy.Policy, o override) error {
+func applyOverride(p *policy.Policy, o store.Override) error {
 	index := slices.IndexFunc(p.Operations, func(op policy.Operation) bool { return op.ID == o.Operation })
 	if index < 0 {
 		return policy.Invalid("UNKNOWN_REFERENCE", "operation")
 	}
 	op := &p.Operations[index]
-	exception := o.Type == overrideException
+	exception := o.Type == store.OverrideException
 
 	switch o.Control {
-	case controlPermit:
+	case store.ControlPermit:
 		if !slices.ContainsFunc(p.Roles, func(r policy.Role) bool { return r.ID == o.Role }) {
 			return policy.Invalid("UNKNOWN_REFERENCE", "role")
 		}
@@ -73,7 +74,7 @@ func applyOverride(p *policy.Policy, o override) error {
 			p.Permits = slices.Delete(p.Permits, held, held+1)
 		}
 
-	case controlRate:
+	case store.ControlRate:
 		if op.Rate == nil {
 			return policy.Invalid("INVALID_VALUE", "operation")
 		}
@@ -88,8 +89,8 @@ func applyOverride(p *policy.Policy, o override) error {
 		rule.Count = o.Count
 		op.Rate = &rule
 
-	case controlOperation:
-		if o.Type != overrideContainment || op.Access != "allow" {
+	case store.ControlOperation:
+		if o.Type != store.OverrideContainment || op.Access != "allow" {
 			return policy.Invalid("INVALID_VALUE", "operation")
 		}
 		op.Access = "deny"
@@ -104,8 +105,8 @@ func applyOverride(p *policy.Policy, o override) error {
 // one generation. It expires at the earliest of the provisional deadline (if
 // any) and the overrides' expiry times, so a generation never serves past the
 // first of them. Its identity names the base revision and every override.
-func effectiveGeneration(base policy.Policy, revision int64, deadline time.Time, overrides []override) (*compile.Generation, error) {
-	if len(overrides) > maxActiveOverrides {
+func effectiveGeneration(base policy.Policy, revision int64, deadline time.Time, overrides []store.Override) (*compile.Generation, error) {
+	if len(overrides) > store.MaxActiveOverrides {
 		return nil, policy.Invalid("LIMIT_EXCEEDED", "overrides")
 	}
 	p, err := applyOverrides(base, overrides)

@@ -1,6 +1,6 @@
 // Offline migration of older databases.
 
-package gateway
+package store
 
 import (
 	"context"
@@ -13,16 +13,16 @@ import (
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 )
 
-// openForMigration opens a database at an earlier schema version and returns
+// OpenForMigration opens a database at an earlier schema version and returns
 // it with that version. A database whose schema is not exactly its version's,
 // or a version 1 database with a provisional base, which has no activation
 // record to migrate, is refused unchanged.
-func openForMigration(path string) (*store, int, error) {
+func OpenForMigration(path string) (*DB, int, error) {
 	info, err := os.Stat(path)
 	if err != nil || info.Size() == 0 {
 		return nil, 0, fmt.Errorf("database %q missing or empty", path)
 	}
-	db, err := connect(path, "WAL")
+	db, err := Connect(path, "WAL")
 	if err != nil {
 		return nil, 0, err
 	}
@@ -31,7 +31,7 @@ func openForMigration(path string) (*store, int, error) {
 		db.Close()
 		return nil, version, err
 	}
-	return &store{db: db}, version, nil
+	return &DB{db: db}, version, nil
 }
 
 func migratable(db *sql.DB) (int, error) {
@@ -39,10 +39,10 @@ func migratable(db *sql.DB) (int, error) {
 	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return 0, err
 	}
-	if version < 1 || version >= databaseVersion {
-		return version, fmt.Errorf("database schema version %d cannot be migrated to %d", version, databaseVersion)
+	if version < 1 || version >= DatabaseVersion {
+		return version, fmt.Errorf("database schema version %d cannot be migrated to %d", version, DatabaseVersion)
 	}
-	if err := checkDatabaseSchema(db, version); err != nil {
+	if err := CheckDatabaseSchema(db, version); err != nil {
 		return version, err
 	}
 	if version >= 2 {
@@ -58,18 +58,18 @@ func migratable(db *sql.DB) (int, error) {
 	return version, nil
 }
 
-// migrate applies the migrations from version to the current one in a single
+// Migrate applies the migrations from version to the current one in a single
 // transaction with the operator transition, then checks the result. A
 // database whose migrated content fails the integrity or foreign key check is
 // left at its earlier version: the checks run before the commit, so damaged
 // rows are refused rather than carried into the new version.
-func (s *store) migrate(ctx context.Context, from int, t transitionRecord, now time.Time) error {
+func (s *DB) Migrate(ctx context.Context, from int, t TransitionRecord, now time.Time) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if err := applyMigrations(ctx, tx, from, databaseVersion); err != nil {
+	if err := ApplyMigrations(ctx, tx, from, DatabaseVersion); err != nil {
 		return err
 	}
 	var check string
@@ -90,5 +90,5 @@ func (s *store) migrate(ctx context.Context, from int, t transitionRecord, now t
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	return verify(s.db)
+	return Verify(s.db)
 }

@@ -10,13 +10,15 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // checkDatabaseFile opens a snapshot with the gateway's settings in rollback
 // journal mode, so it is a single self-contained file, and runs the full
 // integrity check and the schema checks.
 func checkDatabaseFile(path string) error {
-	db, err := connect(path, "DELETE")
+	db, err := store.Connect(path, "DELETE")
 	if err != nil {
 		return err
 	}
@@ -25,7 +27,7 @@ func checkDatabaseFile(path string) error {
 	if err := db.QueryRow("PRAGMA integrity_check").Scan(&check); err != nil || check != "ok" {
 		return fmt.Errorf("integrity check failed: %v %s", err, check)
 	}
-	return verify(db)
+	return store.Verify(db)
 }
 
 func sameFile(a, b string) bool {

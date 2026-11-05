@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 // These tests drive the confirmed-activation lifecycle through the real
@@ -17,7 +18,7 @@ import (
 // receivers: a status code alone does not show what was forwarded.
 
 // activate asks for a staged candidate to become the provisional base.
-func (e *env) activate(s adminSession, c candidateRecord, seconds int64, ifMatch, key string) (int, Outcome, string) {
+func (e *env) activate(s adminSession, c store.CandidateRecord, seconds int64, ifMatch, key string) (int, Outcome, string) {
 	e.t.Helper()
 	body := string(mustJSON(map[string]any{"candidate": c.ID, "checksum": c.Checksum, "confirm_within_seconds": seconds}))
 	code, data, _ := e.as(s, http.MethodPost, "/admin/provisional", body, "If-Match", ifMatch, "Idempotency-Key", key)
@@ -39,17 +40,17 @@ func (e *env) resolve(s adminSession, action string, revision int64, ifMatch, ke
 
 // provisionalFrom stages policy against the confirmed revision parent and
 // activates it, failing the test unless both succeed.
-func (e *env) provisionalFrom(s adminSession, policy policy.Policy, parent, seconds int64, key string) (candidateRecord, Outcome) {
+func (e *env) provisionalFrom(s adminSession, policy policy.Policy, parent, seconds int64, key string) (store.CandidateRecord, Outcome) {
 	e.t.Helper()
 	code, staged, body := e.stage(s, policy, policyETag(parent), "stage-"+key)
 	if code != http.StatusCreated {
 		e.t.Fatalf("staging: %d %s", code, body)
 	}
-	code, outcome, body := e.activate(s, staged.Candidate.candidateRecord, seconds, policyETag(parent), "activate-"+key)
+	code, outcome, body := e.activate(s, staged.Candidate.CandidateRecord, seconds, policyETag(parent), "activate-"+key)
 	if code != http.StatusOK {
 		e.t.Fatalf("activation: %d %s", code, body)
 	}
-	return staged.Candidate.candidateRecord, outcome
+	return staged.Candidate.CandidateRecord, outcome
 }
 
 func (e *env) confirmPolicy(s adminSession, policy policy.Policy, parent int64, key string) Outcome {
@@ -63,21 +64,21 @@ func (e *env) confirmPolicy(s adminSession, policy policy.Policy, parent int64, 
 }
 
 // storedActivations reads every activation record of a stopped gateway.
-func storedActivations(t *testing.T, path string) []activationRecord {
+func storedActivations(t *testing.T, path string) []store.ActivationRecord {
 	t.Helper()
-	db, err := sql.Open("sqlite", databaseURI(path))
+	db, err := sql.Open("sqlite", store.DatabaseURI(path))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	rows, err := db.Query(`SELECT ` + activationColumns + ` FROM activation ORDER BY revision`)
+	rows, err := db.Query(`SELECT ` + store.ActivationColumns + ` FROM activation ORDER BY revision`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer rows.Close()
-	var list []activationRecord
+	var list []store.ActivationRecord
 	for rows.Next() {
-		record, err := scanActivation(rows)
+		record, err := store.ScanActivation(rows)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -178,7 +179,7 @@ func TestRollbackRestoresConfirmedBase(t *testing.T) {
 	}
 
 	code, rolledBack, body := e.resolve(harness, "rollback", 2, `"r1"`, "rollback-path-rollback")
-	if code != http.StatusOK || rolledBack.Disposition != dispositionRolledBack || rolledBack.Revision != 1 ||
+	if code != http.StatusOK || rolledBack.Disposition != store.DispositionRolledBack || rolledBack.Revision != 1 ||
 		rolledBack.Provisional != 2 || rolledBack.RollbackTarget != 1 || rolledBack.Generation == "" || rolledBack.Generation == activated.Generation {
 		t.Fatalf("rollback: %d %s", code, body)
 	}
@@ -220,12 +221,12 @@ func TestRollbackRestoresConfirmedBase(t *testing.T) {
 	// Repeats: the same request replays, another is told the disposition, and
 	// a confirmation of the rolled-back revision is refused.
 	if code, again, body := e.resolve(harness, "rollback", 2, `"r1"`, "rollback-path-rollback"); code != http.StatusOK ||
-		again.Transition != rolledBack.Transition || again.Disposition != dispositionRolledBack {
+		again.Transition != rolledBack.Transition || again.Disposition != store.DispositionRolledBack {
 		t.Fatalf("retried rollback: %d %s", code, body)
 	}
 	for _, action := range []string{"rollback", "confirm"} {
 		code, outcome, body := e.resolve(harness, action, 2, `"r1"`, "after-rollback-"+action+"-x")
-		if code != http.StatusConflict || outcome.Reason != "ALREADY_RESOLVED" || outcome.Disposition != dispositionRolledBack {
+		if code != http.StatusConflict || outcome.Reason != "ALREADY_RESOLVED" || outcome.Disposition != store.DispositionRolledBack {
 			t.Errorf("%s after rollback: %d %s", action, code, body)
 		}
 	}
@@ -241,7 +242,7 @@ func TestRollbackRestoresConfirmedBase(t *testing.T) {
 	}
 	e.stop()
 	list := storedActivations(t, e.database)
-	if len(list) != 1 || list[0].Disposition != dispositionRolledBack || list[0].Resolution != rolledBack.Transition {
+	if len(list) != 1 || list[0].Disposition != store.DispositionRolledBack || list[0].Resolution != rolledBack.Transition {
 		t.Fatalf("stored activations %+v", list)
 	}
 	if n := queryInt(t, e.database, `SELECT COUNT(*) FROM base WHERE confirmed = 1 AND provisional IS NULL`); n != 1 {
