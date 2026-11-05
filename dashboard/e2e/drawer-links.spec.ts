@@ -87,6 +87,8 @@ test.describe.serial('request drawer links', () => {
       await expect(drawerFact(viewer, 'Account').getByRole('link')).toHaveCount(0)
       await expect(drawer(viewer).getByRole('button', { name: 'Block Account…' })).toHaveCount(0)
       await viewer.keyboard.press('Escape')
+      // Escape closes the drawer on a later history change; until then the search is inert.
+      await expect(drawer(viewer)).toBeHidden()
       await expect(viewer.getByRole('main').getByRole('link', { name: 'cust-001', exact: true })).toHaveCount(0)
       const search = viewer.getByRole('searchbox', { name: 'Search', exact: true })
       await search.fill('cust-001')
