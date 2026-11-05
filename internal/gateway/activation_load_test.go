@@ -4,6 +4,7 @@ package gateway
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"slices"
 	"strings"
@@ -131,9 +132,11 @@ func TestLifecycleUnderLoad(t *testing.T) {
 				}
 				resp, err := client.Do(req)
 				if err != nil {
-					unexpected.Store(r.method+" "+r.path+": "+err.Error(), true)
+					unexpected.Store(r.method+" "+r.path+": "+err.Error(), "")
 					continue
 				}
+				// A drained body lets the client reuse its connection.
+				io.Copy(io.Discard, resp.Body)
 				resp.Body.Close()
 				switch resp.StatusCode {
 				case http.StatusOK:
@@ -141,7 +144,7 @@ func TestLifecycleUnderLoad(t *testing.T) {
 				case http.StatusForbidden:
 					refused.Add(1)
 				default:
-					unexpected.Store(fmt.Sprintf("%s %s: %d", r.method, r.path, resp.StatusCode), true)
+					unexpected.Store(fmt.Sprintf("%s %s: %d", r.method, r.path, resp.StatusCode), resp.Header.Get("X-Request-Id"))
 				}
 			}
 		})
@@ -171,8 +174,13 @@ func TestLifecycleUnderLoad(t *testing.T) {
 	close(stop)
 	wg.Wait()
 
-	unexpected.Range(func(key, _ any) bool {
-		t.Errorf("unexpected answer: %v", key)
+	// The audit records of an unexpected answer say which stage gave it.
+	unexpected.Range(func(key, id any) bool {
+		var records []map[string]any
+		if id != "" {
+			records = e.requestEvents(id.(string), 1)
+		}
+		t.Errorf("unexpected answer: %v; audit: %v", key, records)
 		return true
 	})
 	// A and B are reached only under the confirmed base, C only under the

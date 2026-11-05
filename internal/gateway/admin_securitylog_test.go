@@ -1,8 +1,11 @@
+// Security log search, export and endpoint tests.
+
 package gateway
 
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -186,7 +189,16 @@ func TestAdminSecurityLog(t *testing.T) {
 	if strings.Contains(body, "Bearer") {
 		t.Fatalf("credential in the results: %s", body)
 	}
-	code, csvBody, header := e.as(admin, "GET", "/admin/security-log?decision=refused&format=csv", "")
+	// The refused request's record is written asynchronously too.
+	var csvBody string
+	var header http.Header
+	for range 50 {
+		code, csvBody, header = e.as(admin, "GET", "/admin/security-log?decision=refused&format=csv", "")
+		if code == 200 && strings.Contains(csvBody, ",refused,401,") {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 	if code != 200 || !strings.HasPrefix(header.Get("Content-Type"), "text/csv") || !strings.HasPrefix(csvBody, "time,request_id,decision") || !strings.Contains(csvBody, ",refused,401,") {
 		t.Errorf("csv export: %d %s", code, csvBody)
 	}
