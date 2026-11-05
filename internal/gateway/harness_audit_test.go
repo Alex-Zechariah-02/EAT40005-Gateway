@@ -5,7 +5,9 @@ package gateway
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -15,21 +17,46 @@ func (e *env) auditEvents() []map[string]any {
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	// The gateway may be appending while the file is read: every record ends
-	// with a newline, so an unterminated tail is a record still being written.
-	data = data[:bytes.LastIndexByte(data, '\n')+1]
-	var events []map[string]any
-	for line := range bytes.SplitSeq(bytes.TrimSpace(data), []byte("\n")) {
-		if len(line) == 0 {
-			continue
-		}
-		var ev map[string]any
-		if err := json.Unmarshal(line, &ev); err != nil {
-			e.t.Fatalf("audit line is not one JSON record: %q", line)
-		}
-		events = append(events, ev)
+	events, err := parseAudit(data, filepath.Base(e.auditLog))
+	if err != nil {
+		e.t.Fatal(err)
 	}
 	return events
+}
+
+// parseAudit decodes the records of the audit file named file. The gateway
+// may be appending while it is read, so an unterminated tail is a record
+// still being written and is skipped. A record a crash cut short stays in the
+// file, ended by the next start, which names its offset in an audit.recovered
+// record; only such a line may fail to decode.
+func parseAudit(data []byte, file string) ([]map[string]any, error) {
+	data = data[:bytes.LastIndexByte(data, '\n')+1]
+	var events []map[string]any
+	var broken []int
+	recovered := map[int]bool{}
+	for offset := 0; offset < len(data); {
+		end := offset + bytes.IndexByte(data[offset:], '\n')
+		line := data[offset:end]
+		var ev map[string]any
+		switch {
+		case len(bytes.TrimSpace(line)) == 0:
+		case json.Unmarshal(line, &ev) != nil:
+			broken = append(broken, offset)
+		default:
+			if at, ok := ev["offset"].(float64); ok && ev["kind"] == "audit.recovered" && ev["file"] == file {
+				recovered[int(at)] = true
+			}
+			events = append(events, ev)
+		}
+		offset = end + 1
+	}
+	for _, at := range broken {
+		if !recovered[at] {
+			end := at + bytes.IndexByte(data[at:], '\n')
+			return nil, fmt.Errorf("audit line is not one JSON record: %q", data[at:end])
+		}
+	}
+	return events, nil
 }
 
 // eventsWhen waits until the audit log satisfies done. Events that do not
