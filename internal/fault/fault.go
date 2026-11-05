@@ -1,6 +1,8 @@
 //go:build faultinject
 
-package gateway
+// Fault points for builds with the faultinject tag.
+
+package fault
 
 import (
 	"bytes"
@@ -20,16 +22,16 @@ const faultExitCode = 86
 
 func faultEnabled(name string) bool { return os.Getenv("GATEWAY_FAULT") == name }
 
-func candidateReadFault() error {
+func CandidateReadFault() error {
 	if faultEnabled("candidate-read-unavailable") {
 		return errors.New("injected candidate read failure")
 	}
 	return nil
 }
 
-// cancelPoint waits at the named point until the caller's context is done or
+// CancelPoint waits at the named point until the caller's context is done or
 // two seconds pass, so a test can disconnect a client exactly there.
-func cancelPoint(ctx context.Context, name string) {
+func CancelPoint(ctx context.Context, name string) {
 	if !faultEnabled(name) {
 		return
 	}
@@ -39,21 +41,21 @@ func cancelPoint(ctx context.Context, name string) {
 	}
 }
 
-// crashPoint terminates the process abruptly, without cleanup, to simulate a
+// CrashPoint terminates the process abruptly, without cleanup, to simulate a
 // crash at a precise point in a transition.
-func crashPoint(name string) {
+func CrashPoint(name string) {
 	if faultEnabled(name) {
 		os.Exit(faultExitCode)
 	}
 }
 
-// writeAudit appends data and syncs it, unless a fault is injected: no space
+// WriteAudit appends data and syncs it, unless a fault is injected: no space
 // for any write, a failed sync after any write, and, for a batch holding an
 // admission, a write of half the data, a crash between write and sync, or a
 // sync delayed past the acknowledgement wait; or a failed write of a batch
 // holding a request outcome or the outcome of a publishing transition. The
 // writer may also be held before it writes; see holdAudit.
-func writeAudit(file *os.File, data []byte) error {
+func WriteAudit(file *os.File, data []byte) error {
 	holdAudit()
 	admission := bytes.Contains(data, []byte(`"kind":"request.admitted"`))
 	outcome := bytes.Contains(data, []byte(`"kind":"request.forwarded"`))
@@ -108,9 +110,9 @@ func holdAudit() {
 	}
 }
 
-// rateClockFault lets tests set the limiter's clock: when GATEWAY_RATE_CLOCK
+// RateClockFault lets tests set the limiter's clock: when GATEWAY_RATE_CLOCK
 // names a file holding Unix milliseconds, the limiter reads its time there.
-func rateClockFault() (int64, bool) {
+func RateClockFault() (int64, bool) {
 	path := os.Getenv("GATEWAY_RATE_CLOCK")
 	if path == "" {
 		return 0, false
@@ -123,11 +125,11 @@ func rateClockFault() (int64, bool) {
 	return ms, err == nil
 }
 
-// wallOffset lets tests move the controller's wall clock without changing the
+// WallOffset lets tests move the controller's wall clock without changing the
 // host clock: when GATEWAY_WALL_OFFSET names a file holding a number of
 // milliseconds, the wall clock reads that much later (or earlier, if
 // negative). The monotonic clock is not affected.
-func wallOffset() time.Duration {
+func WallOffset() time.Duration {
 	path := os.Getenv("GATEWAY_WALL_OFFSET")
 	if path == "" {
 		return 0
@@ -143,25 +145,25 @@ func wallOffset() time.Duration {
 	return time.Duration(ms) * time.Millisecond
 }
 
-// timerFault suppresses the deadline timer so tests can observe the request
+// TimerFault suppresses the deadline timer so tests can observe the request
 // path after a deadline passes but before the controller acts on it.
-func timerFault() bool { return faultEnabled("no-deadline-timer") }
+func TimerFault() bool { return faultEnabled("no-deadline-timer") }
 
-// rollbackFault makes the base that a rollback restores fail to compile, as a
+// RollbackFault makes the base that a rollback restores fail to compile, as a
 // damaged rollback target would.
-func rollbackFault() error {
+func RollbackFault() error {
 	if faultEnabled("rollback-target-invalid") {
 		return errors.New("injected failure compiling the rollback target")
 	}
 	return nil
 }
 
-// signalCapture appends the captured generation to a file when a request for
+// SignalCapture appends the captured generation to a file when a request for
 // the configured path has captured its generation, so a test can act at that
 // exact point instead of sleeping. When GATEWAY_HOLD_RELEASE names a file, the
 // request then waits, for at most ten seconds, until that file exists, so a
 // test can publish a new generation before any later stage runs.
-func signalCapture(path, generation string) {
+func SignalCapture(path, generation string) {
 	if path == "" || path != os.Getenv("GATEWAY_HOLD_PATH") {
 		return
 	}

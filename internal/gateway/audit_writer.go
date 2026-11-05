@@ -11,6 +11,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 )
 
 type auditEntry struct {
@@ -189,7 +191,7 @@ func (a *auditLog) write(batch []auditEntry) error {
 		marker := appendEvent(nil, a.stamp(Event{Kind: "audit.rotated", File: rotated}))
 		buffer = append(marker, buffer...)
 	}
-	if err := writeAudit(a.file, buffer); err != nil {
+	if err := fault.WriteAudit(a.file, buffer); err != nil {
 		a.lost.Add(lost)
 		a.fail(err)
 		return errAuditFailed

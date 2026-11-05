@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 )
 
 // StageCandidate validates a complete policy with the canonical compiler and
@@ -51,7 +53,7 @@ func (c *Controller) StageCandidate(ctx context.Context, t transitionRecord, doc
 	if err != nil {
 		return c.storeFailure(t.ID, err)
 	}
-	crashPoint("candidate-after-commit")
+	fault.CrashPoint("candidate-after-commit")
 	result := Outcome{Transition: t.ID, Outcome: "committed", Candidate: id}
 	return c.finish(ctx, result, Event{Kind: "transition.committed", Transition: t.ID, Actor: t.Actor})
 }

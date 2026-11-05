@@ -5,6 +5,8 @@ package gateway
 import (
 	"sync/atomic"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 )
 
 // expired reports whether the generation's earliest deadline has passed at
@@ -25,7 +27,7 @@ var wallLead atomic.Int64
 // trustedNow is the time against which every persisted deadline is decided
 // and every controller timestamp is taken; see trustedTime.
 func trustedNow() time.Time {
-	return trustedTime(time.Now().Round(0).Add(wallOffset()), time.Since(processStart))
+	return trustedTime(time.Now().Round(0).Add(fault.WallOffset()), time.Since(processStart))
 }
 
 // deadlineNow is trustedNow for setting a deadline: a provisional base's or an
@@ -38,7 +40,7 @@ func trustedNow() time.Time {
 // every request, never raise it, so a brief forward step with no new deadline
 // leaves no trace.
 func deadlineNow() time.Time {
-	wall := time.Now().Round(0).Add(wallOffset())
+	wall := time.Now().Round(0).Add(fault.WallOffset())
 	elapsed := time.Since(processStart)
 	lead := int64(wall.Sub(processStart.Round(0).Add(elapsed)))
 	for {

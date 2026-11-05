@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 )
 
 const defaultMaxBodyBytes = 16 << 10
@@ -100,7 +102,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	q.event.Generation, q.event.Profile = g.ID, g.Profile
 	q.pass(stageCapture)
-	signalCapture(r.URL.Path, g.ID)
+	fault.SignalCapture(r.URL.Path, g.ID)
 
 	path, ok := CanonicalPath(r)
 	if !ok {

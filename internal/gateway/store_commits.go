@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 )
 
 // checkActivation requires the provisional base and the one unresolved
@@ -83,7 +85,7 @@ func (s *store) commitRevision(ctx context.Context, t transitionRecord, change r
 	if err != nil {
 		return 0, err
 	}
-	crashPoint("commit-partway")
+	fault.CrashPoint("commit-partway")
 	if change.deadline.IsZero() {
 		_, err = tx.ExecContext(ctx, `UPDATE base SET confirmed = ?, provisional = NULL, deadline = NULL WHERE id = 1`, revision)
 	} else {

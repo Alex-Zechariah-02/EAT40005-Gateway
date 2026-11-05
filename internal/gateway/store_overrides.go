@@ -7,6 +7,8 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 )
 
 const overrideColumns = `id, type, control, operation, coalesce(role, ''), coalesce(count, 0), target, base,
@@ -86,7 +88,7 @@ func (s *store) commitOverride(ctx context.Context, t transitionRecord, o overri
 	if o.Control == controlRate {
 		count = o.Count
 	}
-	crashPoint("tpo-commit-partway")
+	fault.CrashPoint("tpo-commit-partway")
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO override (id, type, control, operation, role, count, target, base, created_at, expires_at, actor, creation, status)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,

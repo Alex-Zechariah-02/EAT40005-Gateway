@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 )
 
 // scheduleDeadline arms the timer that wakes the controller at the earliest
@@ -19,7 +21,7 @@ func (c *Controller) scheduleDeadline(g *Generation) {
 		c.timer.Stop()
 		c.timer = nil
 	}
-	if g.NotAfter.IsZero() || timerFault() {
+	if g.NotAfter.IsZero() || fault.TimerFault() {
 		return
 	}
 	c.timer = time.AfterFunc(g.NotAfter.Sub(trustedNow()), func() { c.expire(g) })
@@ -152,7 +154,7 @@ func (c *Controller) endProvisional(ctx context.Context, t transitionRecord, a a
 	// base was provisional stays ended.
 	g, err := c.compileEffective(ctx, target, time.Time{}, a.overrides)
 	if err == nil && disposition != dispositionConfirmed {
-		err = rollbackFault()
+		err = fault.RollbackFault()
 	}
 	if err != nil {
 		c.logger.Error("compiling the base after the provisional revision", "revision", target, "error", err)
@@ -164,22 +166,22 @@ func (c *Controller) endProvisional(ctx context.Context, t transitionRecord, a a
 		result, status := auditUnavailable(t.ID)
 		return failed("audit unavailable", result, status)
 	}
-	crashPoint(stage + "-before-commit")
+	fault.CrashPoint(stage + "-before-commit")
 	t.Revision = target
 	if err := c.store.commitResolution(ctx, t, a, disposition, now); err != nil {
 		result, status := c.storeFailure(t.ID, err)
 		return failed("commit failed", result, status)
 	}
-	crashPoint(stage + "-after-commit")
+	fault.CrashPoint(stage + "-after-commit")
 
 	c.current.Store(g)
 	c.state = modeNormal
 	c.scheduleDeadline(g)
-	crashPoint(stage + "-after-swap")
+	fault.CrashPoint(stage + "-after-swap")
 	if err := c.store.markPublished(ctx, t.ID, "publisher", now); err != nil {
 		c.logger.Error("recording publication receipt", "error", err)
 	}
-	crashPoint(stage + "-after-receipt")
+	fault.CrashPoint(stage + "-after-receipt")
 
 	result := Outcome{
 		Transition:     t.ID,

@@ -35,6 +35,13 @@ A policy can pass all checks and still cause problems when it is in use. Adminis
 - A web dashboard for administrators (in `dashboard/`) is served by the admin listener itself, so it uses the same sign-in, origin and CSRF checks as the admin API. It shows the confirmed policy, any provisional policy and its deadline, the temporary overrides in force and the change history. It stages and activates new policies, confirms or rolls them back and creates or revokes overrides. It also has pages for the security log search, the access checker, limits and advice, and shows active alerts on its overview. Each change is shown as done only when the gateway's receipt arrives, and a request with no answer is shown as having an unknown outcome.
 - Fetch, the demonstration application in `client/`, is served on a second loopback address, so the administrator's session cookie never reaches it. Customers, merchants, riders, support agents and operations staff sign in through Fetch Accounts. Application calls go through the gateway to Inventory, Orders, Reports, Support and Accounts. Business ownership, stock, wallet and order transitions stay in those services.
 
+### Code layout
+
+Each package under `internal/` imports only the packages listed before it; a test enforces the order.
+
+- `internal/fault`: the fault-injection points tests use to crash, delay or fail the gateway at exact places. They act only in binaries built with the `faultinject` tag; normal builds compile them to no-ops.
+- `internal/gateway`: the gateway itself, which uses the packages above.
+
 ## Build and test
 
 You need Go 1.26 or newer. `go.mod` selects the Go 1.27.3 toolchain; with `GOTOOLCHAIN=auto`, Go uses or downloads that toolchain when needed. Programs live in `cmd/`, with shared code in `internal/gateway` and `internal/services`. The preserved controlled APIs for gateway regression tests live in `internal/services/testfixture`. The two web applications are in `dashboard/` and `client/`.

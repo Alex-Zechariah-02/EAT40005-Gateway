@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 )
 
 // runRestore performs a declared historical restore. The backup is copied
@@ -55,7 +57,7 @@ func runRestore(o *operatorContext, flags map[string]string) (int, error) {
 	if err := markRecovery(staging, t, episode, now); err != nil {
 		return 1, fmt.Errorf("marking the staged database: %w", err)
 	}
-	crashPoint("restore-before-promote")
+	fault.CrashPoint("restore-before-promote")
 
 	retired := ""
 	if _, err := os.Stat(live); err == nil {
@@ -64,14 +66,14 @@ func runRestore(o *operatorContext, flags map[string]string) (int, error) {
 			return 1, err
 		}
 	}
-	crashPoint("restore-after-retire")
+	fault.CrashPoint("restore-after-retire")
 	if err := os.Rename(staging, live); err != nil {
 		if retired != "" {
 			err = errors.Join(err, os.Rename(retired, live))
 		}
 		return 1, err
 	}
-	crashPoint("restore-after-promote")
+	fault.CrashPoint("restore-after-promote")
 
 	if err := o.record(Event{Kind: "transition.committed", Transition: t.ID, File: filepath.Base(backup)}); err != nil {
 		return 1, err

@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 )
 
 // Enrol consumes an enrolment and stores the administrator's new credential.
@@ -23,7 +25,7 @@ func (c *Controller) Enrol(ctx context.Context, e enrolment, passwordHash string
 	if err := c.commitAudit(ctx, Event{Kind: "transition.intent", Transition: t.ID, Actor: e.Name}); err != nil {
 		return auditUnavailable(t.ID)
 	}
-	crashPoint("enrol-before-commit")
+	fault.CrashPoint("enrol-before-commit")
 	err := c.store.commitEnrolment(ctx, t, e, passwordHash, now)
 	if errors.Is(err, errNotUpdated) {
 		// Another request consumed the secret first.
@@ -34,7 +36,7 @@ func (c *Controller) Enrol(ctx context.Context, e enrolment, passwordHash string
 		return c.storeFailure(t.ID, err)
 	}
 	c.sessions.revokeAdmin(e.Name)
-	crashPoint("enrol-after-commit")
+	fault.CrashPoint("enrol-after-commit")
 	return c.finish(ctx, Outcome{Transition: t.ID, Outcome: "committed"}, Event{Kind: "transition.committed", Transition: t.ID, Actor: e.Name})
 }
 

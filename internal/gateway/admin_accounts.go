@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 )
 
 func controlError(code string) json.RawMessage {
@@ -54,18 +56,18 @@ func (c *Controller) finishControl(ctx context.Context, t transitionRecord, resu
 	if err := c.commitAudit(ctx, Event{Kind: "transition.intent", Transition: t.ID, Actor: t.Actor}); err != nil {
 		return controlError("gateway_unavailable"), http.StatusServiceUnavailable
 	}
-	crashPoint("before-commit")
+	fault.CrashPoint("before-commit")
 	if err := c.store.commitControl(ctx, t, body, change, now); err != nil {
 		c.logger.Error("committing control change", "error", err)
 		return controlError("gateway_unavailable"), http.StatusServiceUnavailable
 	}
-	crashPoint("after-commit")
+	fault.CrashPoint("after-commit")
 	publish()
-	crashPoint("after-swap")
+	fault.CrashPoint("after-swap")
 	if err := c.store.markPublished(ctx, t.ID, "publisher", now); err != nil {
 		c.logger.Error("recording control publication receipt", "error", err)
 	}
-	crashPoint("after-receipt")
+	fault.CrashPoint("after-receipt")
 	outcome, status := c.finish(ctx, Outcome{Transition: t.ID, Outcome: "committed"}, Event{Kind: t.Kind, Transition: t.ID, Actor: t.Actor, Target: t.Target})
 	if status != http.StatusOK {
 		// The change is committed and in force; only its outcome event is

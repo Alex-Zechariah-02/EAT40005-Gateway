@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 )
 
 // proposeOverride checks a proposed override against the current authority,
@@ -196,7 +198,7 @@ func (c *Controller) publishOverrides(ctx context.Context, t transitionRecord, a
 		result, code := auditUnavailable(t.ID)
 		return failed("audit unavailable", result, code)
 	}
-	crashPoint(stage + "-before-commit")
+	fault.CrashPoint(stage + "-before-commit")
 	if status == overrideActive {
 		err = c.store.commitOverride(ctx, t, o, now)
 	} else {
@@ -206,16 +208,16 @@ func (c *Controller) publishOverrides(ctx context.Context, t transitionRecord, a
 		result, code := c.storeFailure(t.ID, err)
 		return failed("commit failed", result, code)
 	}
-	crashPoint(stage + "-after-commit")
+	fault.CrashPoint(stage + "-after-commit")
 
 	c.current.Store(g)
 	c.state = modeNormal
 	c.scheduleDeadline(g)
-	crashPoint(stage + "-after-swap")
+	fault.CrashPoint(stage + "-after-swap")
 	if err := c.store.markPublished(ctx, t.ID, "publisher", now); err != nil {
 		c.logger.Error("recording publication receipt", "error", err)
 	}
-	crashPoint(stage + "-after-receipt")
+	fault.CrashPoint(stage + "-after-receipt")
 
 	result := Outcome{
 		Transition: t.ID,

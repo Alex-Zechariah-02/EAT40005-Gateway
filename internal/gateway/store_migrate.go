@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"os"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 )
 
 // openForMigration opens a database at an earlier schema version and returns
@@ -84,7 +86,7 @@ func (s *store) migrate(ctx context.Context, from int, t transitionRecord, now t
 	if err := insertCommitted(ctx, tx, t, now); err != nil {
 		return err
 	}
-	crashPoint("migrate-before-commit")
+	fault.CrashPoint("migrate-before-commit")
 	if err := tx.Commit(); err != nil {
 		return err
 	}

@@ -7,10 +7,12 @@ import (
 	"database/sql"
 	"errors"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 )
 
 func (s *store) candidate(ctx context.Context, id int64) (candidateRecord, bool, error) {
-	if err := candidateReadFault(); err != nil {
+	if err := fault.CandidateReadFault(); err != nil {
 		return candidateRecord{}, false, err
 	}
 	var c candidateRecord

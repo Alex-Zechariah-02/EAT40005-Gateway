@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 )
 
 // backupManifest describes a backup file. Its checksum detects a damaged or
@@ -64,7 +66,7 @@ func runBackup(o *operatorContext, flags map[string]string) (int, error) {
 	if _, err := st.db.Exec("VACUUM INTO ?", partial); err != nil {
 		return 1, fmt.Errorf("writing snapshot: %w", err)
 	}
-	crashPoint("backup-before-verify")
+	fault.CrashPoint("backup-before-verify")
 	if err := checkDatabaseFile(partial); err != nil {
 		return 1, fmt.Errorf("verifying snapshot: %w", err)
 	}

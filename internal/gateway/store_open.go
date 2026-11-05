@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 )
@@ -150,7 +151,7 @@ func createStore(path, installation string, first enrolment, install transitionR
 		err = insertCommitted(ctx, tx, install, now)
 	}
 	if err == nil {
-		crashPoint("install-before-commit")
+		fault.CrashPoint("install-before-commit")
 		err = tx.Commit()
 	}
 	if err == nil {

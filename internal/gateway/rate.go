@@ -6,6 +6,8 @@ import (
 	"container/heap"
 	"sync"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 )
 
 // counterKey identifies one quota: an operation and the trusted key it is
@@ -166,7 +168,7 @@ func (l *limiter) sweep(now int64) {
 type rateClock struct{ anchor time.Time }
 
 func (c rateClock) now() int64 {
-	if ms, ok := rateClockFault(); ok {
+	if ms, ok := fault.RateClockFault(); ok {
 		return ms
 	}
 	return c.anchor.UnixMilli() + time.Since(c.anchor).Milliseconds()

@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 )
 
 // publishAuthority compiles committed authority, the active base with its
@@ -73,14 +75,14 @@ func (c *Controller) publish(ctx context.Context, t transitionRecord, policy Pol
 	if err := c.commitAudit(ctx, Event{Kind: "transition.intent", Transition: t.ID, Actor: t.Actor}); err != nil {
 		return auditUnavailable(t.ID)
 	}
-	crashPoint("before-commit")
+	fault.CrashPoint("before-commit")
 
 	change.document, _ = json.Marshal(policy)
 	revision, err := c.store.commitRevision(ctx, t, change, now)
 	if err != nil {
 		return c.storeFailure(t.ID, err)
 	}
-	crashPoint("after-commit")
+	fault.CrashPoint("after-commit")
 
 	g, err := effectiveGeneration(policy, revision, change.deadline, overrides)
 	if err != nil {
@@ -90,12 +92,12 @@ func (c *Controller) publish(ctx context.Context, t transitionRecord, policy Pol
 	c.current.Store(g)
 	c.state = modeNormal
 	c.scheduleDeadline(g)
-	crashPoint("after-swap")
+	fault.CrashPoint("after-swap")
 
 	if err := c.store.markPublished(ctx, t.ID, "publisher", now); err != nil {
 		c.logger.Error("recording publication receipt", "error", err)
 	}
-	crashPoint("after-receipt")
+	fault.CrashPoint("after-receipt")
 
 	t.Revision = revision
 	result := Outcome{Transition: t.ID, Outcome: "committed", Revision: revision, Generation: g.ID, Candidate: change.candidate}
@@ -113,7 +115,7 @@ func (c *Controller) publish(ctx context.Context, t transitionRecord, policy Pol
 // the audit log is marked failed, so protected admission stops until a
 // restart, whose reconciliation records the missing outcome event.
 func (c *Controller) finish(ctx context.Context, result Outcome, event Event) (Outcome, int) {
-	cancelPoint(ctx, "cancel-before-outcome")
+	fault.CancelPoint(ctx, "cancel-before-outcome")
 	if err := c.commitAudit(ctx, event); err != nil {
 		c.logger.Error("outcome event not recorded", "transition", result.Transition, "error", err)
 		c.audit.fail(err)
@@ -123,7 +125,7 @@ func (c *Controller) finish(ctx context.Context, result Outcome, event Event) (O
 	if err := c.store.markAudited(ctx, result.Transition, trustedNow()); err != nil {
 		c.logger.Error("recording audit receipt", "error", err)
 	}
-	crashPoint("after-outcome")
+	fault.CrashPoint("after-outcome")
 	return result, http.StatusOK
 }
 

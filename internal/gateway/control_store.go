@@ -7,6 +7,8 @@ import (
 	"errors"
 	"time"
 	"unicode/utf8"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 )
 
 type blockedAccount struct {
@@ -61,7 +63,7 @@ func (s *store) commitControl(ctx context.Context, t transitionRecord, body json
 			return err
 		}
 	}
-	crashPoint("commit-partway")
+	fault.CrashPoint("commit-partway")
 	if err := insertCommitted(ctx, tx, t, now); err != nil {
 		return err
 	}

@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 )
 
 // openAudit never fails: an unusable file yields a log in the failed state,
@@ -77,7 +79,7 @@ func (a *auditLog) open() (int64, error) {
 	}
 	a.size = info.Size()
 	if incomplete >= 0 {
-		if err := writeAudit(file, []byte("\n")); err != nil {
+		if err := fault.WriteAudit(file, []byte("\n")); err != nil {
 			return -1, err
 		}
 		a.size++
@@ -148,7 +150,7 @@ func (a *auditLog) rotate() (string, error) {
 	if err := os.Rename(a.path, rotated); err != nil {
 		return "", err
 	}
-	crashPoint("audit-after-rename")
+	fault.CrashPoint("audit-after-rename")
 	file, err := os.OpenFile(a.path, os.O_CREATE|os.O_EXCL|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return "", err
