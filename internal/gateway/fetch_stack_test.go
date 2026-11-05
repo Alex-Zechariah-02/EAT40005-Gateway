@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/services"
+	"github.com/Alex-Zechariah-02/apiward/internal/services"
 )
 
 // This test shares the gateway integration package's serial process harness so

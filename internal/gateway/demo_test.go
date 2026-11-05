@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/demoports"
+	"github.com/Alex-Zechariah-02/apiward/internal/demoports"
 )
 
 func demoTestAddress(t *testing.T, base string) string {

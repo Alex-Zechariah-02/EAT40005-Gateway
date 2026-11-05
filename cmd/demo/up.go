@@ -22,7 +22,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/services"
+	"github.com/Alex-Zechariah-02/apiward/internal/services"
 )
 
 // The administrator enrolled by the one-command launcher.

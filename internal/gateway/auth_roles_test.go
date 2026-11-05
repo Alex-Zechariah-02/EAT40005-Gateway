@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	fixture "github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/services/testfixture"
+	fixture "github.com/Alex-Zechariah-02/apiward/internal/services/testfixture"
 )
 
 // Every catalogue subject, and one the policy does not know, calls every

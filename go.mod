@@ -1,4 +1,4 @@
-module github.com/Alex-Zechariah-02/EAT40005-Gateway
+module github.com/Alex-Zechariah-02/apiward
 
 go 1.26.0
 

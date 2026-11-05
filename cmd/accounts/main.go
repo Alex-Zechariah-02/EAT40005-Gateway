@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/services"
+	"github.com/Alex-Zechariah-02/apiward/internal/services"
 )
 
 func main() {

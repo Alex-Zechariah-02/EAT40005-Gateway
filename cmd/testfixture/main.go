@@ -9,7 +9,7 @@ import (
 	"strings"
 	"syscall"
 
-	fixture "github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/services/testfixture"
+	fixture "github.com/Alex-Zechariah-02/apiward/internal/services/testfixture"
 )
 
 func main() {

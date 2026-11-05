@@ -29,8 +29,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/demoports"
-	"github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/services"
+	"github.com/Alex-Zechariah-02/apiward/internal/demoports"
+	"github.com/Alex-Zechariah-02/apiward/internal/services"
 )
 
 // The demonstration addresses. The administrator dashboard and the data plane

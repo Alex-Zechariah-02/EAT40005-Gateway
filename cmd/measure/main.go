@@ -14,8 +14,8 @@ import (
 	"slices"
 	"time"
 
-	"github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/demoports"
-	"github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/services"
+	"github.com/Alex-Zechariah-02/apiward/internal/demoports"
+	"github.com/Alex-Zechariah-02/apiward/internal/services"
 )
 
 const warmupPairs = 3

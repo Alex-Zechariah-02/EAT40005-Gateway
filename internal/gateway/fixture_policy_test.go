@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	fixture "github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/services/testfixture"
+	fixture "github.com/Alex-Zechariah-02/apiward/internal/services/testfixture"
 )
 
 // Body schemas of the fixture writes. They state the request shape the

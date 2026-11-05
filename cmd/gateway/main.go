@@ -5,7 +5,7 @@ package main
 import (
 	"os"
 
-	"github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/gateway"
+	"github.com/Alex-Zechariah-02/apiward/internal/gateway"
 )
 
 func main() { os.Exit(gateway.Main(os.Args[1:])) }

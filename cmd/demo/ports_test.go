@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/demoports"
+	"github.com/Alex-Zechariah-02/apiward/internal/demoports"
 )
 
 func TestDemoAddressesRespectOffset(t *testing.T) {

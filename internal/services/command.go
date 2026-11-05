@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/demoports"
+	"github.com/Alex-Zechariah-02/apiward/internal/demoports"
 )
 
 // Command starts one service. Explicit addresses are already resolved by the

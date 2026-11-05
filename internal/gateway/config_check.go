@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/Alex-Zechariah-02/EAT40005-Gateway/internal/demoports"
+	"github.com/Alex-Zechariah-02/apiward/internal/demoports"
 )
 
 // check resolves defaults and checks every setting the controller does not
