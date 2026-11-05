@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // The lifecycle against the three fixture APIs, whose own receipts
@@ -27,8 +29,8 @@ func TestLifecycleWithFixtures(t *testing.T) {
 		seedHash[f.Service] = f.SeedSHA256
 	}
 	candidate := fixturePolicy(fixtures)
-	candidate.Permits = slices.DeleteFunc(candidate.Permits, func(p Permit) bool { return p == Permit{Role: "CUSTOMER", Operation: "orders.create"} })
-	candidate.Permits = append(candidate.Permits, Permit{Role: "STAFF", Operation: "reports.sales"})
+	candidate.Permits = slices.DeleteFunc(candidate.Permits, func(p policy.Permit) bool { return p == policy.Permit{Role: "CUSTOMER", Operation: "orders.create"} })
+	candidate.Permits = append(candidate.Permits, policy.Permit{Role: "STAFF", Operation: "reports.sales"})
 
 	// probe resets the fixtures, then has a customer create an order and a
 	// member of staff read the sales report, and checks each fixture's

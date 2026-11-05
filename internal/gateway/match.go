@@ -5,12 +5,14 @@ package gateway
 import (
 	"net/http"
 	"strings"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // parseTarget returns the match prefix for "/a/*" targets, or "" for exact
 // targets. Targets must already be canonical.
 func parseTarget(pattern string) (string, bool) {
-	if len(pattern) > maxTargetLength {
+	if len(pattern) > policy.MaxTargetLength {
 		return "", false
 	}
 	path, isPrefix := strings.CutSuffix(pattern, "/*")

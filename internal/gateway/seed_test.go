@@ -8,6 +8,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // Seeding writes test state directly with the production schema. It stands in
@@ -26,14 +28,14 @@ var (
 type seedOptions struct {
 	mode        string
 	highWater   time.Time
-	provisional *Policy
+	provisional *policy.Policy
 	deadline    time.Time
 	version     int // database schema version; default the current one
 }
 
 // seed creates a disposable database whose confirmed revision 1 is policy,
 // with the harness administrator enrolled.
-func seed(t *testing.T, path string, policy Policy, opts seedOptions) {
+func seed(t *testing.T, path string, policy policy.Policy, opts seedOptions) {
 	t.Helper()
 	if opts.mode == "" {
 		opts.mode = modeNormal
@@ -100,7 +102,7 @@ func seed(t *testing.T, path string, policy Policy, opts seedOptions) {
 	}
 }
 
-func revisionArgs(p Policy) []any {
+func revisionArgs(p policy.Policy) []any {
 	document, _ := json.Marshal(p)
 	return []any{document, documentChecksum(document), time.Now().UnixMilli()}
 }

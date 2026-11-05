@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // The five controls run in the native process as in the shared enforcement
@@ -26,7 +28,7 @@ func TestNativeGatewayEnforcesControls(t *testing.T) {
 			p.Operations[i].Body = jsonBody(64, `{"type":"object","additionalProperties":false,"required":["n"],"properties":{"n":{"type":"integer"}}}`)
 			p.Operations[i].Headers = json.RawMessage(`{"type":"object","additionalProperties":true,"required":["X-Mode"],"properties":{"X-Mode":{"type":"string","enum":["fast","safe"]}}}`)
 		case "read-b":
-			p.Operations[i].Rate = &RateRule{Algorithm: "sliding-window", Count: 2, WindowSeconds: 60, Key: "subject"}
+			p.Operations[i].Rate = &policy.RateRule{Algorithm: "sliding-window", Count: 2, WindowSeconds: 60, Key: "subject"}
 		}
 	}
 	seed(t, e.database, p, seedOptions{})

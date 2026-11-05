@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 func TestFetchStoredVersion3IsNotMigrated(t *testing.T) {
@@ -41,7 +43,7 @@ func TestFetchPolicyVersion4(t *testing.T) {
 			"rate":{"algorithm":"sliding-window","count":60,"window_seconds":60,"key":"client_address"}}],
 		"roles":[{"id":"CUSTOMER"}],"permits":[]
 	}`
-	policy, err := DecodePolicy([]byte(document))
+	policy, err := policy.DecodePolicy([]byte(document))
 	if err != nil {
 		t.Fatalf("Fetch v4 policy must decode: %v", err)
 	}

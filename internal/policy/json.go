@@ -1,6 +1,6 @@
 // Bounded JSON decoding.
 
-package gateway
+package policy
 
 import (
 	"bytes"
@@ -11,15 +11,15 @@ import (
 	"unicode/utf8"
 )
 
-// decodeJSON decodes exactly one JSON value into the form the schema library
+// DecodeJSON decodes exactly one JSON value into the form the schema library
 // validates (maps, slices, json.Number, strings, booleans and nil). It
 // rejects invalid UTF-8, repeated member names, data after the value, nesting
-// deeper than maxJSONDepth, more than maxJSONValues values and number
+// deeper than MaxJSONDepth, more than MaxJSONValues values and number
 // literals the library could not compare cheaply. encoding/json alone would
 // keep the last repeated member and replace invalid UTF-8, so the gateway and
 // an upstream could read different documents. It returns the value, or the
 // rejection reason.
-func decodeJSON(data []byte) (any, string) {
+func DecodeJSON(data []byte) (any, string) {
 	if !utf8.Valid(data) || hasLoneSurrogate(data) {
 		return nil, "invalid_encoding"
 	}
@@ -60,7 +60,7 @@ func decodeJSON(data []byte) (any, string) {
 		case json.Delim:
 			if t == '{' || t == '[' {
 				values++
-				if values > maxJSONValues || len(stack) == maxJSONDepth {
+				if values > MaxJSONValues || len(stack) == MaxJSONDepth {
 					return nil, "limit_exceeded"
 				}
 				opened := &container{}
@@ -82,13 +82,13 @@ func decodeJSON(data []byte) (any, string) {
 			}
 		case json.Number:
 			values++
-			if values > maxJSONValues || !isBoundedNumber(t) {
+			if values > MaxJSONValues || !isBoundedNumber(t) {
 				return nil, "limit_exceeded"
 			}
 			value = t
 		default:
 			values++
-			if values > maxJSONValues {
+			if values > MaxJSONValues {
 				return nil, "limit_exceeded"
 			}
 			value = t
@@ -147,7 +147,7 @@ func hasLoneSurrogate(data []byte) bool {
 // isBoundedNumber limits a number literal's length and exponent.
 func isBoundedNumber(number json.Number) bool {
 	literal := string(number)
-	if len(literal) > maxNumberLength {
+	if len(literal) > MaxNumberLength {
 		return false
 	}
 	_, exponent, found := strings.Cut(strings.ToLower(literal), "e")

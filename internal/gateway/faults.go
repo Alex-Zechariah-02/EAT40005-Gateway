@@ -4,7 +4,11 @@
 
 package gateway
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+)
 
 // registerTestRoutes adds the test publication hook: a whole-policy
 // publication for regression tests of the publisher. Production binaries have
@@ -14,7 +18,7 @@ import "net/http"
 func registerTestRoutes(c *Controller, mux *http.ServeMux) {
 	c.route(mux, "POST /test/publish", permManagePolicy, func(w http.ResponseWriter, r *http.Request, who caller) {
 		var change Change
-		if !decodeBody(w, r, maxPolicyBytes, &change) {
+		if !decodeBody(w, r, policy.MaxPolicyBytes, &change) {
 			return
 		}
 		outcome, status := c.Publish(r.Context(), who.admin.Name, change)

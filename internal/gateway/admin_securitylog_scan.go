@@ -13,6 +13,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 var errCursorGone = errors.New("the file the search stopped in is no longer present")
@@ -253,7 +255,7 @@ func encodeSecurityLogCursor(c securityLogCursor) string {
 func decodeSecurityLogCursor(text string) *securityLogCursor {
 	data, err := base64.RawURLEncoding.DecodeString(text)
 	var c securityLogCursor
-	if err != nil || len(data) > 512 || decodeStrict(data, &c) != nil {
+	if err != nil || len(data) > 512 || policy.DecodeStrict(data, &c) != nil {
 		return nil
 	}
 	if c.File == "" || filepath.Base(c.File) != c.File || strings.ContainsAny(c.File, `/\`) || c.Offset < -1 || len(c.First) > 128 {

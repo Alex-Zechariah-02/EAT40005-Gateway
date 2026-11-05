@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // candidateView marks every candidate as not active: staging never changes
@@ -200,7 +202,7 @@ func (c *Controller) handleProvisional(w http.ResponseWriter, r *http.Request, w
 	if err == nil && !found {
 		err = fmt.Errorf("activation of revision %d missing", a.provisional)
 	}
-	var before, after Policy
+	var before, after policy.Policy
 	if err == nil {
 		before, err = c.storedPolicy(ctx, a.confirmed)
 	}
@@ -219,15 +221,15 @@ func (c *Controller) handleProvisional(w http.ResponseWriter, r *http.Request, w
 	writeJSON(w, http.StatusOK, view)
 }
 
-func (c *Controller) storedPolicy(ctx context.Context, id int64) (Policy, error) {
+func (c *Controller) storedPolicy(ctx context.Context, id int64) (policy.Policy, error) {
 	r, found, err := c.store.revision(ctx, id)
 	if err == nil && !found {
 		err = fmt.Errorf("revision %d missing", id)
 	}
 	if err != nil {
-		return Policy{}, err
+		return policy.Policy{}, err
 	}
-	return DecodePolicy(r.Document)
+	return policy.DecodePolicy(r.Document)
 }
 
 // handleActivations lists every provisional base with its final disposition.

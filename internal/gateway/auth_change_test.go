@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // A role removal published while a request is in flight does not change that
@@ -36,7 +38,7 @@ func TestRoleChangeAppliesToNewRequestsOnly(t *testing.T) {
 
 	// The next generation removes alice's role and grants READER the write.
 	next := withoutRole(e.protectedPolicy(), "WRITER")
-	next.Permits = append(next.Permits, Permit{Role: "READER", Operation: "write-a"})
+	next.Permits = append(next.Permits, policy.Permit{Role: "READER", Operation: "write-a"})
 	outcome, code := e.publish(Change{ID: "remove-writer", Expected: 1, Policy: mustJSON(next)})
 	if code != http.StatusOK {
 		t.Fatalf("publish: %d %+v", code, outcome)
@@ -196,9 +198,9 @@ func TestRejectedRoleChangeKeepsMembership(t *testing.T) {
 
 	removal := withoutRole(e.protectedPolicy(), "WRITER")
 	invalid := e.protectedPolicy()
-	invalid.Permits = append(invalid.Permits, Permit{Role: "ADMIN", Operation: "write-a"})
+	invalid.Permits = append(invalid.Permits, policy.Permit{Role: "ADMIN", Operation: "write-a"})
 	duplicate := e.protectedPolicy()
-	duplicate.Roles = append(duplicate.Roles, Role{ID: "READER"})
+	duplicate.Roles = append(duplicate.Roles, policy.Role{ID: "READER"})
 	changes := []struct {
 		change Change
 		status int
@@ -251,7 +253,7 @@ func TestRoleChangeSurvivesCrash(t *testing.T) {
 
 			// Removes WRITER from policy and grants READER the write.
 			next := withoutRole(e.protectedPolicy(), "WRITER")
-			next.Permits = append(next.Permits, Permit{Role: "READER", Operation: "write-a"})
+			next.Permits = append(next.Permits, policy.Permit{Role: "READER", Operation: "write-a"})
 			change := Change{ID: "swap-roles", Expected: 1, Policy: mustJSON(next)}
 			if _, code := e.publish(change); code != 0 {
 				t.Fatalf("publication answered %d instead of crashing", code)

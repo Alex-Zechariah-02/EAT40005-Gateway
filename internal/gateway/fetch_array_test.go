@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 func TestFetchArrayBodiesReachOnlyValidatedUpstream(t *testing.T) {
@@ -77,7 +79,7 @@ func TestFetchArraySchemas(t *testing.T) {
 			if wrapped {
 				body = `{"items":` + body + `}`
 			}
-			document, reason := decodeJSON([]byte(body))
+			document, reason := policy.DecodeJSON([]byte(body))
 			if reason != "" {
 				t.Fatal(reason)
 			}

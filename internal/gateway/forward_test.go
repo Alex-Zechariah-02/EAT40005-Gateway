@@ -12,6 +12,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // These tests serve the enforcement handler with the native reverse proxy as
@@ -29,7 +31,7 @@ var forwardTimeouts = upstreamTimeouts{dial: 2 * time.Second, responseHeader: 5 
 // and serves the enforcement handler with the native proxy, bounded by
 // timeouts, at e.dataAddr, where the harness request helpers send. It returns
 // the controller and the proxy's log.
-func (e *env) serveNative(policy Policy, timeouts upstreamTimeouts) (*Controller, *logBuffer) {
+func (e *env) serveNative(policy policy.Policy, timeouts upstreamTimeouts) (*Controller, *logBuffer) {
 	e.t.Helper()
 	seed(e.t, e.database, policy, seedOptions{})
 	c, _ := e.own(e.controllerConfig())

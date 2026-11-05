@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // auditRecords reads every record of the rotated audit files, oldest first,
@@ -155,7 +157,7 @@ func TestEventsCoverEveryDecisionClass(t *testing.T) {
 	}
 }
 
-func withRate(p Policy, r *RateRule) Policy {
+func withRate(p policy.Policy, r *policy.RateRule) policy.Policy {
 	p.Operations = slices.Clone(p.Operations)
 	for i := range p.Operations {
 		if p.Operations[i].ID == "orders.list" {

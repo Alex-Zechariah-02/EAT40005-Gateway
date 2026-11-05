@@ -6,23 +6,25 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 func adviceGeneration(t *testing.T) *Generation {
 	t.Helper()
-	g, err := effectiveGeneration(Policy{
-		SchemaVersion: schemaVersion, Profile: profileCore,
-		Upstreams: []Upstream{{ID: "A", Dial: "127.0.0.1:9"}},
-		APIs:      []API{{ID: "a", Upstream: "A"}},
-		Operations: []Operation{
+	g, err := effectiveGeneration(policy.Policy{
+		SchemaVersion: policy.SchemaVersion, Profile: policy.ProfileCore,
+		Upstreams: []policy.Upstream{{ID: "A", Dial: "127.0.0.1:9"}},
+		APIs:      []policy.API{{ID: "a", Upstream: "A"}},
+		Operations: []policy.Operation{
 			{ID: "open", API: "a", Method: "GET", Target: "/open", Access: "allow", Auth: "none"},
-			{ID: "limited", API: "a", Method: "GET", Target: "/limited", Access: "allow", Auth: "none", Rate: &RateRule{Algorithm: "sliding-window", Count: 5, WindowSeconds: 60, Key: "client_address"}},
-			{ID: "orphan", API: "a", Method: "GET", Target: "/orphan", Access: "allow", Auth: "required", Rate: &RateRule{Algorithm: "sliding-window", Count: 5, WindowSeconds: 60, Key: "subject"}},
+			{ID: "limited", API: "a", Method: "GET", Target: "/limited", Access: "allow", Auth: "none", Rate: &policy.RateRule{Algorithm: "sliding-window", Count: 5, WindowSeconds: 60, Key: "client_address"}},
+			{ID: "orphan", API: "a", Method: "GET", Target: "/orphan", Access: "allow", Auth: "required", Rate: &policy.RateRule{Algorithm: "sliding-window", Count: 5, WindowSeconds: 60, Key: "subject"}},
 			{ID: "read", API: "a", Method: "GET", Target: "/read", Access: "allow", Auth: "required"},
 			{ID: "off", API: "a", Method: "GET", Target: "/off", Access: "deny", Auth: "none"},
 		},
-		Roles:   []Role{{ID: "READER"}, {ID: "IDLE"}},
-		Permits: []Permit{{Role: "READER", Operation: "read"}},
+		Roles:   []policy.Role{{ID: "READER"}, {ID: "IDLE"}},
+		Permits: []policy.Permit{{Role: "READER", Operation: "read"}},
 	}, 1, time.Time{}, nil)
 	if err != nil {
 		t.Fatal(err)

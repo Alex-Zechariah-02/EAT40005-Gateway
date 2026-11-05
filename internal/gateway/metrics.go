@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 var durationBuckets = [...]float64{.001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10}
@@ -44,7 +46,7 @@ func (m *requestMetrics) record(event requestEvent) {
 		labels.api, labels.operation = "unknown", "unknown"
 	}
 	m.counts[labels]++
-	if m.durations[api] == nil && len(m.durations) >= maxAPIs {
+	if m.durations[api] == nil && len(m.durations) >= policy.MaxAPIs {
 		api = "unknown"
 	}
 	if m.durations[api] == nil {

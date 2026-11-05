@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // compilerVersion is part of every generation identity so that a change in
@@ -61,15 +63,15 @@ type rule struct {
 // returns a complete generation or an error; it never returns a partial one.
 // It has no side effects. A non-zero notAfter is the earliest persisted
 // deadline the generation depends on.
-func Compile(p Policy, revision int64, notAfter time.Time) (*Generation, error) {
-	if p.SchemaVersion != schemaVersion {
-		return nil, invalid("SCHEMA_VERSION_UNSUPPORTED", "schema_version")
+func Compile(p policy.Policy, revision int64, notAfter time.Time) (*Generation, error) {
+	if p.SchemaVersion != policy.SchemaVersion {
+		return nil, policy.Invalid("SCHEMA_VERSION_UNSUPPORTED", "schema_version")
 	}
 	if p.Profile == "" {
-		return nil, invalid("INVALID_VALUE", "profile")
+		return nil, policy.Invalid("INVALID_VALUE", "profile")
 	}
-	if p.Profile != profileCore {
-		return nil, invalid("UNSUPPORTED_FEATURE", "profile")
+	if p.Profile != policy.ProfileCore {
+		return nil, policy.Invalid("UNSUPPORTED_FEATURE", "profile")
 	}
 	if err := checkCounts(p); err != nil {
 		return nil, err
@@ -78,19 +80,19 @@ func Compile(p Policy, revision int64, notAfter time.Time) (*Generation, error) 
 	dials := map[string]string{}
 	usedDials := map[string]bool{}
 	for i, u := range p.Upstreams {
-		if err := checkID(u.ID, "upstreams[%d].id", i); err != nil {
+		if err := policy.CheckID(u.ID, "upstreams[%d].id", i); err != nil {
 			return nil, err
 		}
 		if _, exists := dials[u.ID]; exists {
-			return nil, invalid("DUPLICATE_ID", "upstreams[%d].id", i)
+			return nil, policy.Invalid("DUPLICATE_ID", "upstreams[%d].id", i)
 		}
 		if !isLoopbackDial(u.Dial) {
-			return nil, invalid("INVALID_UPSTREAM", "upstreams[%d].dial", i)
+			return nil, policy.Invalid("INVALID_UPSTREAM", "upstreams[%d].dial", i)
 		}
 		// Two upstream identities for one destination would make receipts
 		// and events ambiguous about which service was reached.
 		if usedDials[u.Dial] {
-			return nil, invalid("INVALID_UPSTREAM", "upstreams[%d].dial", i)
+			return nil, policy.Invalid("INVALID_UPSTREAM", "upstreams[%d].dial", i)
 		}
 		dials[u.ID] = u.Dial
 		usedDials[u.Dial] = true
@@ -98,14 +100,14 @@ func Compile(p Policy, revision int64, notAfter time.Time) (*Generation, error) 
 
 	apiUpstream := map[string]string{}
 	for i, a := range p.APIs {
-		if err := checkID(a.ID, "apis[%d].id", i); err != nil {
+		if err := policy.CheckID(a.ID, "apis[%d].id", i); err != nil {
 			return nil, err
 		}
 		if _, exists := apiUpstream[a.ID]; exists {
-			return nil, invalid("DUPLICATE_ID", "apis[%d].id", i)
+			return nil, policy.Invalid("DUPLICATE_ID", "apis[%d].id", i)
 		}
 		if _, ok := dials[a.Upstream]; !ok {
-			return nil, invalid("UNKNOWN_REFERENCE", "apis[%d].upstream", i)
+			return nil, policy.Invalid("UNKNOWN_REFERENCE", "apis[%d].upstream", i)
 		}
 		apiUpstream[a.ID] = a.Upstream
 	}
@@ -117,28 +119,28 @@ func Compile(p Policy, revision int64, notAfter time.Time) (*Generation, error) 
 	targets := map[string]*target{}
 	rules := map[string]*rule{}
 	for i, op := range p.Operations {
-		if err := checkID(op.ID, "operations[%d].id", i); err != nil {
+		if err := policy.CheckID(op.ID, "operations[%d].id", i); err != nil {
 			return nil, err
 		}
 		if _, exists := rules[op.ID]; exists {
-			return nil, invalid("DUPLICATE_ID", "operations[%d].id", i)
+			return nil, policy.Invalid("DUPLICATE_ID", "operations[%d].id", i)
 		}
 		upstream, ok := apiUpstream[op.API]
 		if !ok {
-			return nil, invalid("UNKNOWN_REFERENCE", "operations[%d].api", i)
+			return nil, policy.Invalid("UNKNOWN_REFERENCE", "operations[%d].api", i)
 		}
-		if !allowedMethods[op.Method] {
-			return nil, invalid("INVALID_METHOD", "operations[%d].method", i)
+		if !policy.AllowedMethods[op.Method] {
+			return nil, policy.Invalid("INVALID_METHOD", "operations[%d].method", i)
 		}
 		prefix, ok := parseTarget(op.Target)
 		if !ok {
-			return nil, invalid("INVALID_TARGET", "operations[%d].target", i)
+			return nil, policy.Invalid("INVALID_TARGET", "operations[%d].target", i)
 		}
 		if op.Access != "allow" && op.Access != "deny" {
-			return nil, invalid("INVALID_VALUE", "operations[%d].access", i)
+			return nil, policy.Invalid("INVALID_VALUE", "operations[%d].access", i)
 		}
 		if op.Auth != "required" && op.Auth != "none" {
-			return nil, invalid("INVALID_VALUE", "operations[%d].auth", i)
+			return nil, policy.Invalid("INVALID_VALUE", "operations[%d].auth", i)
 		}
 
 		t := targets[op.Target]
@@ -147,7 +149,7 @@ func Compile(p Policy, revision int64, notAfter time.Time) (*Generation, error) 
 			targets[op.Target] = t
 		}
 		if _, exists := t.methods[op.Method]; exists {
-			return nil, invalid("DUPLICATE_OPERATION", "operations[%d]", i)
+			return nil, policy.Invalid("DUPLICATE_OPERATION", "operations[%d]", i)
 		}
 		r := &rule{
 			operation: op.ID,
@@ -197,7 +199,7 @@ func Compile(p Policy, revision int64, notAfter time.Time) (*Generation, error) 
 // permits, so no authenticated request can pass RBAC, and no
 // operation is both allowed and public. Only such a policy may become the
 // first base of an installation or the base that ends a recovery.
-func denyAll(p Policy) bool {
+func denyAll(p policy.Policy) bool {
 	if len(p.Permits) > 0 {
 		return false
 	}
@@ -211,11 +213,11 @@ func denyAll(p Policy) bool {
 
 // compileControls compiles an operation's body schema, header schema and rate
 // rule into its rule. A rule that cannot be compiled rejects the whole policy.
-func compileControls(op Operation, i int, r *rule) error {
+func compileControls(op policy.Operation, i int, r *rule) error {
 	var err error
 	if op.Body != nil {
-		if op.Body.MaxBytes <= 0 || op.Body.MaxBytes > maxBodyLimit {
-			return invalid("INVALID_VALUE", "operations[%d].body.max_bytes", i)
+		if op.Body.MaxBytes <= 0 || op.Body.MaxBytes > policy.MaxBodyLimit {
+			return policy.Invalid("INVALID_VALUE", "operations[%d].body.max_bytes", i)
 		}
 		schema, _, err := compileSchema(op.Body.Schema, schemaBody, fmt.Sprintf("operations[%d].body.schema", i))
 		if err != nil {
@@ -231,7 +233,7 @@ func compileControls(op Operation, i int, r *rule) error {
 	}
 	if op.Rate != nil {
 		if r.public && op.Rate.Key == rateKeySubject {
-			return invalid("INVALID_VALUE", "operations[%d].rate", i)
+			return policy.Invalid("INVALID_VALUE", "operations[%d].rate", i)
 		}
 		r.rate, err = compileRate(*op.Rate, fmt.Sprintf("operations[%d].rate", i))
 		if err != nil {
@@ -245,7 +247,7 @@ func compileControls(op Operation, i int, r *rule) error {
 // generationID identifies a generation by its base revision, the overrides
 // applied to it (as "+o<id>.<id>…") and a digest of the compiled document and
 // deadline. A generation without overrides keeps the form "r<revision>-…".
-func generationID(p Policy, revision int64, notAfter time.Time, overrides []int64) string {
+func generationID(p policy.Policy, revision int64, notAfter time.Time, overrides []int64) string {
 	document, _ := json.Marshal(p)
 	sum := sha256.New()
 	fmt.Fprintf(sum, "%s|%d|%d|", compilerVersion, revision, notAfter.UnixMilli())

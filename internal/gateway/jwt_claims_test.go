@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 func TestClaimProfile(t *testing.T) {
@@ -46,7 +48,7 @@ func TestClaimProfile(t *testing.T) {
 		{"sub with a space", claimsAt(map[string]any{"sub": "staff 01"}), "invalid_claims"},
 		{"sub with a newline", claimsAt(map[string]any{"sub": "staff-01\n"}), "invalid_claims"},
 		{"sub outside ASCII", claimsAt(map[string]any{"sub": "staff-ö1"}), "invalid_claims"},
-		{"overlong sub", claimsAt(map[string]any{"sub": strings.Repeat("s", maxSubjectLength+1)}), "invalid_claims"},
+		{"overlong sub", claimsAt(map[string]any{"sub": strings.Repeat("s", policy.MaxSubjectLength+1)}), "invalid_claims"},
 
 		{"no exp", claimsAt(map[string]any{"exp": nil}), "invalid_claims"},
 		{"exp a string", claimsAt(map[string]any{"exp": "1800000600"}), "invalid_claims"},

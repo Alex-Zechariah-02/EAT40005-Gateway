@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // These tests run the enforcement handler under a plain net/http server in
@@ -76,7 +78,7 @@ func (f *memoryForwarder) setRespond(respond func(w http.ResponseWriter, r *http
 // serveEnforcement seeds e's database with policy, owns its controller and
 // serves the enforcement handler, with the global body ceiling maxBodyBytes
 // (0: the default), at e.dataAddr, where the harness request helpers send.
-func (e *env) serveEnforcement(policy Policy, maxBodyBytes int64) (*Controller, *Handler, *memoryForwarder) {
+func (e *env) serveEnforcement(policy policy.Policy, maxBodyBytes int64) (*Controller, *Handler, *memoryForwarder) {
 	e.t.Helper()
 	seed(e.t, e.database, policy, seedOptions{})
 	c, _ := e.own(e.controllerConfig())

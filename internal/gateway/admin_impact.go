@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"slices"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // candidateGeneration compiles a stored draft with the active overrides,
@@ -23,7 +25,7 @@ func (c *Controller) candidateGeneration(w http.ResponseWriter, r *http.Request,
 		adminError(w, http.StatusNotFound, "not_found", "")
 		return nil, nil, false
 	}
-	policy, err := DecodePolicy(stored.Document)
+	policy, err := policy.DecodePolicy(stored.Document)
 	if err != nil {
 		adminError(w, http.StatusUnprocessableEntity, "candidate_invalid", "")
 		return nil, nil, false

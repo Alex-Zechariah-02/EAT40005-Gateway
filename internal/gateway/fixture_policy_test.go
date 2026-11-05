@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 	fixture "github.com/Alex-Zechariah-02/apiward/internal/services/testfixture"
 )
 
@@ -26,28 +27,28 @@ const (
 // fixtureRate is the rate rule on every authenticated fixture operation. It
 // is wide enough that no catalogue replay reaches it; rate tests use their
 // own, tighter rules.
-func fixtureRate() *RateRule {
-	return &RateRule{Algorithm: "sliding-window", Count: 100, WindowSeconds: 60, Key: "subject"}
+func fixtureRate() *policy.RateRule {
+	return &policy.RateRule{Algorithm: "sliding-window", Count: 100, WindowSeconds: 60, Key: "subject"}
 }
 
 // fixturePolicy is the gateway policy for the three fixtures. It is written
 // here by hand from the fixture contract, not generated from the catalogue,
 // so a comparison between the two is meaningful.
-func fixturePolicy(fixtures map[string]*fixtureProcess) Policy {
-	return Policy{
-		SchemaVersion: schemaVersion,
-		Profile:       profileCore,
-		Upstreams: []Upstream{
+func fixturePolicy(fixtures map[string]*fixtureProcess) policy.Policy {
+	return policy.Policy{
+		SchemaVersion: policy.SchemaVersion,
+		Profile:       policy.ProfileCore,
+		Upstreams: []policy.Upstream{
 			{ID: "orders-svc", Dial: fixtures["orders"].addr},
 			{ID: "inventory-svc", Dial: fixtures["inventory"].addr},
 			{ID: "reports-svc", Dial: fixtures["reports"].addr},
 		},
-		APIs: []API{
+		APIs: []policy.API{
 			{ID: "orders", Upstream: "orders-svc"},
 			{ID: "inventory", Upstream: "inventory-svc"},
 			{ID: "reports", Upstream: "reports-svc"},
 		},
-		Operations: []Operation{
+		Operations: []policy.Operation{
 			{ID: "orders.list", API: "orders", Method: "GET", Target: "/orders", Access: "allow", Auth: "required", Rate: fixtureRate()},
 			{ID: "orders.get", API: "orders", Method: "GET", Target: "/orders/*", Access: "allow", Auth: "required", Rate: fixtureRate()},
 			{ID: "orders.create", API: "orders", Method: "POST", Target: "/orders", Access: "allow", Auth: "required",
@@ -59,8 +60,8 @@ func fixturePolicy(fixtures map[string]*fixtureProcess) Policy {
 			{ID: "reports.sales", API: "reports", Method: "GET", Target: "/reports/sales", Access: "allow", Auth: "required", Rate: fixtureRate()},
 			{ID: "reports.summary", API: "reports", Method: "GET", Target: "/reports/summary", Access: "allow", Auth: "required", Rate: fixtureRate()},
 		},
-		Roles: []Role{{ID: "CUSTOMER"}, {ID: "STAFF"}, {ID: "MANAGER"}},
-		Permits: []Permit{
+		Roles: []policy.Role{{ID: "CUSTOMER"}, {ID: "STAFF"}, {ID: "MANAGER"}},
+		Permits: []policy.Permit{
 			{Role: "STAFF", Operation: "orders.list"},
 			{Role: "MANAGER", Operation: "orders.list"},
 			{Role: "CUSTOMER", Operation: "orders.get"},
@@ -117,7 +118,7 @@ func TestPolicyAgreesWithCatalogue(t *testing.T) {
 	for _, permit := range p.Permits {
 		roles[permit.Operation] = append(roles[permit.Operation], permit.Role)
 	}
-	operations := map[string]Operation{}
+	operations := map[string]policy.Operation{}
 	for _, op := range p.Operations {
 		operations[op.ID] = op
 	}

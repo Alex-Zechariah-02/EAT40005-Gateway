@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // Concurrent allowed and denied requests while publications move API a
@@ -98,12 +100,12 @@ func TestNativeForwardingUnderConcurrency(t *testing.T) {
 // tunnels and protocol switches, reach no upstream.
 func TestNativeForwardingRoutingTable(t *testing.T) {
 	e := newEnv(t)
-	policy := Policy{
-		SchemaVersion: schemaVersion,
-		Profile:       profileCore,
-		Upstreams:     []Upstream{{ID: "A", Dial: e.a.addr}, {ID: "B", Dial: e.b.addr}},
-		APIs:          []API{{ID: "orders", Upstream: "A"}, {ID: "reports", Upstream: "B"}},
-		Operations: []Operation{
+	policy := policy.Policy{
+		SchemaVersion: policy.SchemaVersion,
+		Profile:       policy.ProfileCore,
+		Upstreams:     []policy.Upstream{{ID: "A", Dial: e.a.addr}, {ID: "B", Dial: e.b.addr}},
+		APIs:          []policy.API{{ID: "orders", Upstream: "A"}, {ID: "reports", Upstream: "B"}},
+		Operations: []policy.Operation{
 			{ID: "reports", API: "reports", Method: "GET", Target: "/reports", Access: "allow", Auth: "none"},
 			{ID: "order", API: "orders", Method: "GET", Target: "/orders/*", Access: "allow", Auth: "none"},
 			{ID: "create", API: "orders", Method: "POST", Target: "/orders", Access: "allow", Auth: "none", Body: jsonBody(1024, anyObject)},
@@ -190,13 +192,13 @@ func TestNativeForwardingRefusalsReachNoUpstream(t *testing.T) {
 	e := newEnv(t)
 	p := e.protectedPolicy()
 	p.Operations = append(p.Operations,
-		Operation{ID: "strict", API: "a", Method: "POST", Target: "/a/strict", Access: "allow", Auth: "required",
+		policy.Operation{ID: "strict", API: "a", Method: "POST", Target: "/a/strict", Access: "allow", Auth: "required",
 			Body: jsonBody(1024, `{"type":"object","additionalProperties":true,"required":["n"],"properties":{"n":{"type":"integer"}}}`)},
-		Operation{ID: "limited", API: "a", Method: "GET", Target: "/a/limited", Access: "allow", Auth: "required", Rate: rate(3, 60)},
-		Operation{ID: "probe", API: "b", Method: "GET", Target: "/b/probe", Access: "allow", Auth: "none",
+		policy.Operation{ID: "limited", API: "a", Method: "GET", Target: "/a/limited", Access: "allow", Auth: "required", Rate: rate(3, 60)},
+		policy.Operation{ID: "probe", API: "b", Method: "GET", Target: "/b/probe", Access: "allow", Auth: "none",
 			Headers: json.RawMessage(`{"type":"object","additionalProperties":true,"required":["X-Probe"],"properties":{"X-Probe":{"type":"string","enum":["on"]}}}`)},
 	)
-	p.Permits = append(p.Permits, Permit{Role: "WRITER", Operation: "strict"}, Permit{Role: "WRITER", Operation: "limited"})
+	p.Permits = append(p.Permits, policy.Permit{Role: "WRITER", Operation: "strict"}, policy.Permit{Role: "WRITER", Operation: "limited"})
 	c, logs := e.serveNative(p, forwardTimeouts)
 	token := issuer.tokenFor(t, "alice")
 	segments := strings.Split(token, ".")

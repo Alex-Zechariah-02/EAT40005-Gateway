@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 func (e *env) get(path string, header ...string) (int, string) {
@@ -86,8 +88,8 @@ func (e *env) rawResponse(request string) (*http.Response, string) {
 const anyObject = `{"type":"object","additionalProperties":true}`
 
 // jsonBody declares a JSON body with the given size limit and schema.
-func jsonBody(maxBytes int64, schema string) *BodyRule {
-	return &BodyRule{MaxBytes: maxBytes, Schema: json.RawMessage(schema)}
+func jsonBody(maxBytes int64, schema string) *policy.BodyRule {
+	return &policy.BodyRule{MaxBytes: maxBytes, Schema: json.RawMessage(schema)}
 }
 
 func mustJSON(v any) json.RawMessage {

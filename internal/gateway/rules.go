@@ -5,6 +5,8 @@ package gateway
 import (
 	"net/http"
 	"strings"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 const (
@@ -28,18 +30,18 @@ type rateRule struct {
 	window int64 // milliseconds
 }
 
-func compileRate(rule RateRule, field string) (*rateRule, error) {
+func compileRate(rule policy.RateRule, field string) (*rateRule, error) {
 	if rule.Algorithm != rateAlgorithm {
-		return nil, invalid("UNSUPPORTED_FEATURE", "%s.algorithm", field)
+		return nil, policy.Invalid("UNSUPPORTED_FEATURE", "%s.algorithm", field)
 	}
 	if rule.Key != rateKeySubject && rule.Key != rateKeyAddress {
-		return nil, invalid("UNSUPPORTED_FEATURE", "%s.key", field)
+		return nil, policy.Invalid("UNSUPPORTED_FEATURE", "%s.key", field)
 	}
 	if rule.Count < 1 || rule.Count > maxRateCount {
-		return nil, invalid("INVALID_VALUE", "%s.count", field)
+		return nil, policy.Invalid("INVALID_VALUE", "%s.count", field)
 	}
 	if rule.WindowSeconds < 1 || rule.WindowSeconds > maxRateWindowSec {
-		return nil, invalid("INVALID_VALUE", "%s.window_seconds", field)
+		return nil, policy.Invalid("INVALID_VALUE", "%s.window_seconds", field)
 	}
 	return &rateRule{count: rule.Count, window: rule.WindowSeconds * 1000}, nil
 }

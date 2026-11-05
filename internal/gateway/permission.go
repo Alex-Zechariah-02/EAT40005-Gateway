@@ -5,6 +5,8 @@ package gateway
 import (
 	"fmt"
 	"strings"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // permission is a set of administrator rights. Each admin route requires
@@ -60,7 +62,7 @@ func parsePermissions(list string) (permission, error) {
 
 // Administrator names are short lowercase identifiers, safe to log.
 func isAdminName(name string) bool {
-	if name == "" || len(name) > maxIDLength {
+	if name == "" || len(name) > policy.MaxIDLength {
 		return false
 	}
 	for i := 0; i < len(name); i++ {

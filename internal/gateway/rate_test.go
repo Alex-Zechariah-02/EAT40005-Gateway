@@ -9,10 +9,12 @@ import (
 	"math/rand/v2"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
-func rate(count, windowSeconds int64) *RateRule {
-	return &RateRule{Algorithm: "sliding-window", Count: count, WindowSeconds: windowSeconds, Key: "subject"}
+func rate(count, windowSeconds int64) *policy.RateRule {
+	return &policy.RateRule{Algorithm: "sliding-window", Count: count, WindowSeconds: windowSeconds, Key: "subject"}
 }
 
 // Rate rules compile only with a supported algorithm and key, a positive
@@ -35,28 +37,28 @@ func TestRateRuleCompilation(t *testing.T) {
 
 	cases := []struct {
 		name  string
-		rule  RateRule
+		rule  policy.RateRule
 		code  string
 		field string
 	}{
-		{"zero count", RateRule{"sliding-window", 0, 60, "subject"}, "INVALID_VALUE", "operations[0].rate.count"},
-		{"negative count", RateRule{"sliding-window", -1, 60, "subject"}, "INVALID_VALUE", "operations[0].rate.count"},
-		{"count above the bound", RateRule{"sliding-window", maxRateCount + 1, 60, "subject"}, "INVALID_VALUE", "operations[0].rate.count"},
-		{"zero window", RateRule{"sliding-window", 10, 0, "subject"}, "INVALID_VALUE", "operations[0].rate.window_seconds"},
-		{"negative window", RateRule{"sliding-window", 10, -60, "subject"}, "INVALID_VALUE", "operations[0].rate.window_seconds"},
-		{"window above the bound", RateRule{"sliding-window", 10, maxRateWindowSec + 1, "subject"}, "INVALID_VALUE", "operations[0].rate.window_seconds"},
-		{"token bucket", RateRule{"token-bucket", 10, 60, "subject"}, "UNSUPPORTED_FEATURE", "operations[0].rate.algorithm"},
-		{"fixed window", RateRule{"fixed-window", 10, 60, "subject"}, "UNSUPPORTED_FEATURE", "operations[0].rate.algorithm"},
-		{"missing algorithm", RateRule{"", 10, 60, "subject"}, "UNSUPPORTED_FEATURE", "operations[0].rate.algorithm"},
-		{"unsupported client_ip key", RateRule{"sliding-window", 10, 60, "client_ip"}, "UNSUPPORTED_FEATURE", "operations[0].rate.key"},
-		{"header key", RateRule{"sliding-window", 10, 60, "X-Forwarded-For"}, "UNSUPPORTED_FEATURE", "operations[0].rate.key"},
-		{"missing key", RateRule{"sliding-window", 10, 60, ""}, "UNSUPPORTED_FEATURE", "operations[0].rate.key"},
+		{"zero count", policy.RateRule{Algorithm: "sliding-window", Count: 0, WindowSeconds: 60, Key: "subject"}, "INVALID_VALUE", "operations[0].rate.count"},
+		{"negative count", policy.RateRule{Algorithm: "sliding-window", Count: -1, WindowSeconds: 60, Key: "subject"}, "INVALID_VALUE", "operations[0].rate.count"},
+		{"count above the bound", policy.RateRule{Algorithm: "sliding-window", Count: maxRateCount + 1, WindowSeconds: 60, Key: "subject"}, "INVALID_VALUE", "operations[0].rate.count"},
+		{"zero window", policy.RateRule{Algorithm: "sliding-window", Count: 10, WindowSeconds: 0, Key: "subject"}, "INVALID_VALUE", "operations[0].rate.window_seconds"},
+		{"negative window", policy.RateRule{Algorithm: "sliding-window", Count: 10, WindowSeconds: -60, Key: "subject"}, "INVALID_VALUE", "operations[0].rate.window_seconds"},
+		{"window above the bound", policy.RateRule{Algorithm: "sliding-window", Count: 10, WindowSeconds: maxRateWindowSec + 1, Key: "subject"}, "INVALID_VALUE", "operations[0].rate.window_seconds"},
+		{"token bucket", policy.RateRule{Algorithm: "token-bucket", Count: 10, WindowSeconds: 60, Key: "subject"}, "UNSUPPORTED_FEATURE", "operations[0].rate.algorithm"},
+		{"fixed window", policy.RateRule{Algorithm: "fixed-window", Count: 10, WindowSeconds: 60, Key: "subject"}, "UNSUPPORTED_FEATURE", "operations[0].rate.algorithm"},
+		{"missing algorithm", policy.RateRule{Algorithm: "", Count: 10, WindowSeconds: 60, Key: "subject"}, "UNSUPPORTED_FEATURE", "operations[0].rate.algorithm"},
+		{"unsupported client_ip key", policy.RateRule{Algorithm: "sliding-window", Count: 10, WindowSeconds: 60, Key: "client_ip"}, "UNSUPPORTED_FEATURE", "operations[0].rate.key"},
+		{"header key", policy.RateRule{Algorithm: "sliding-window", Count: 10, WindowSeconds: 60, Key: "X-Forwarded-For"}, "UNSUPPORTED_FEATURE", "operations[0].rate.key"},
+		{"missing key", policy.RateRule{Algorithm: "sliding-window", Count: 10, WindowSeconds: 60, Key: ""}, "UNSUPPORTED_FEATURE", "operations[0].rate.key"},
 	}
 	for _, tc := range cases {
 		p := threeAPIPolicy()
 		p.Operations[0].Rate = &tc.rule
 		g, err := Compile(p, 1, time.Time{})
-		policyErr, ok := errors.AsType[*PolicyError](err)
+		policyErr, ok := errors.AsType[*policy.PolicyError](err)
 		if g != nil || !ok || policyErr.Code != tc.code || policyErr.Field != tc.field {
 			t.Errorf("%s: generation %v error %v, want %s at %s", tc.name, g != nil, err, tc.code, tc.field)
 		}
@@ -65,7 +67,7 @@ func TestRateRuleCompilation(t *testing.T) {
 	// A public operation has no verified subject to count per account.
 	p = threeAPIPolicy()
 	p.Operations[3].Rate = rate(10, 60)
-	if err := compileErr(p); errorCode(err) != "INVALID_VALUE" || err.(*PolicyError).Field != "operations[3].rate" {
+	if err := compileErr(p); errorCode(err) != "INVALID_VALUE" || err.(*policy.PolicyError).Field != "operations[3].rate" {
 		t.Errorf("rate rule on a public operation: %v", err)
 	}
 

@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // Activation is refused before anything is committed when the
@@ -49,12 +51,12 @@ func TestActivationRefusals(t *testing.T) {
 	// Stored candidates that bypassed staging, as a damaged or outdated row
 	// would: each is fully recompiled at activation and refused.
 	e.stop()
-	crafted := map[string]Policy{}
+	crafted := map[string]policy.Policy{}
 	duplicateRoute := e.cpaCandidate()
-	duplicateRoute.Operations = append(duplicateRoute.Operations, Operation{ID: "read-a-again", API: "b", Method: "GET", Target: "/a/*", Access: "allow", Auth: "none"})
+	duplicateRoute.Operations = append(duplicateRoute.Operations, policy.Operation{ID: "read-a-again", API: "b", Method: "GET", Target: "/a/*", Access: "allow", Auth: "none"})
 	crafted["DUPLICATE_OPERATION"] = duplicateRoute
 	unknownRole := e.cpaCandidate()
-	unknownRole.Permits = append(unknownRole.Permits, Permit{Role: "ADMIN", Operation: "read-a"})
+	unknownRole.Permits = append(unknownRole.Permits, policy.Permit{Role: "ADMIN", Operation: "read-a"})
 	crafted["UNKNOWN_REFERENCE"] = unknownRole
 	external := e.cpaCandidate()
 	external.Upstreams[2].Dial = "10.0.0.1:80"

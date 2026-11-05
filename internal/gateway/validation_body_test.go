@@ -14,6 +14,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // sizedBody returns a JSON object of exactly size bytes whose only member
@@ -75,9 +77,9 @@ func TestBodyCeilingAppliesToActualBytes(t *testing.T) {
 	e := newEnv(t)
 	p := e.policy(e.a, false)
 	p.Operations = append(p.Operations,
-		Operation{ID: "large", API: "a", Method: "POST", Target: "/a/large", Access: "allow", Auth: "none", Body: jsonBody(32768, anyObject)},
-		Operation{ID: "small", API: "a", Method: "POST", Target: "/a/small", Access: "allow", Auth: "none", Body: jsonBody(8192, anyObject)},
-		Operation{ID: "equal", API: "a", Method: "POST", Target: "/a/equal", Access: "allow", Auth: "none", Body: jsonBody(16384, anyObject)},
+		policy.Operation{ID: "large", API: "a", Method: "POST", Target: "/a/large", Access: "allow", Auth: "none", Body: jsonBody(32768, anyObject)},
+		policy.Operation{ID: "small", API: "a", Method: "POST", Target: "/a/small", Access: "allow", Auth: "none", Body: jsonBody(8192, anyObject)},
+		policy.Operation{ID: "equal", API: "a", Method: "POST", Target: "/a/equal", Access: "allow", Auth: "none", Body: jsonBody(16384, anyObject)},
 	)
 	seed(t, e.database, p, seedOptions{})
 	e.start(binaries.plain)

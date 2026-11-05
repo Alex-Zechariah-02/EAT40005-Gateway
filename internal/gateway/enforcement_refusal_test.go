@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // Every refusal is decided at its stage, answered with its status, error code
@@ -19,12 +21,12 @@ func TestEnforcementRefusals(t *testing.T) {
 	e := newEnv(t)
 	p := e.protectedPolicy()
 	p.Operations = append(p.Operations,
-		Operation{ID: "strict", API: "a", Method: "POST", Target: "/a/strict", Access: "allow", Auth: "required",
+		policy.Operation{ID: "strict", API: "a", Method: "POST", Target: "/a/strict", Access: "allow", Auth: "required",
 			Body: jsonBody(1024, `{"type":"object","additionalProperties":true,"required":["n"],"properties":{"n":{"type":"integer"}}}`)},
-		Operation{ID: "probe", API: "a", Method: "GET", Target: "/a/probe", Access: "allow", Auth: "none",
+		policy.Operation{ID: "probe", API: "a", Method: "GET", Target: "/a/probe", Access: "allow", Auth: "none",
 			Headers: json.RawMessage(`{"type":"object","additionalProperties":true,"required":["X-Probe"],"properties":{"X-Probe":{"type":"string","enum":["on"]}}}`)},
 	)
-	p.Permits = append(p.Permits, Permit{Role: "WRITER", Operation: "strict"})
+	p.Permits = append(p.Permits, policy.Permit{Role: "WRITER", Operation: "strict"})
 	controller, _, f := e.serveEnforcement(p, 0)
 	blocked := blockedAccounts{"carol": {Subject: "carol", Reason: "test containment"}}
 	controller.blocked.Store(&blocked)
@@ -151,9 +153,9 @@ func TestEnforcementBodyCeiling(t *testing.T) {
 	e := newEnv(t)
 	p := e.policy(e.a, false)
 	p.Operations = append(p.Operations,
-		Operation{ID: "large", API: "a", Method: "POST", Target: "/a/large", Access: "allow", Auth: "none", Body: jsonBody(4096, anyObject)},
-		Operation{ID: "small", API: "a", Method: "POST", Target: "/a/small", Access: "allow", Auth: "none", Body: jsonBody(1024, anyObject)},
-		Operation{ID: "equal", API: "a", Method: "POST", Target: "/a/equal", Access: "allow", Auth: "none", Body: jsonBody(2048, anyObject)},
+		policy.Operation{ID: "large", API: "a", Method: "POST", Target: "/a/large", Access: "allow", Auth: "none", Body: jsonBody(4096, anyObject)},
+		policy.Operation{ID: "small", API: "a", Method: "POST", Target: "/a/small", Access: "allow", Auth: "none", Body: jsonBody(1024, anyObject)},
+		policy.Operation{ID: "equal", API: "a", Method: "POST", Target: "/a/equal", Access: "allow", Auth: "none", Body: jsonBody(2048, anyObject)},
 	)
 	const global = 2048
 	_, _, f := e.serveEnforcement(p, global)
@@ -235,7 +237,7 @@ func TestEnforcementRateLimit(t *testing.T) {
 	}
 
 	next := p
-	next.Roles = append(slices.Clone(p.Roles), Role{ID: "OTHER"})
+	next.Roles = append(slices.Clone(p.Roles), policy.Role{ID: "OTHER"})
 	if outcome, status := c.Publish(context.Background(), "test", Change{ID: "rate-continuity", Expected: 1, Policy: mustJSON(next)}); status != http.StatusOK {
 		t.Fatalf("publication: %d %+v", status, outcome)
 	}

@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 type blockedAccount struct {
@@ -41,7 +42,7 @@ func (s *store) blockedAccounts(ctx context.Context) (blockedAccounts, error) {
 		if err := rows.Scan(&entry.Subject, &entry.Reason, &entry.BlockedBy, &at); err != nil {
 			return nil, err
 		}
-		if !isSubjectID(entry.Subject) || !isAdminName(entry.BlockedBy) || !validBlockReason(entry.Reason) {
+		if !policy.IsSubjectID(entry.Subject) || !isAdminName(entry.BlockedBy) || !validBlockReason(entry.Reason) {
 			return nil, errors.New("invalid blocked account")
 		}
 		entry.BlockedAt = time.UnixMilli(at).UTC()

@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // The access checker answers with the request handler's own matching and
@@ -68,9 +70,9 @@ func TestAdminAccessCheck(t *testing.T) {
 	}
 
 	// A draft is compiled and checked without being activated.
-	policy := e.protectedPolicy()
-	policy.Permits = append(policy.Permits, Permit{Role: "READER", Operation: "write-a"})
-	code, staged, body := e.stage(admin, policy, `"r1"`, "access-check-stage-1")
+	widened := e.protectedPolicy()
+	widened.Permits = append(widened.Permits, policy.Permit{Role: "READER", Operation: "write-a"})
+	code, staged, body := e.stage(admin, widened, `"r1"`, "access-check-stage-1")
 	if code != 201 {
 		t.Fatalf("stage: %d %s", code, body)
 	}

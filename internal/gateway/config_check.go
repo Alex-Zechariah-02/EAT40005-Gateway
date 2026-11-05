@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/demoports"
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // check resolves defaults and checks every setting the controller does not
@@ -110,7 +111,7 @@ func (f nativeFile) check() (nativeConfig, error) {
 	if cfg.controller.AuditMaxFiles, err = numberSetting("gateway.audit_max_files", g.AuditMaxFiles, defaultAuditFiles, 2, maxAuditFiles); err != nil {
 		return nativeConfig{}, err
 	}
-	if cfg.maxBodyBytes, err = numberSetting("data.max_body_bytes", d.MaxBodyBytes, defaultMaxBodyBytes, 1, maxBodyLimit); err != nil {
+	if cfg.maxBodyBytes, err = numberSetting("data.max_body_bytes", d.MaxBodyBytes, defaultMaxBodyBytes, 1, policy.MaxBodyLimit); err != nil {
 		return nativeConfig{}, err
 	}
 	if cfg.headerLimit, err = numberSetting("data.max_header_bytes", d.MaxHeaderBytes, defaultHeaderBytes, minHeaderBytes, maxHeaderBytes); err != nil {

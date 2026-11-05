@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // These tests cover temporary overrides: the request grammar and the
@@ -108,7 +110,7 @@ func (e *env) probe(subject, method, path string) int {
 }
 
 func overrideErrorCode(err error) string {
-	if policyErr, ok := errors.AsType[*PolicyError](err); ok {
+	if policyErr, ok := errors.AsType[*policy.PolicyError](err); ok {
 		return policyErr.Code + "@" + policyErr.Field
 	}
 	return fmt.Sprint(err)
@@ -163,7 +165,7 @@ func TestOverrideRequestGrammar(t *testing.T) {
 		{"path as operation", OverrideRequest{Type: overrideException, Control: controlPermit, Operation: "/a/*", Role: new("READER"), ExpiresInSeconds: 60}, "INVALID_VALUE@operation"},
 		{"method and path as operation", OverrideRequest{Type: overrideException, Control: controlPermit, Operation: "POST /a/item", Role: new("READER"), ExpiresInSeconds: 60}, "INVALID_VALUE@operation"},
 		{"encoded operation", OverrideRequest{Type: overrideException, Control: controlPermit, Operation: "write%2Da", Role: new("READER"), ExpiresInSeconds: 60}, "INVALID_VALUE@operation"},
-		{"oversized operation", OverrideRequest{Type: overrideContainment, Control: controlOperation, Operation: strings.Repeat("a", maxIDLength+1), ExpiresInSeconds: 60}, "INVALID_VALUE@operation"},
+		{"oversized operation", OverrideRequest{Type: overrideContainment, Control: controlOperation, Operation: strings.Repeat("a", policy.MaxIDLength+1), ExpiresInSeconds: 60}, "INVALID_VALUE@operation"},
 		{"permit without role", OverrideRequest{Type: overrideException, Control: controlPermit, Operation: "write-a", ExpiresInSeconds: 60}, "INVALID_VALUE@role"},
 		{"empty role", withRole(permit, ""), "INVALID_VALUE@role"},
 		{"role with a line break", withRole(permit, "READER\r\nX"), "INVALID_VALUE@role"},

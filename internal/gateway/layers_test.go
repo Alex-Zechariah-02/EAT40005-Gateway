@@ -14,7 +14,8 @@ import (
 // layers lists, for each internal package, the internal packages it may import.
 var layers = map[string][]string{
 	"fault":   nil,
-	"gateway": {"fault"},
+	"policy":  nil,
+	"gateway": {"fault", "policy"},
 }
 
 // unlayered packages are not part of the gateway's layering.

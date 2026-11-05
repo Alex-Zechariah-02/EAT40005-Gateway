@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // rawExchange sends a request exactly as given and returns the status and
@@ -185,7 +187,7 @@ func TestValidationThroughGateway(t *testing.T) {
 // keywordPolicy is the receiver test policy with a richer schema and header
 // schema on POST /a/item, a header-only bodyless operation, and a large-body
 // operation for decoder limits.
-func (e *env) keywordPolicy() Policy {
+func (e *env) keywordPolicy() policy.Policy {
 	p := e.policy(e.a, false)
 	for i := range p.Operations {
 		if p.Operations[i].ID == "write-a" {
@@ -199,9 +201,9 @@ func (e *env) keywordPolicy() Policy {
 		}
 	}
 	p.Operations = append(p.Operations,
-		Operation{ID: "probe", API: "a", Method: "GET", Target: "/a/probe", Access: "allow", Auth: "none",
+		policy.Operation{ID: "probe", API: "a", Method: "GET", Target: "/a/probe", Access: "allow", Auth: "none",
 			Headers: json.RawMessage(`{"type":"object","additionalProperties":true,"required":["X-Probe"],"properties":{"X-Probe":{"type":"string","enum":["on"]}}}`)},
-		Operation{ID: "bulk", API: "a", Method: "POST", Target: "/a/bulk", Access: "allow", Auth: "none", Body: jsonBody(16000, anyObject)},
+		policy.Operation{ID: "bulk", API: "a", Method: "POST", Target: "/a/bulk", Access: "allow", Auth: "none", Body: jsonBody(16000, anyObject)},
 	)
 	return p
 }
@@ -243,8 +245,8 @@ func TestSchemaKeywordsThroughGateway(t *testing.T) {
 		{"repeated declared header", item(key+key, `{"kind":"alpha","count":1}`), 400, "repeated_header"},
 		{"header-only operation without the header", "GET /a/probe HTTP/1.1\r\nHost: gw\r\nConnection: close\r\n\r\n", 400, "header_mismatch"},
 		{"header-only operation", "GET /a/probe HTTP/1.1\r\nHost: gw\r\nConnection: close\r\nX-Probe: on\r\n\r\n", 200, ""},
-		{"values at the decoder bound", bulk(maxJSONValues - 1), 200, ""},
-		{"values above the decoder bound", bulk(maxJSONValues), 400, "limit_exceeded"},
+		{"values at the decoder bound", bulk(policy.MaxJSONValues - 1), 200, ""},
+		{"values above the decoder bound", bulk(policy.MaxJSONValues), 400, "limit_exceeded"},
 	}
 	forwarded := 0
 	for _, tc := range cases {

@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // Failures before any response are answered by the gateway with a bounded,
@@ -207,7 +209,7 @@ func (timeoutError) Temporary() bool { return true }
 func TestNativeForwardingNeverResends(t *testing.T) {
 	e := newEnv(t)
 	p := e.policy(e.a, false)
-	p.Operations = append(p.Operations, Operation{ID: "remove-a", API: "a", Method: "DELETE", Target: "/a/item", Access: "allow", Auth: "none"})
+	p.Operations = append(p.Operations, policy.Operation{ID: "remove-a", API: "a", Method: "DELETE", Target: "/a/item", Access: "allow", Auth: "none"})
 	e.serveNative(p, forwardTimeouts)
 	var applied atomic.Int64 // the upstream's own record of writes it carried out
 	e.a.handle = func(w http.ResponseWriter, r *http.Request) bool {

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // The resolver applies each supported change to a copy of the base and
@@ -41,7 +43,7 @@ func TestApplyOverrides(t *testing.T) {
 	if string(mustJSON(basePolicy)) != pristine {
 		t.Fatal("applying overrides changed the base policy")
 	}
-	wantPermits := []Permit{{Role: "WRITER", Operation: "write-a"}, {Role: "READER", Operation: "read-b"}, {Role: "READER", Operation: "write-a"}}
+	wantPermits := []policy.Permit{{Role: "WRITER", Operation: "write-a"}, {Role: "READER", Operation: "read-b"}, {Role: "READER", Operation: "write-a"}}
 	if !slices.Equal(p.Permits, wantPermits) {
 		t.Fatalf("permits %v, want %v", p.Permits, wantPermits)
 	}

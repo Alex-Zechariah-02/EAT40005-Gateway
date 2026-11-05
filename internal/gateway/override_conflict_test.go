@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // A candidate conflicts with an active override when it changes the
@@ -25,7 +27,7 @@ func TestOverrideConflictWithCandidate(t *testing.T) {
 		{ID: 4, Type: overrideContainment, Control: controlOperation, Operation: "read-b", Target: "operation:read-b"},
 		{ID: 5, Type: overrideException, Control: controlRate, Operation: "read-a", Count: 9, Target: "rate:read-a"},
 	}
-	change := func(edit func(p *Policy)) Policy {
+	change := func(edit func(p *policy.Policy)) policy.Policy {
 		p := before
 		p.Operations = slices.Clone(before.Operations)
 		p.Permits = slices.Clone(before.Permits)
@@ -35,44 +37,48 @@ func TestOverrideConflictWithCandidate(t *testing.T) {
 	}
 	cases := []struct {
 		name string
-		edit func(p *Policy)
+		edit func(p *policy.Policy)
 		want int64 // conflicting override, 0 for none
 	}{
-		{"same permit granted permanently", func(p *Policy) { p.Permits = append(p.Permits, Permit{Role: "READER", Operation: "write-a"}) }, 3},
-		{"role of a permit override removed", func(p *Policy) {
+		{"same permit granted permanently", func(p *policy.Policy) {
+			p.Permits = append(p.Permits, policy.Permit{Role: "READER", Operation: "write-a"})
+		}, 3},
+		{"role of a permit override removed", func(p *policy.Policy) {
 			p.Roles = p.Roles[1:] // READER
-			p.Permits = slices.DeleteFunc(p.Permits, func(x Permit) bool { return x.Role == "READER" })
+			p.Permits = slices.DeleteFunc(p.Permits, func(x policy.Permit) bool { return x.Role == "READER" })
 		}, 3},
-		{"operation of a permit override changed", func(p *Policy) { p.Operations[1].Body = jsonBody(512, anyObject) }, 3},
-		{"operation of a permit override removed", func(p *Policy) {
+		{"operation of a permit override changed", func(p *policy.Policy) { p.Operations[1].Body = jsonBody(512, anyObject) }, 3},
+		{"operation of a permit override removed", func(p *policy.Policy) {
 			p.Operations = slices.Delete(p.Operations, 1, 2)
-			p.Permits = slices.DeleteFunc(p.Permits, func(x Permit) bool { return x.Operation == "write-a" })
+			p.Permits = slices.DeleteFunc(p.Permits, func(x policy.Permit) bool { return x.Operation == "write-a" })
 		}, 3},
-		{"rate count changed", func(p *Policy) { p.Operations[0].Rate = rate(6, 60) }, 5},
-		{"rate rule removed", func(p *Policy) { p.Operations[0].Rate = nil }, 5},
-		{"rate window changed", func(p *Policy) { p.Operations[0].Rate = rate(4, 120) }, 5},
-		{"contained operation re-routed", func(p *Policy) { p.Operations[3].Target = "/c/*" }, 4},
-		{"contained operation denied permanently", func(p *Policy) { p.Operations[3].Access = "deny" }, 4},
-		{"more specific operation added inside a contained prefix", func(p *Policy) {
-			p.Operations = append(p.Operations, Operation{ID: "special-b", API: "b", Method: "GET", Target: "/b/special", Access: "allow", Auth: "none"})
+		{"rate count changed", func(p *policy.Policy) { p.Operations[0].Rate = rate(6, 60) }, 5},
+		{"rate rule removed", func(p *policy.Policy) { p.Operations[0].Rate = nil }, 5},
+		{"rate window changed", func(p *policy.Policy) { p.Operations[0].Rate = rate(4, 120) }, 5},
+		{"contained operation re-routed", func(p *policy.Policy) { p.Operations[3].Target = "/c/*" }, 4},
+		{"contained operation denied permanently", func(p *policy.Policy) { p.Operations[3].Access = "deny" }, 4},
+		{"more specific operation added inside a contained prefix", func(p *policy.Policy) {
+			p.Operations = append(p.Operations, policy.Operation{ID: "special-b", API: "b", Method: "GET", Target: "/b/special", Access: "allow", Auth: "none"})
 		}, 4},
-		{"more specific prefix added inside an overridden prefix, other method", func(p *Policy) {
-			p.Operations = append(p.Operations, Operation{ID: "deep-a", API: "a", Method: "DELETE", Target: "/a/deep/*", Access: "allow", Auth: "none"})
+		{"more specific prefix added inside an overridden prefix, other method", func(p *policy.Policy) {
+			p.Operations = append(p.Operations, policy.Operation{ID: "deep-a", API: "a", Method: "DELETE", Target: "/a/deep/*", Access: "allow", Auth: "none"})
 		}, 5},
-		{"unrelated permit added", func(p *Policy) { p.Permits = append(p.Permits, Permit{Role: "WRITER", Operation: "read-b"}) }, 0},
-		{"unrelated permit removed", func(p *Policy) {
-			p.Permits = slices.DeleteFunc(p.Permits, func(x Permit) bool { return x == Permit{Role: "WRITER", Operation: "read-a"} })
+		{"unrelated permit added", func(p *policy.Policy) {
+			p.Permits = append(p.Permits, policy.Permit{Role: "WRITER", Operation: "read-b"})
 		}, 0},
-		{"unrelated operation re-routed outside every prefix", func(p *Policy) { p.Operations[2].Target = "/dd" }, 0},
-		{"rate rule added to an overridden operation, an independent control", func(p *Policy) { p.Operations[1].Rate = rate(9, 60) }, 0},
-		{"less specific operation added above an overridden prefix", func(p *Policy) {
-			p.Operations = append(p.Operations, Operation{ID: "all", API: "d", Method: "GET", Target: "/*", Access: "allow", Auth: "none"})
+		{"unrelated permit removed", func(p *policy.Policy) {
+			p.Permits = slices.DeleteFunc(p.Permits, func(x policy.Permit) bool { return x == policy.Permit{Role: "WRITER", Operation: "read-a"} })
 		}, 0},
-		{"operation added beside a prefix, outside it", func(p *Policy) {
-			p.Operations = append(p.Operations, Operation{ID: "bee", API: "b", Method: "GET", Target: "/bee", Access: "allow", Auth: "none"})
+		{"unrelated operation re-routed outside every prefix", func(p *policy.Policy) { p.Operations[2].Target = "/dd" }, 0},
+		{"rate rule added to an overridden operation, an independent control", func(p *policy.Policy) { p.Operations[1].Rate = rate(9, 60) }, 0},
+		{"less specific operation added above an overridden prefix", func(p *policy.Policy) {
+			p.Operations = append(p.Operations, policy.Operation{ID: "all", API: "d", Method: "GET", Target: "/*", Access: "allow", Auth: "none"})
 		}, 0},
-		{"unrelated role added", func(p *Policy) { p.Roles = append(p.Roles, Role{ID: "OTHER"}) }, 0},
-		{"nothing changed", func(p *Policy) {}, 0},
+		{"operation added beside a prefix, outside it", func(p *policy.Policy) {
+			p.Operations = append(p.Operations, policy.Operation{ID: "bee", API: "b", Method: "GET", Target: "/bee", Access: "allow", Auth: "none"})
+		}, 0},
+		{"unrelated role added", func(p *policy.Policy) { p.Roles = append(p.Roles, policy.Role{ID: "OTHER"}) }, 0},
+		{"nothing changed", func(p *policy.Policy) {}, 0},
 	}
 	for _, c := range cases {
 		got := overrideConflict(before, change(c.edit), overrides)

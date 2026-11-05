@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 func TestFetchImpactPreservesRequestTarget(t *testing.T) {
@@ -19,8 +21,8 @@ func TestFetchImpactPreservesRequestTarget(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newEnv(t)
-			policy := e.policy(e.a, false)
-			seed(t, e.database, policy, seedOptions{})
+			draft := e.policy(e.a, false)
+			seed(t, e.database, draft, seedOptions{})
 			e.start(binaries.plain)
 			admin := e.mustLogin(harnessAdmin, harnessPassword)
 			if code, _ := e.get(tc.path); code != tc.status {
@@ -29,12 +31,12 @@ func TestFetchImpactPreservesRequestTarget(t *testing.T) {
 			if tc.name == "long-path" {
 				// The displayed 256-byte path happens to be an exact target, but
 				// the actual longer request still belongs to the unchanged prefix.
-				policy.Operations = append(policy.Operations, Operation{ID: "exact", API: "a", Method: "GET", Target: truncated, Access: "deny", Auth: "none"})
+				draft.Operations = append(draft.Operations, policy.Operation{ID: "exact", API: "a", Method: "GET", Target: truncated, Access: "deny", Auth: "none"})
 			} else {
 				// A fixed raw-target rejection cannot be lifted by a policy change.
-				policy.Operations[0].Access = "deny"
+				draft.Operations[0].Access = "deny"
 			}
-			code, staged, body := e.stage(admin, policy, `"r1"`, "impact-target-candidate")
+			code, staged, body := e.stage(admin, draft, `"r1"`, "impact-target-candidate")
 			if code != 201 {
 				t.Fatalf("stage: %d %s", code, body)
 			}
@@ -64,8 +66,8 @@ func TestFetchImpactPreservesIndependentControls(t *testing.T) {
 	for _, blocked := range []bool{false, true} {
 		t.Run(fmt.Sprintf("blocked_%t", blocked), func(t *testing.T) {
 			e := newEnv(t)
-			policy := e.protectedPolicy()
-			seed(t, e.database, policy, seedOptions{})
+			draft := e.protectedPolicy()
+			seed(t, e.database, draft, seedOptions{})
 			e.start(binaries.plain)
 			admin := e.mustLogin(harnessAdmin, harnessPassword)
 			if blocked {
@@ -75,15 +77,15 @@ func TestFetchImpactPreservesIndependentControls(t *testing.T) {
 				if code, _ := e.get("/a/independent", bearer(t, "alice")...); code != 403 {
 					t.Fatalf("blocked probe: %d", code)
 				}
-				policy = withoutRole(policy, "WRITER")
+				draft = withoutRole(draft, "WRITER")
 			} else {
 				e.mustOverride(admin, permitOverride(overrideException, "READER", "write-a", 60), `"r1"`, "impact-independent-override")
 				if code, _ := e.request("POST", "/a/item", "application/json", `{"n":1}`, bearer(t, "bob")...); code != 200 {
 					t.Fatalf("override probe: %d", code)
 				}
-				policy.Roles = append(policy.Roles, Role{ID: "OTHER"})
+				draft.Roles = append(draft.Roles, policy.Role{ID: "OTHER"})
 			}
-			code, staged, body := e.stage(admin, policy, `"r1"`, "impact-independent-candidate")
+			code, staged, body := e.stage(admin, draft, `"r1"`, "impact-independent-candidate")
 			if code != 201 {
 				t.Fatalf("stage: %d %s", code, body)
 			}
@@ -173,12 +175,12 @@ func TestFetchImpactIdentityCoverage(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newEnv(t)
-			policy := e.protectedPolicy()
-			policy.Operations[0].Auth, policy.Operations[0].Access = tc.auth, tc.access
+			draft := e.protectedPolicy()
+			draft.Operations[0].Auth, draft.Operations[0].Access = tc.auth, tc.access
 			if tc.auth == "none" {
-				policy.Permits = slices.DeleteFunc(policy.Permits, func(p Permit) bool { return p.Operation == "read-a" })
+				draft.Permits = slices.DeleteFunc(draft.Permits, func(p policy.Permit) bool { return p.Operation == "read-a" })
 			}
-			seed(t, e.database, policy, seedOptions{})
+			seed(t, e.database, draft, seedOptions{})
 			e.start(binaries.plain)
 			admin := e.mustLogin(harnessAdmin, harnessPassword)
 			headers := []string{}
@@ -191,7 +193,7 @@ func TestFetchImpactIdentityCoverage(t *testing.T) {
 			candidate := e.protectedPolicy()
 			candidate.Operations[0].Auth = tc.afterAuth
 			if tc.afterAuth == "none" {
-				candidate.Permits = slices.DeleteFunc(candidate.Permits, func(p Permit) bool { return p.Operation == "read-a" })
+				candidate.Permits = slices.DeleteFunc(candidate.Permits, func(p policy.Permit) bool { return p.Operation == "read-a" })
 			}
 			code, staged, body := e.stage(admin, candidate, `"r1"`, "impact-coverage-candidate")
 			if code != 201 {

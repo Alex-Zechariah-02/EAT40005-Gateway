@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // rejection is a request refused at a body or validation stage.
@@ -52,7 +54,7 @@ func readBody(r *http.Request, rule *bodyRule, globalMaxBytes int64) (any, *reje
 	if int64(len(body)) > maxBytes {
 		return nil, &rejection{http.StatusRequestEntityTooLarge, "payload_too_large", "too_large"}
 	}
-	document, reason := decodeJSON(body)
+	document, reason := policy.DecodeJSON(body)
 	if reason != "" {
 		return nil, &rejection{http.StatusBadRequest, "bad_request", reason}
 	}

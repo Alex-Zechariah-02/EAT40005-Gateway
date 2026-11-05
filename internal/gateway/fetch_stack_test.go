@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 	"github.com/Alex-Zechariah-02/apiward/internal/services"
 )
 
@@ -41,13 +42,13 @@ func TestFetchStackScenarios(t *testing.T) {
 		t.Fatalf("enrol: %d %s", code, body)
 	}
 	root := e.mustLogin("root", password)
-	loadPolicy := func(name string) Policy {
+	loadPolicy := func(name string) policy.Policy {
 		t.Helper()
 		data, err := os.ReadFile(filepath.Join(dir, name))
 		if err != nil {
 			t.Fatal(err)
 		}
-		p, err := DecodePolicy(data)
+		p, err := policy.DecodePolicy(data)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -287,8 +288,8 @@ func TestFetchStackScenarios(t *testing.T) {
 
 	t.Log("add a Support operation through complete policy activation")
 	without := loadPolicy("baseline.json")
-	without.Operations = slices.DeleteFunc(without.Operations, func(op Operation) bool { return op.ID == "support.queue" })
-	without.Permits = slices.DeleteFunc(without.Permits, func(p Permit) bool { return p.Operation == "support.queue" })
+	without.Operations = slices.DeleteFunc(without.Operations, func(op policy.Operation) bool { return op.ID == "support.queue" })
+	without.Permits = slices.DeleteFunc(without.Permits, func(p policy.Permit) bool { return p.Operation == "support.queue" })
 	revision = e.confirmPolicy(root, without, revision, "fetch-stack-without-queue").Revision
 	refused(3, "GET", "/support/queue", "", support, 404)
 	revision = e.confirmPolicy(root, baseline, revision, "fetch-stack-add-queue").Revision
@@ -297,7 +298,7 @@ func TestFetchStackScenarios(t *testing.T) {
 	t.Log("impact predicts loss of rider access; unconfirmed activation rolls back")
 	call("GET", "/orders/jobs", "", rider, 200)
 	bad := loadPolicy("baseline.json")
-	bad.Permits = slices.DeleteFunc(bad.Permits, func(p Permit) bool { return p.Role == "RIDER" && p.Operation == "orders.jobs" })
+	bad.Permits = slices.DeleteFunc(bad.Permits, func(p policy.Permit) bool { return p.Role == "RIDER" && p.Operation == "orders.jobs" })
 	code, staged, body := e.stage(root, bad, policyETag(revision), "fetch-stack-bad-rider")
 	if code != 201 {
 		t.Fatalf("bad rider candidate: %d %s", code, body)
@@ -342,7 +343,7 @@ func TestFetchStackScenarios(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := DecodePolicy(exportedData); err != nil {
+	if _, err := policy.DecodePolicy(exportedData); err != nil {
 		t.Fatal(err)
 	}
 	if result := cli(true, "policy", "stage", "-dir", dir, "-file", exported); !strings.Contains(result, "not activated") {

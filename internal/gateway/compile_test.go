@@ -9,44 +9,46 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 func TestInvalidReferencesAndConflictsAreRejected(t *testing.T) {
 	cases := []struct {
 		name   string
-		change func(p *Policy)
+		change func(p *policy.Policy)
 		code   string
 		field  string
 	}{
-		{"unknown API", func(p *Policy) { p.Operations[0].API = "billing" }, "UNKNOWN_REFERENCE", "operations[0].api"},
-		{"unknown upstream", func(p *Policy) { p.APIs[1].Upstream = "elsewhere" }, "UNKNOWN_REFERENCE", "apis[1].upstream"},
-		{"unknown role", func(p *Policy) { p.Permits[0].Role = "ADMIN" }, "UNKNOWN_REFERENCE", "permits[0].role"},
-		{"unknown operation", func(p *Policy) { p.Permits[1].Operation = "orders.delete" }, "UNKNOWN_REFERENCE", "permits[1].operation"},
-		{"permit on public operation", func(p *Policy) { p.Permits[0].Operation = "inventory.health" }, "INVALID_VALUE", "permits[0].operation"},
-		{"duplicate permit", func(p *Policy) { p.Permits = append(p.Permits, p.Permits[0]) }, "DUPLICATE_ID", "permits[2]"},
-		{"duplicate operation id", func(p *Policy) { p.Operations[1].ID = "orders.list" }, "DUPLICATE_ID", "operations[1].id"},
-		{"duplicate API id", func(p *Policy) { p.APIs[2].ID = "orders" }, "DUPLICATE_ID", "apis[2].id"},
-		{"duplicate upstream id", func(p *Policy) { p.Upstreams[2].ID = "orders" }, "DUPLICATE_ID", "upstreams[2].id"},
-		{"duplicate role", func(p *Policy) { p.Roles[1].ID = "CUSTOMER" }, "DUPLICATE_ID", "roles[1].id"},
-		{"same target and method twice", func(p *Policy) {
-			p.Operations = append(p.Operations, Operation{ID: "orders.list2", API: "inventory", Method: "GET", Target: "/orders", Access: "deny", Auth: "none"})
+		{"unknown API", func(p *policy.Policy) { p.Operations[0].API = "billing" }, "UNKNOWN_REFERENCE", "operations[0].api"},
+		{"unknown upstream", func(p *policy.Policy) { p.APIs[1].Upstream = "elsewhere" }, "UNKNOWN_REFERENCE", "apis[1].upstream"},
+		{"unknown role", func(p *policy.Policy) { p.Permits[0].Role = "ADMIN" }, "UNKNOWN_REFERENCE", "permits[0].role"},
+		{"unknown operation", func(p *policy.Policy) { p.Permits[1].Operation = "orders.delete" }, "UNKNOWN_REFERENCE", "permits[1].operation"},
+		{"permit on public operation", func(p *policy.Policy) { p.Permits[0].Operation = "inventory.health" }, "INVALID_VALUE", "permits[0].operation"},
+		{"duplicate permit", func(p *policy.Policy) { p.Permits = append(p.Permits, p.Permits[0]) }, "DUPLICATE_ID", "permits[2]"},
+		{"duplicate operation id", func(p *policy.Policy) { p.Operations[1].ID = "orders.list" }, "DUPLICATE_ID", "operations[1].id"},
+		{"duplicate API id", func(p *policy.Policy) { p.APIs[2].ID = "orders" }, "DUPLICATE_ID", "apis[2].id"},
+		{"duplicate upstream id", func(p *policy.Policy) { p.Upstreams[2].ID = "orders" }, "DUPLICATE_ID", "upstreams[2].id"},
+		{"duplicate role", func(p *policy.Policy) { p.Roles[1].ID = "CUSTOMER" }, "DUPLICATE_ID", "roles[1].id"},
+		{"same target and method twice", func(p *policy.Policy) {
+			p.Operations = append(p.Operations, policy.Operation{ID: "orders.list2", API: "inventory", Method: "GET", Target: "/orders", Access: "deny", Auth: "none"})
 		}, "DUPLICATE_OPERATION", "operations[6]"},
-		{"same prefix and method twice", func(p *Policy) {
-			p.Operations = append(p.Operations, Operation{ID: "orders.get2", API: "orders", Method: "GET", Target: "/orders/*", Access: "allow", Auth: "none"})
+		{"same prefix and method twice", func(p *policy.Policy) {
+			p.Operations = append(p.Operations, policy.Operation{ID: "orders.get2", API: "orders", Method: "GET", Target: "/orders/*", Access: "allow", Auth: "none"})
 		}, "DUPLICATE_OPERATION", "operations[6]"},
-		{"two upstreams with one destination", func(p *Policy) { p.Upstreams[1].Dial = p.Upstreams[0].Dial }, "INVALID_UPSTREAM", "upstreams[1].dial"},
-		{"identifier with a space", func(p *Policy) { p.Operations[0].ID = "orders list" }, "INVALID_VALUE", "operations[0].id"},
-		{"identifier with a newline", func(p *Policy) { p.Roles[0].ID = "CUSTOMER\n" }, "INVALID_VALUE", "roles[0].id"},
-		{"empty identifier", func(p *Policy) { p.APIs[0].ID = "" }, "INVALID_VALUE", "apis[0].id"},
-		{"unknown access value", func(p *Policy) { p.Operations[0].Access = "permit" }, "INVALID_VALUE", "operations[0].access"},
-		{"unknown auth value", func(p *Policy) { p.Operations[0].Auth = "optional" }, "INVALID_VALUE", "operations[0].auth"},
-		{"zero body limit", func(p *Policy) { p.Operations[2].Body.MaxBytes = 0 }, "INVALID_VALUE", "operations[2].body.max_bytes"},
+		{"two upstreams with one destination", func(p *policy.Policy) { p.Upstreams[1].Dial = p.Upstreams[0].Dial }, "INVALID_UPSTREAM", "upstreams[1].dial"},
+		{"identifier with a space", func(p *policy.Policy) { p.Operations[0].ID = "orders list" }, "INVALID_VALUE", "operations[0].id"},
+		{"identifier with a newline", func(p *policy.Policy) { p.Roles[0].ID = "CUSTOMER\n" }, "INVALID_VALUE", "roles[0].id"},
+		{"empty identifier", func(p *policy.Policy) { p.APIs[0].ID = "" }, "INVALID_VALUE", "apis[0].id"},
+		{"unknown access value", func(p *policy.Policy) { p.Operations[0].Access = "permit" }, "INVALID_VALUE", "operations[0].access"},
+		{"unknown auth value", func(p *policy.Policy) { p.Operations[0].Auth = "optional" }, "INVALID_VALUE", "operations[0].auth"},
+		{"zero body limit", func(p *policy.Policy) { p.Operations[2].Body.MaxBytes = 0 }, "INVALID_VALUE", "operations[2].body.max_bytes"},
 	}
 	for _, tc := range cases {
 		p := threeAPIPolicy()
 		tc.change(&p)
 		err := compileErr(p)
-		policyErr, ok := errors.AsType[*PolicyError](err)
+		policyErr, ok := errors.AsType[*policy.PolicyError](err)
 		if !ok || policyErr.Code != tc.code || policyErr.Field != tc.field {
 			t.Errorf("%s: %v, want %s at %s", tc.name, err, tc.code, tc.field)
 		}
@@ -67,9 +69,9 @@ func TestPolicySubjectsRejected(t *testing.T) {
 		{ID: "cust 001", Status: "active"},
 		{ID: "cust\n001", Status: "active"},
 		{ID: "café", Status: "active"},
-		{ID: strings.Repeat("s", maxSubjectLength+1), Status: "active"},
+		{ID: strings.Repeat("s", policy.MaxSubjectLength+1), Status: "active"},
 	} {
-		if _, err := DecodePolicy(withSubject(threeAPIPolicy(), subject)); errorCode(err) != "UNKNOWN_FIELD" {
+		if _, err := policy.DecodePolicy(withSubject(threeAPIPolicy(), subject)); errorCode(err) != "UNKNOWN_FIELD" {
 			t.Errorf("legacy membership %+v: %v", subject, err)
 		}
 	}
@@ -111,9 +113,9 @@ func TestInvalidTargetsMethodsAndDestinations(t *testing.T) {
 func TestSpecificityIgnoresDeclarationOrder(t *testing.T) {
 	p := threeAPIPolicy()
 	p.Operations = append(p.Operations,
-		Operation{ID: "all", API: "reports", Method: "GET", Target: "/*", Access: "allow", Auth: "none"},
-		Operation{ID: "items", API: "inventory", Method: "GET", Target: "/inventory/*", Access: "allow", Auth: "none"},
-		Operation{ID: "special", API: "inventory", Method: "GET", Target: "/inventory/items/special", Access: "allow", Auth: "none"},
+		policy.Operation{ID: "all", API: "reports", Method: "GET", Target: "/*", Access: "allow", Auth: "none"},
+		policy.Operation{ID: "items", API: "inventory", Method: "GET", Target: "/inventory/*", Access: "allow", Auth: "none"},
+		policy.Operation{ID: "special", API: "inventory", Method: "GET", Target: "/inventory/items/special", Access: "allow", Auth: "none"},
 	)
 	requests := []struct{ path, operation string }{
 		{"/orders", "orders.list"},
@@ -192,7 +194,7 @@ func TestDenyAllPolicyCompiles(t *testing.T) {
 		}
 	}
 
-	empty := Policy{SchemaVersion: schemaVersion, Profile: profileCore}
+	empty := policy.Policy{SchemaVersion: policy.SchemaVersion, Profile: policy.ProfileCore}
 	if _, err := Compile(empty, 1, time.Time{}); err != nil {
 		t.Fatalf("empty policy rejected: %v", err)
 	}
@@ -253,16 +255,16 @@ func FuzzDecodeAndCompile(f *testing.F) {
 	f.Add([]byte(`{"schema_version":4,"profile":"core","roles":[{"id":"R"}],"subjects":[{"id":"s","status":"active","roles":["R","R"]}]}`))
 	f.Add([]byte(`[[[[[[[[[[]]]]]]]]]]`))
 	f.Fuzz(func(t *testing.T, document []byte) {
-		p, err := DecodePolicy(document)
+		p, err := policy.DecodePolicy(document)
 		if err != nil {
-			if _, ok := errors.AsType[*PolicyError](err); !ok {
+			if _, ok := errors.AsType[*policy.PolicyError](err); !ok {
 				t.Fatalf("untyped error %v", err)
 			}
 			return
 		}
 		first, err := Compile(p, 1, time.Time{})
 		if err != nil {
-			if _, ok := errors.AsType[*PolicyError](err); !ok {
+			if _, ok := errors.AsType[*policy.PolicyError](err); !ok {
 				t.Fatalf("untyped error %v", err)
 			}
 			return

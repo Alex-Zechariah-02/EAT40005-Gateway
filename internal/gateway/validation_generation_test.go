@@ -11,6 +11,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // A request keeps the schema of the generation it captured, and under
@@ -20,7 +22,7 @@ func TestSchemaFollowsCapturedGeneration(t *testing.T) {
 	e := newEnv(t)
 	textSchema := `{"type":"object","additionalProperties":false,"required":["v"],"properties":{"v":{"type":"string"}}}`
 	numberSchema := `{"type":"object","additionalProperties":false,"required":["v"],"properties":{"v":{"type":"integer"}}}`
-	withSchema := func(schema string) Policy {
+	withSchema := func(schema string) policy.Policy {
 		p := e.policy(e.a, false)
 		for i := range p.Operations {
 			if p.Operations[i].ID == "write-a" {

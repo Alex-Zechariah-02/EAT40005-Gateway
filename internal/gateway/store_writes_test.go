@@ -12,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // Concurrent changes against one revision and lock contention. One
@@ -121,7 +123,7 @@ func TestRejectedMutationsAreRecorded(t *testing.T) {
 	// the controller, recorded as an audit denial only.
 	e.stage(harness, e.protectedPolicy(), `"r7"`, "rejected-stale-01")
 	invalid := e.protectedPolicy()
-	invalid.Permits = append(invalid.Permits, Permit{Role: "ROOT", Operation: "read-a"})
+	invalid.Permits = append(invalid.Permits, policy.Permit{Role: "ROOT", Operation: "read-a"})
 	e.stage(harness, invalid, `"r1"`, "rejected-invalid-01")
 	if code, _, _ := e.as(reader, http.MethodPut, "/admin/blocked-accounts/carol", `{"reason":"contain"}`,
 		"If-Match", `"r1"`, "Idempotency-Key", "rejected-unauthorised"); code != http.StatusForbidden {

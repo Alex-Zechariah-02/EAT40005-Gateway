@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // The native gateway reads all of its settings from one strict JSON file. The
@@ -159,8 +161,8 @@ func decodeNativeFile(data []byte) (nativeFile, error) {
 	if _, legacy := header["apps"]; legacy {
 		return nativeFile{}, errors.New("this is a Caddy configuration (top-level \"apps\"); write a native configuration instead, it is not converted automatically")
 	}
-	if err := checkMembers(data, maxConfigDepth); err != nil {
-		policyErr, _ := errors.AsType[*PolicyError](err)
+	if err := policy.CheckMembers(data, maxConfigDepth); err != nil {
+		policyErr, _ := errors.AsType[*policy.PolicyError](err)
 		switch {
 		case policyErr != nil && policyErr.Code == "DUPLICATE_MEMBER":
 			return nativeFile{}, fmt.Errorf("member %q is repeated in one object", policyErr.Field)
@@ -177,7 +179,7 @@ func decodeNativeFile(data []byte) (nativeFile, error) {
 	}
 
 	var settings nativeFile
-	if err := decodeStrict(data, &settings); err != nil {
+	if err := policy.DecodeStrict(data, &settings); err != nil {
 		if typeErr, ok := errors.AsType[*json.UnmarshalTypeError](err); ok {
 			return nativeFile{}, fmt.Errorf("%s: a JSON %s is not a valid value", typeErr.Field, typeErr.Value)
 		}

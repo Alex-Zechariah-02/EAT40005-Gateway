@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // outcomeKind names the outcome event of a committed transition.
@@ -125,7 +127,7 @@ func rejectionStatus(reason string) int {
 }
 
 func policyRejection(err error) (string, string) {
-	if policyErr, ok := errors.AsType[*PolicyError](err); ok {
+	if policyErr, ok := errors.AsType[*policy.PolicyError](err); ok {
 		return policyErr.Code, policyErr.Field
 	}
 	return "SCHEMA_INVALID", ""

@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 const (
@@ -95,7 +97,7 @@ func loadVerifier(c TrustConfig) (*verifier, error) {
 	v := &verifier{issuer: c.Issuer, audience: c.Audience, keys: map[string]*rsa.PublicKey{}, info: []keyInfo{}, uses: map[string]*keyUse{}}
 	loaded := time.Now().UTC()
 	for _, entry := range c.Keys {
-		if checkID(entry.Kid, "kid") != nil || v.keys[entry.Kid] != nil {
+		if policy.CheckID(entry.Kid, "kid") != nil || v.keys[entry.Kid] != nil {
 			return nil, errors.New("key IDs must be valid and distinct")
 		}
 		key, fingerprint, err := readVerificationKey(entry.PublicKeyFile)

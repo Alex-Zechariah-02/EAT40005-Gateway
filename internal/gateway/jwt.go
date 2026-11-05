@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 	"github.com/go-jose/go-jose/v4"
 	josejson "github.com/go-jose/go-jose/v4/json"
 )
@@ -144,7 +145,7 @@ func (v *verifier) checkClaims(payload []byte, now time.Time) (verifiedToken, st
 	}
 
 	subject, ok := claims["sub"].(string)
-	if !ok || !isSubjectID(subject) {
+	if !ok || !policy.IsSubjectID(subject) {
 		return verifiedToken{}, "invalid_claims"
 	}
 	expires, ok := numericDate(claims["exp"])
@@ -171,12 +172,12 @@ func (v *verifier) checkClaims(payload []byte, now time.Time) (verifiedToken, st
 	roles := []string{}
 	if value, present := claims["roles"]; present {
 		items, ok := value.([]any)
-		if !ok || len(items) > maxRoles {
+		if !ok || len(items) > policy.MaxRoles {
 			return verifiedToken{}, "invalid_claims"
 		}
 		for _, item := range items {
 			role, ok := item.(string)
-			if !ok || checkID(role, "roles") != nil {
+			if !ok || policy.CheckID(role, "roles") != nil {
 				return verifiedToken{}, "invalid_claims"
 			}
 			roles = append(roles, role)

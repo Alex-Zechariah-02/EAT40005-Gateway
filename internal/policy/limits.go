@@ -1,23 +1,23 @@
 // Limits and identifier formats shared by policy decoding, compilation and the store.
 
-package gateway
+package policy
 
 const (
-	maxJSONDepth        = 16
-	maxJSONValues       = 4096
-	maxNumberLength     = 32
+	MaxJSONDepth        = 16
+	MaxJSONValues       = 4096
+	MaxNumberLength     = 32
 	maxExponentDigits   = 3
-	maxSchemaProperties = 64
-	maxEnumValues       = 64
-	maxSchemaLength     = 1 << 20
-	maxHeaderName       = 64
+	MaxSchemaProperties = 64
+	MaxEnumValues       = 64
+	MaxSchemaLength     = 1 << 20
+	MaxHeaderName       = 64
 )
 
-// isSubjectID accepts 1 to 128 printable ASCII characters without spaces. The
+// IsSubjectID accepts 1 to 128 printable ASCII characters without spaces. The
 // same rule applies to the "sub" claim, so a subject identifier is always
 // safe to log and to forward in a header.
-func isSubjectID(id string) bool {
-	if id == "" || len(id) > maxSubjectLength {
+func IsSubjectID(id string) bool {
+	if id == "" || len(id) > MaxSubjectLength {
 		return false
 	}
 	for i := 0; i < len(id); i++ {
@@ -28,12 +28,12 @@ func isSubjectID(id string) bool {
 	return true
 }
 
-// checkID accepts short identifiers made of letters, digits, '.', '_' and
+// CheckID accepts short identifiers made of letters, digits, '.', '_' and
 // '-', starting with a letter or digit, so identifiers are safe to log and to
 // compare byte for byte.
-func checkID(id, field string, args ...any) error {
-	if id == "" || len(id) > maxIDLength {
-		return invalid("INVALID_VALUE", field, args...)
+func CheckID(id, field string, args ...any) error {
+	if id == "" || len(id) > MaxIDLength {
+		return Invalid("INVALID_VALUE", field, args...)
 	}
 	for i := 0; i < len(id); i++ {
 		c := id[i]
@@ -42,7 +42,7 @@ func checkID(id, field string, args ...any) error {
 			continue
 		}
 		if i == 0 || (c != '.' && c != '_' && c != '-') {
-			return invalid("INVALID_VALUE", field, args...)
+			return Invalid("INVALID_VALUE", field, args...)
 		}
 	}
 	return nil

@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // testPassword returns a fresh administrator password for one test.
@@ -94,7 +96,7 @@ func assertAbsent(t *testing.T, e *env, values ...string) {
 
 // denyAllPolicy is the standard test catalogue with every operation denied
 // and no roles, permits or subjects: a valid first or recovery base.
-func (e *env) denyAllPolicy() Policy {
+func (e *env) denyAllPolicy() policy.Policy {
 	p := e.policy(e.a, true)
 	for i := range p.Operations {
 		p.Operations[i].Access = "deny"

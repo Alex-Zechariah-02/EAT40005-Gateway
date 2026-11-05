@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"slices"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // These tests drive the confirmed-activation lifecycle through the real
@@ -37,7 +39,7 @@ func (e *env) resolve(s adminSession, action string, revision int64, ifMatch, ke
 
 // provisionalFrom stages policy against the confirmed revision parent and
 // activates it, failing the test unless both succeed.
-func (e *env) provisionalFrom(s adminSession, policy Policy, parent, seconds int64, key string) (candidateRecord, Outcome) {
+func (e *env) provisionalFrom(s adminSession, policy policy.Policy, parent, seconds int64, key string) (candidateRecord, Outcome) {
 	e.t.Helper()
 	code, staged, body := e.stage(s, policy, policyETag(parent), "stage-"+key)
 	if code != http.StatusCreated {
@@ -50,7 +52,7 @@ func (e *env) provisionalFrom(s adminSession, policy Policy, parent, seconds int
 	return staged.Candidate.candidateRecord, outcome
 }
 
-func (e *env) confirmPolicy(s adminSession, policy Policy, parent int64, key string) Outcome {
+func (e *env) confirmPolicy(s adminSession, policy policy.Policy, parent int64, key string) Outcome {
 	e.t.Helper()
 	_, activation := e.provisionalFrom(s, policy, parent, 60, key)
 	code, outcome, body := e.resolve(s, "confirm", activation.Provisional, policyETag(parent), "confirm-"+key)
@@ -90,12 +92,12 @@ func storedActivations(t *testing.T, path string) []activationRecord {
 // cpaCandidate differs from protectedPolicy(alice, bob) in three ways: bob
 // (READER) loses GET /b/* and gains POST /a/item, and API a moves from
 // upstream A to upstream C.
-func (e *env) cpaCandidate() Policy {
+func (e *env) cpaCandidate() policy.Policy {
 	p := e.protectedPolicy()
-	p.Upstreams = append(p.Upstreams, Upstream{ID: "C", Dial: e.c.addr})
+	p.Upstreams = append(p.Upstreams, policy.Upstream{ID: "C", Dial: e.c.addr})
 	p.APIs[0].Upstream = "C"
-	p.Permits = slices.DeleteFunc(p.Permits, func(permit Permit) bool { return permit == Permit{Role: "READER", Operation: "read-b"} })
-	p.Permits = append(p.Permits, Permit{Role: "READER", Operation: "write-a"})
+	p.Permits = slices.DeleteFunc(p.Permits, func(permit policy.Permit) bool { return permit == policy.Permit{Role: "READER", Operation: "read-b"} })
+	p.Permits = append(p.Permits, policy.Permit{Role: "READER", Operation: "write-a"})
 	return p
 }
 

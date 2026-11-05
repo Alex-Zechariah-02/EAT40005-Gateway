@@ -1,6 +1,6 @@
 // Policy document types, limits and strict decoding.
 
-package gateway
+package policy
 
 import (
 	"bytes"
@@ -13,29 +13,29 @@ import (
 	"unicode/utf8"
 )
 
-// schemaVersion is the only policy document version this compiler accepts.
-const schemaVersion = 4
+// SchemaVersion is the only policy document version this compiler accepts.
+const SchemaVersion = 4
 
-// profileCore is the only enforcement profile that can be activated. Under it
+// ProfileCore is the only enforcement profile that can be activated. Under it
 // the gateway enforces routing, the per-operation access flag, bearer JWT
 // authentication and role permits on every operation declared auth
 // "required", the operation's rate rule, its body and header schemas, and the
 // mandatory audit record before forwarding. Any other profile is rejected
 // rather than activated with controls it cannot run.
-const profileCore = "core"
+const ProfileCore = "core"
 
 const (
-	maxPolicyBytes   = 64 << 10
-	maxPolicyDepth   = 16
-	maxUpstreams     = 64
-	maxAPIs          = 64
-	maxOperations    = 256
-	maxRoles         = 64
-	maxPermits       = 4096
-	maxIDLength      = 64
-	maxSubjectLength = 128
-	maxTargetLength  = 256
-	maxBodyLimit     = 1 << 20
+	MaxPolicyBytes   = 64 << 10
+	MaxPolicyDepth   = 16
+	MaxUpstreams     = 64
+	MaxAPIs          = 64
+	MaxOperations    = 256
+	MaxRoles         = 64
+	MaxPermits       = 4096
+	MaxIDLength      = 64
+	MaxSubjectLength = 128
+	MaxTargetLength  = 256
+	MaxBodyLimit     = 1 << 20
 )
 
 // Policy is the complete permanent policy document. Every publication carries
@@ -118,11 +118,11 @@ func (e *PolicyError) Error() string {
 	return e.Code + " at " + e.Field
 }
 
-func invalid(code, field string, args ...any) *PolicyError {
+func Invalid(code, field string, args ...any) *PolicyError {
 	return &PolicyError{Code: code, Field: fmt.Sprintf(field, args...)}
 }
 
-var allowedMethods = map[string]bool{
+var AllowedMethods = map[string]bool{
 	http.MethodGet: true, http.MethodHead: true, http.MethodPost: true, http.MethodPut: true,
 	http.MethodPatch: true, http.MethodDelete: true, http.MethodOptions: true,
 }
@@ -131,10 +131,10 @@ var allowedMethods = map[string]bool{
 // nested input, repeated or non-lowercase member names, unknown fields,
 // unsupported schema versions and trailing data.
 func DecodePolicy(document []byte) (Policy, error) {
-	if len(document) > maxPolicyBytes {
-		return Policy{}, invalid("LIMIT_EXCEEDED", "")
+	if len(document) > MaxPolicyBytes {
+		return Policy{}, Invalid("LIMIT_EXCEEDED", "")
 	}
-	if err := checkMembers(document, maxPolicyDepth); err != nil {
+	if err := CheckMembers(document, MaxPolicyDepth); err != nil {
 		return Policy{}, err
 	}
 
@@ -144,28 +144,28 @@ func DecodePolicy(document []byte) (Policy, error) {
 		SchemaVersion int `json:"schema_version"`
 	}
 	if err := json.Unmarshal(document, &header); err != nil {
-		return Policy{}, invalid("SCHEMA_INVALID", "")
+		return Policy{}, Invalid("SCHEMA_INVALID", "")
 	}
-	if header.SchemaVersion != schemaVersion {
-		return Policy{}, invalid("SCHEMA_VERSION_UNSUPPORTED", "schema_version")
+	if header.SchemaVersion != SchemaVersion {
+		return Policy{}, Invalid("SCHEMA_VERSION_UNSUPPORTED", "schema_version")
 	}
 
 	var p Policy
-	if err := decodeStrict(document, &p); err != nil {
+	if err := DecodeStrict(document, &p); err != nil {
 		if strings.HasPrefix(err.Error(), "json: unknown field ") {
-			return Policy{}, invalid("UNKNOWN_FIELD", "")
+			return Policy{}, Invalid("UNKNOWN_FIELD", "")
 		}
 		if typeErr, ok := errors.AsType[*json.UnmarshalTypeError](err); ok {
-			return Policy{}, invalid("SCHEMA_INVALID", "%s", typeErr.Field)
+			return Policy{}, Invalid("SCHEMA_INVALID", "%s", typeErr.Field)
 		}
-		return Policy{}, invalid("SCHEMA_INVALID", "")
+		return Policy{}, Invalid("SCHEMA_INVALID", "")
 	}
 	return p, nil
 }
 
-// decodeStrict decodes exactly one JSON value, rejecting unknown fields and
+// DecodeStrict decodes exactly one JSON value, rejecting unknown fields and
 // anything after the value.
-func decodeStrict(data []byte, value any) error {
+func DecodeStrict(data []byte, value any) error {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(value); err != nil {
@@ -177,7 +177,7 @@ func decodeStrict(data []byte, value any) error {
 	return nil
 }
 
-// checkMembers rejects JSON nested deeper than maxDepth, and objects with a
+// CheckMembers rejects JSON nested deeper than maxDepth, and objects with a
 // repeated member name or a name outside [a-z0-9_]. encoding/json keeps the
 // last of repeated names and matches names case-insensitively, so without
 // this check two readers of the same document could disagree about it.
@@ -186,11 +186,11 @@ func decodeStrict(data []byte, value any) error {
 // keywords and property names are case-sensitive and not limited to
 // [a-z0-9_]. They are decoded as raw JSON, never into Go structs, so only the
 // repeated-name and depth rules apply inside them.
-func checkMembers(data []byte, maxDepth int) error {
+func CheckMembers(data []byte, maxDepth int) error {
 	// encoding/json replaces malformed Unicode. Policy, operator and Admin
 	// inputs must retain the same unambiguous UTF-8 representation as bodies.
 	if !utf8.Valid(data) || hasLoneSurrogate(data) {
-		return invalid("SCHEMA_INVALID", "")
+		return Invalid("SCHEMA_INVALID", "")
 	}
 	type container struct {
 		object   bool
@@ -207,7 +207,7 @@ func checkMembers(data []byte, maxDepth int) error {
 			return nil
 		}
 		if err != nil {
-			return invalid("SCHEMA_INVALID", "")
+			return Invalid("SCHEMA_INVALID", "")
 		}
 
 		var parent *container
@@ -223,10 +223,10 @@ func checkMembers(data []byte, maxDepth int) error {
 		if parent != nil && parent.object && parent.wantName {
 			name := token.(string)
 			if !parent.schema && !isMemberName(name) {
-				return invalid("UNKNOWN_FIELD", "")
+				return Invalid("UNKNOWN_FIELD", "")
 			}
 			if parent.names[name] {
-				return invalid("DUPLICATE_MEMBER", "%s", name)
+				return Invalid("DUPLICATE_MEMBER", "%s", name)
 			}
 			parent.names[name] = true
 			parent.lastName = name
@@ -240,7 +240,7 @@ func checkMembers(data []byte, maxDepth int) error {
 		}
 		if delim, ok := token.(json.Delim); ok {
 			if len(stack) == maxDepth {
-				return invalid("LIMIT_EXCEEDED", "")
+				return Invalid("LIMIT_EXCEEDED", "")
 			}
 			inSchema := parent != nil &&
 				(parent.schema || (parent.object && (parent.lastName == "schema" || parent.lastName == "headers")))

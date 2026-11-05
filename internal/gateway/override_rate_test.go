@@ -8,6 +8,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // Rate overrides change only the count of an existing rule. The counters
@@ -16,10 +18,10 @@ import (
 // expected decisions are worked out by hand from the admission rule
 // (admit when C + P*(W-d)/W + 1 <= N), not taken from the implementation.
 func TestRateOverrideKeepsCounters(t *testing.T) {
-	ratePolicy := func(e *env) Policy {
+	ratePolicy := func(e *env) policy.Policy {
 		p := e.protectedPolicy()
-		p.Roles = append(p.Roles, Role{ID: "TRIAL"})
-		p.Permits = append(p.Permits, Permit{Role: "TRIAL", Operation: "read-a"})
+		p.Roles = append(p.Roles, policy.Role{ID: "TRIAL"})
+		p.Permits = append(p.Permits, policy.Permit{Role: "TRIAL", Operation: "read-a"})
 		p.Operations[0].Rate = rate(4, 10) // read-a: 4 per 10 s per subject
 		return p
 	}
@@ -116,7 +118,7 @@ func TestRateOverrideKeepsCounters(t *testing.T) {
 	clock.set(base + 80_000)
 	expiring := e.mustOverride(harness, rateOverride(overrideException, "read-a", 6, 2), `"r1"`, "rate-expiring-0001")
 	next := ratePolicy(e)
-	next.Roles = append(next.Roles, Role{ID: "OTHER"})
+	next.Roles = append(next.Roles, policy.Role{ID: "OTHER"})
 	e.confirmPolicy(harness, next, 1, "rate-permanent-change")
 	if got := e.sendAs("alice", http.MethodGet, "/a/x", "", 5); !statusesAre(got, times(5, 200)...) {
 		t.Fatalf("alice under the expiring exception: %v", got)

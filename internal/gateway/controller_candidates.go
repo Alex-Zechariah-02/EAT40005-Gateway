@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // StageCandidate validates a complete policy with the canonical compiler and
@@ -35,7 +36,7 @@ func (c *Controller) StageCandidate(ctx context.Context, t transitionRecord, doc
 	if t.Expected.Int64 != parent {
 		return c.reject(ctx, t, "PRECONDITION_FAILED", "", now)
 	}
-	policy, err := DecodePolicy(document)
+	policy, err := policy.DecodePolicy(document)
 	if err == nil {
 		_, err = Compile(policy, 0, time.Time{})
 	}

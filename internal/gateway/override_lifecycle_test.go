@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // Each supported override changes enforcement at once, exactly as its type
@@ -96,8 +98,8 @@ func TestOverrideLifecycle(t *testing.T) {
 
 	// An unrelated permanent change keeps every override.
 	next := e.protectedPolicy()
-	next.Roles = append(next.Roles, Role{ID: "TRIAL"})
-	next.Permits = append(next.Permits, Permit{Role: "TRIAL", Operation: "read-a"})
+	next.Roles = append(next.Roles, policy.Role{ID: "TRIAL"})
+	next.Permits = append(next.Permits, policy.Permit{Role: "TRIAL", Operation: "read-a"})
 	e.confirmPolicy(harness, next, 1, "lifecycle-permanent")
 	s := e.status()
 	if s.Confirmed != 2 || !strings.HasPrefix(s.Generation, "r2+o1.2.3-") {

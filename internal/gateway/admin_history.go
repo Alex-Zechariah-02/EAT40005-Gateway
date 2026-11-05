@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // handleHistory lists recorded transitions, oldest first unless order=desc,
@@ -72,7 +74,7 @@ func historyFilterOf(r *http.Request) (historyFilter, bool) {
 	}
 	if query.Has("actor") {
 		filter.actor = query.Get("actor")
-		if filter.actor == "" || len(filter.actor) > maxIDLength || !utf8.ValidString(filter.actor) {
+		if filter.actor == "" || len(filter.actor) > policy.MaxIDLength || !utf8.ValidString(filter.actor) {
 			return filter, false
 		}
 	}
@@ -83,7 +85,7 @@ func historyFilterOf(r *http.Request) (historyFilter, bool) {
 // kind, such as "cpa.confirm". An unknown but well-formed kind matches no
 // entry.
 func historyKind(kind string) bool {
-	if kind == "" || len(kind) > maxIDLength {
+	if kind == "" || len(kind) > policy.MaxIDLength {
 		return false
 	}
 	for _, r := range kind {

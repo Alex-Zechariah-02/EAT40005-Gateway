@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // Every sensitive read needs a session, every operation
@@ -120,9 +122,9 @@ func TestProtectedReads(t *testing.T) {
 	}
 
 	for i := 1; i <= 5; i++ {
-		policy := e.protectedPolicy()
-		policy.Roles = append(policy.Roles, Role{ID: fmt.Sprintf("OTHER%02d", i)})
-		e.confirmPolicy(e.mustLogin(harnessAdmin, harnessPassword), policy, int64(i), fmt.Sprintf("read-revision-%04d", i))
+		draft := e.protectedPolicy()
+		draft.Roles = append(draft.Roles, policy.Role{ID: fmt.Sprintf("OTHER%02d", i)})
+		e.confirmPolicy(e.mustLogin(harnessAdmin, harnessPassword), draft, int64(i), fmt.Sprintf("read-revision-%04d", i))
 	}
 	var listed []int64
 	for after, pages := "", 0; ; pages++ {

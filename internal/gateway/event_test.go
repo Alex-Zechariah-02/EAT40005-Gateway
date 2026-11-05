@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // expectedStages builds the full stage map for a request event: the listed
@@ -167,7 +169,7 @@ func TestEventEnvelopeReflectsStagesReached(t *testing.T) {
 			if op, _ := ev["operation"].(string); op != want.operation {
 				t.Errorf("%s: operation %q, want %q", tc.name, op, want.operation)
 			}
-			if want.stage != "INGRESS" && (ev["generation"] != g || ev["profile"] != profileCore) {
+			if want.stage != "INGRESS" && (ev["generation"] != g || ev["profile"] != policy.ProfileCore) {
 				t.Errorf("%s: generation %v profile %v", tc.name, ev["generation"], ev["profile"])
 			}
 			if !sameStages(ev["stages"], want.stages) {

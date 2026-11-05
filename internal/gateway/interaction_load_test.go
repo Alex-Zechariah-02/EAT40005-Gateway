@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // An activation and an override creation sent at the same moment are
@@ -128,7 +130,7 @@ func TestConcurrentOverridesAndActivation(t *testing.T) {
 // the base was provisional is not restored by the rollback. Decisions are
 // worked out by hand from the admission rule at a controlled limiter time.
 func TestRateOverrideAcrossActivation(t *testing.T) {
-	ratePolicy := func(e *env) Policy {
+	ratePolicy := func(e *env) policy.Policy {
 		p := e.protectedPolicy()
 		p.Operations[0].Rate = rate(3, 60) // read-a: 3 per minute per subject
 		return p

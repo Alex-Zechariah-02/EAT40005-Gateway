@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // These tests exercise the parser and compiler directly. They are pure: no
@@ -18,21 +20,21 @@ import (
 
 // threeAPIPolicy is a complete policy for three APIs with role and permit
 // declarations, written independently of any test expectation.
-func threeAPIPolicy() Policy {
-	return Policy{
-		SchemaVersion: schemaVersion,
-		Profile:       profileCore,
-		Upstreams: []Upstream{
+func threeAPIPolicy() policy.Policy {
+	return policy.Policy{
+		SchemaVersion: policy.SchemaVersion,
+		Profile:       policy.ProfileCore,
+		Upstreams: []policy.Upstream{
 			{ID: "orders", Dial: "127.0.0.1:9101"},
 			{ID: "inventory", Dial: "127.0.0.1:9102"},
 			{ID: "reports", Dial: "[::1]:9103"},
 		},
-		APIs: []API{
+		APIs: []policy.API{
 			{ID: "orders", Upstream: "orders"},
 			{ID: "inventory", Upstream: "inventory"},
 			{ID: "reports", Upstream: "reports"},
 		},
-		Operations: []Operation{
+		Operations: []policy.Operation{
 			{ID: "orders.list", API: "orders", Method: "GET", Target: "/orders", Access: "allow", Auth: "required"},
 			{ID: "orders.get", API: "orders", Method: "GET", Target: "/orders/*", Access: "allow", Auth: "required"},
 			{ID: "orders.create", API: "orders", Method: "POST", Target: "/orders", Access: "allow", Auth: "required", Body: jsonBody(1024, anyObject)},
@@ -40,8 +42,8 @@ func threeAPIPolicy() Policy {
 			{ID: "inventory.get", API: "inventory", Method: "GET", Target: "/inventory/items/*", Access: "allow", Auth: "required"},
 			{ID: "reports.summary", API: "reports", Method: "GET", Target: "/reports/summary", Access: "deny", Auth: "required"},
 		},
-		Roles: []Role{{ID: "CUSTOMER"}, {ID: "STAFF"}},
-		Permits: []Permit{
+		Roles: []policy.Role{{ID: "CUSTOMER"}, {ID: "STAFF"}},
+		Permits: []policy.Permit{
 			{Role: "STAFF", Operation: "orders.list"},
 			{Role: "CUSTOMER", Operation: "orders.create"},
 		},
@@ -50,7 +52,7 @@ func threeAPIPolicy() Policy {
 
 func compileJSON(t *testing.T, document string) error {
 	t.Helper()
-	p, err := DecodePolicy([]byte(document))
+	p, err := policy.DecodePolicy([]byte(document))
 	if err != nil {
 		return err
 	}
@@ -59,7 +61,7 @@ func compileJSON(t *testing.T, document string) error {
 }
 
 func errorCode(err error) string {
-	if policyErr, ok := errors.AsType[*PolicyError](err); ok {
+	if policyErr, ok := errors.AsType[*policy.PolicyError](err); ok {
 		return policyErr.Code
 	}
 	if err == nil {
@@ -81,12 +83,12 @@ func TestValidPolicyCompilesDeterministically(t *testing.T) {
 	}
 
 	// The same document, decoded from JSON, compiles to the same identity.
-	decoded, err := DecodePolicy(original)
+	decoded, err := policy.DecodePolicy(original)
 	if err != nil {
 		t.Fatal(err)
 	}
 	second, err := Compile(decoded, 7, time.Time{})
-	if err != nil || second.ID != first.ID || first.Profile != profileCore {
+	if err != nil || second.ID != first.ID || first.Profile != policy.ProfileCore {
 		t.Fatalf("recompile: %v, ids %s and %s", err, first.ID, second.ID)
 	}
 
@@ -150,7 +152,7 @@ func TestMalformedPolicyDocumentsAreRejected(t *testing.T) {
 		{"missing auth", head + `,"upstreams":[{"id":"u","dial":"127.0.0.1:1"}],"apis":[{"id":"a","upstream":"u"}],"operations":[{"id":"x","api":"a","method":"GET","target":"/x","access":"allow"}]}`, "INVALID_VALUE"},
 		{"oversize document", head + `,"roles":[` + strings.Repeat(`{"id":"r"},`, 7000) + `{"id":"r"}]}`, "LIMIT_EXCEEDED"},
 		{"deep nesting", strings.Repeat("[", 5000) + strings.Repeat("]", 5000), "LIMIT_EXCEEDED"},
-		{"nesting above the bound", head + `,"roles":` + strings.Repeat("[", maxPolicyDepth) + "1" + strings.Repeat("]", maxPolicyDepth) + `}`, "LIMIT_EXCEEDED"},
+		{"nesting above the bound", head + `,"roles":` + strings.Repeat("[", policy.MaxPolicyDepth) + "1" + strings.Repeat("]", policy.MaxPolicyDepth) + `}`, "LIMIT_EXCEEDED"},
 	}
 	for _, tc := range cases {
 		started := time.Now()
@@ -182,11 +184,11 @@ func TestPolicyCountAndLengthLimits(t *testing.T) {
 		{"removed subjects at former count bound", head + `,"subjects":[` + repeat(1025, func(i int) string {
 			return fmt.Sprintf(`{"id":"s%d","status":"active","roles":[]}`, i)
 		}) + `]}`},
-		{"too many upstreams", head + `,"upstreams":[` + repeat(maxUpstreams+1, func(i int) string {
+		{"too many upstreams", head + `,"upstreams":[` + repeat(policy.MaxUpstreams+1, func(i int) string {
 			return fmt.Sprintf(`{"id":"u%d","dial":"127.0.0.1:%d"}`, i, 1000+i)
 		}) + `]}`},
-		{"too many roles", head + `,"roles":[` + repeat(maxRoles+1, func(i int) string { return fmt.Sprintf(`{"id":"r%d"}`, i) }) + `]}`},
-		{"too many operations", head + `,"operations":[` + repeat(maxOperations+1, func(i int) string {
+		{"too many roles", head + `,"roles":[` + repeat(policy.MaxRoles+1, func(i int) string { return fmt.Sprintf(`{"id":"r%d"}`, i) }) + `]}`},
+		{"too many operations", head + `,"operations":[` + repeat(policy.MaxOperations+1, func(i int) string {
 			return fmt.Sprintf(`{"id":"o%d","api":"a","method":"GET","target":"/o%d","access":"allow","auth":"none"}`, i, i)
 		}) + `]}`},
 	}
@@ -201,23 +203,23 @@ func TestPolicyCountAndLengthLimits(t *testing.T) {
 	}
 
 	p := threeAPIPolicy()
-	p.Roles = append(p.Roles, Role{ID: strings.Repeat("R", maxIDLength+1)})
+	p.Roles = append(p.Roles, policy.Role{ID: strings.Repeat("R", policy.MaxIDLength+1)})
 	if got := errorCode(compileErr(p)); got != "INVALID_VALUE" {
 		t.Errorf("overlong identifier: %q", got)
 	}
 	p = threeAPIPolicy()
-	p.Operations[0].Target = "/" + strings.Repeat("a", maxTargetLength)
+	p.Operations[0].Target = "/" + strings.Repeat("a", policy.MaxTargetLength)
 	if got := errorCode(compileErr(p)); got != "INVALID_TARGET" {
 		t.Errorf("overlong target: %q", got)
 	}
 	p = threeAPIPolicy()
-	p.Operations[2].Body.MaxBytes = maxBodyLimit + 1
+	p.Operations[2].Body.MaxBytes = policy.MaxBodyLimit + 1
 	if got := errorCode(compileErr(p)); got != "INVALID_VALUE" {
 		t.Errorf("body limit above the maximum: %q", got)
 	}
 }
 
-func compileErr(p Policy) error {
+func compileErr(p policy.Policy) error {
 	_, err := Compile(p, 1, time.Time{})
 	return err
 }

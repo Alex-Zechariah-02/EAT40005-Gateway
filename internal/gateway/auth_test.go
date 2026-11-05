@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // These tests run bearer authentication and role authorisation through the
@@ -19,15 +21,15 @@ import (
 // protectedPolicy is the standard test policy with authentication required on
 // /a/*, /a/item and /b/*: READER may read /a/* and /b/*, WRITER may read and
 // write /a/*. GET /d stays a denied public operation.
-func (e *env) protectedPolicy() Policy {
+func (e *env) protectedPolicy() policy.Policy {
 	p := e.policy(e.a, true)
 	for i := range p.Operations {
 		if p.Operations[i].ID != "denied" {
 			p.Operations[i].Auth = "required"
 		}
 	}
-	p.Roles = []Role{{ID: "READER"}, {ID: "WRITER"}}
-	p.Permits = []Permit{
+	p.Roles = []policy.Role{{ID: "READER"}, {ID: "WRITER"}}
+	p.Permits = []policy.Permit{
 		{Role: "READER", Operation: "read-a"},
 		{Role: "WRITER", Operation: "read-a"},
 		{Role: "WRITER", Operation: "write-a"},
@@ -36,9 +38,9 @@ func (e *env) protectedPolicy() Policy {
 	return p
 }
 
-func withoutRole(p Policy, role string) Policy {
-	p.Roles = slices.DeleteFunc(p.Roles, func(r Role) bool { return r.ID == role })
-	p.Permits = slices.DeleteFunc(p.Permits, func(permit Permit) bool { return permit.Role == role })
+func withoutRole(p policy.Policy, role string) policy.Policy {
+	p.Roles = slices.DeleteFunc(p.Roles, func(r policy.Role) bool { return r.ID == role })
+	p.Permits = slices.DeleteFunc(p.Permits, func(permit policy.Permit) bool { return permit.Role == role })
 	return p
 }
 

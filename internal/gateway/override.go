@@ -6,6 +6,8 @@ import (
 	"cmp"
 	"slices"
 	"strings"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // OverrideRequest is an administrator's proposed override. Role and Count are
@@ -37,43 +39,43 @@ func overrideTarget(control, operation, role string) string {
 // checked by applyOverrides.
 func (r OverrideRequest) check() (override, error) {
 	if r.Type != overrideException && r.Type != overrideContainment {
-		return override{}, invalid("INVALID_VALUE", "type")
+		return override{}, policy.Invalid("INVALID_VALUE", "type")
 	}
 	switch r.Control {
 	case controlPermit, controlRate:
 	case controlOperation:
 		// Allowing an operation the base denies would be a temporary bypass.
 		if r.Type != overrideContainment {
-			return override{}, invalid("UNSUPPORTED_ACTION", "type")
+			return override{}, policy.Invalid("UNSUPPORTED_ACTION", "type")
 		}
 	default:
-		return override{}, invalid("UNSUPPORTED_CONTROL", "control")
+		return override{}, policy.Invalid("UNSUPPORTED_CONTROL", "control")
 	}
-	if err := checkID(r.Operation, "operation"); err != nil {
+	if err := policy.CheckID(r.Operation, "operation"); err != nil {
 		return override{}, err
 	}
 
 	o := override{Type: r.Type, Control: r.Control, Operation: r.Operation}
 	if (r.Role != nil) != (r.Control == controlPermit) {
-		return override{}, invalid("INVALID_VALUE", "role")
+		return override{}, policy.Invalid("INVALID_VALUE", "role")
 	}
 	if r.Role != nil {
-		if err := checkID(*r.Role, "role"); err != nil {
+		if err := policy.CheckID(*r.Role, "role"); err != nil {
 			return override{}, err
 		}
 		o.Role = *r.Role
 	}
 	if (r.Count != nil) != (r.Control == controlRate) {
-		return override{}, invalid("INVALID_VALUE", "count")
+		return override{}, policy.Invalid("INVALID_VALUE", "count")
 	}
 	if r.Count != nil {
 		if *r.Count < 1 || *r.Count > maxRateCount {
-			return override{}, invalid("INVALID_VALUE", "count")
+			return override{}, policy.Invalid("INVALID_VALUE", "count")
 		}
 		o.Count = *r.Count
 	}
 	if r.ExpiresInSeconds < minOverrideSeconds || r.ExpiresInSeconds > maxOverrideSeconds {
-		return override{}, invalid("INVALID_EXPIRY", "expires_in_seconds")
+		return override{}, policy.Invalid("INVALID_EXPIRY", "expires_in_seconds")
 	}
 	o.Target = overrideTarget(o.Control, o.Operation, o.Role)
 	return o, nil
@@ -86,7 +88,7 @@ func (r OverrideRequest) check() (override, error) {
 // override's operation's path prefix: such an operation takes requests from
 // that prefix, or gives them back, so the override would no longer govern the
 // requests it was created for.
-func overrideConflict(before, after Policy, overrides []override) *override {
+func overrideConflict(before, after policy.Policy, overrides []override) *override {
 	changed := map[string]bool{}
 	var movedTargets []string
 	for _, c := range policyChanges(before, after) {
@@ -128,10 +130,10 @@ func overrideConflict(before, after Policy, overrides []override) *override {
 	return nil
 }
 
-func findOperation(p Policy, id string) (Operation, bool) {
-	index := slices.IndexFunc(p.Operations, func(op Operation) bool { return op.ID == id })
+func findOperation(p policy.Policy, id string) (policy.Operation, bool) {
+	index := slices.IndexFunc(p.Operations, func(op policy.Operation) bool { return op.ID == id })
 	if index < 0 {
-		return Operation{}, false
+		return policy.Operation{}, false
 	}
 	return p.Operations[index], true
 }

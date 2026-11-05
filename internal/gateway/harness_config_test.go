@@ -7,6 +7,8 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 func (e *env) writeConfig(opts configOptions) {
@@ -84,20 +86,20 @@ func (e *env) writeNativeFile(content []byte) {
 // policy builds the standard test policy: /a/* and POST /a/item go to the
 // given upstream, /d is denied, and /b/* exists only when withB is set. Every
 // operation is public, so routing behaviour is tested without tokens.
-func (e *env) policy(aTarget *receiver, withB bool) Policy {
-	p := Policy{
-		SchemaVersion: schemaVersion,
-		Profile:       profileCore,
-		Upstreams:     []Upstream{{ID: "A", Dial: e.a.addr}, {ID: "B", Dial: e.b.addr}},
-		APIs:          []API{{ID: "a", Upstream: aTarget.name}, {ID: "b", Upstream: "B"}, {ID: "d", Upstream: "A"}},
-		Operations: []Operation{
+func (e *env) policy(aTarget *receiver, withB bool) policy.Policy {
+	p := policy.Policy{
+		SchemaVersion: policy.SchemaVersion,
+		Profile:       policy.ProfileCore,
+		Upstreams:     []policy.Upstream{{ID: "A", Dial: e.a.addr}, {ID: "B", Dial: e.b.addr}},
+		APIs:          []policy.API{{ID: "a", Upstream: aTarget.name}, {ID: "b", Upstream: "B"}, {ID: "d", Upstream: "A"}},
+		Operations: []policy.Operation{
 			{ID: "read-a", API: "a", Method: "GET", Target: "/a/*", Access: "allow", Auth: "none"},
 			{ID: "write-a", API: "a", Method: "POST", Target: "/a/item", Access: "allow", Auth: "none", Body: jsonBody(1024, anyObject)},
 			{ID: "denied", API: "d", Method: "GET", Target: "/d", Access: "deny", Auth: "none"},
 		},
 	}
 	if withB {
-		p.Operations = append(p.Operations, Operation{ID: "read-b", API: "b", Method: "GET", Target: "/b/*", Access: "allow", Auth: "none"})
+		p.Operations = append(p.Operations, policy.Operation{ID: "read-b", API: "b", Method: "GET", Target: "/b/*", Access: "allow", Auth: "none"})
 	}
 	return p
 }

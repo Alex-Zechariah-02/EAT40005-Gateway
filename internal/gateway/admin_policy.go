@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 func (c *Controller) handleStatus(w http.ResponseWriter, r *http.Request, who caller) {
@@ -47,29 +49,29 @@ func (c *Controller) handleStatus(w http.ResponseWriter, r *http.Request, who ca
 
 // confirmedPolicy reads the confirmed base. It answers the request itself and
 // returns false when no confirmed base is serving.
-func (c *Controller) confirmedPolicy(w http.ResponseWriter, r *http.Request) (revisionInfo, Policy, bool) {
+func (c *Controller) confirmedPolicy(w http.ResponseWriter, r *http.Request) (revisionInfo, policy.Policy, bool) {
 	a, err := c.store.load(r.Context())
 	if err != nil {
 		c.logger.Error("reading authority", "error", err)
 		adminError(w, http.StatusServiceUnavailable, "unavailable", "")
-		return revisionInfo{}, Policy{}, false
+		return revisionInfo{}, policy.Policy{}, false
 	}
 	if a.mode != modeNormal {
 		adminError(w, http.StatusConflict, "no_confirmed_policy", "")
-		return revisionInfo{}, Policy{}, false
+		return revisionInfo{}, policy.Policy{}, false
 	}
 	revision, ok, err := c.store.revision(r.Context(), a.confirmed)
 	if err == nil && !ok {
 		err = fmt.Errorf("confirmed revision %d missing", a.confirmed)
 	}
-	var p Policy
+	var p policy.Policy
 	if err == nil {
-		p, err = DecodePolicy(revision.Document)
+		p, err = policy.DecodePolicy(revision.Document)
 	}
 	if err != nil {
 		c.logger.Error("reading confirmed policy", "error", err)
 		adminError(w, http.StatusServiceUnavailable, "unavailable", "")
-		return revisionInfo{}, Policy{}, false
+		return revisionInfo{}, policy.Policy{}, false
 	}
 	return revision, p, true
 }

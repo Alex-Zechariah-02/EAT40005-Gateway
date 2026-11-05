@@ -8,16 +8,18 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 func TestCanonicalRoutingTable(t *testing.T) {
 	e := newEnv(t)
-	policy := Policy{
-		SchemaVersion: schemaVersion,
-		Profile:       profileCore,
-		Upstreams:     []Upstream{{ID: "A", Dial: e.a.addr}, {ID: "B", Dial: e.b.addr}},
-		APIs:          []API{{ID: "orders", Upstream: "A"}, {ID: "reports", Upstream: "B"}},
-		Operations: []Operation{
+	policy := policy.Policy{
+		SchemaVersion: policy.SchemaVersion,
+		Profile:       policy.ProfileCore,
+		Upstreams:     []policy.Upstream{{ID: "A", Dial: e.a.addr}, {ID: "B", Dial: e.b.addr}},
+		APIs:          []policy.API{{ID: "orders", Upstream: "A"}, {ID: "reports", Upstream: "B"}},
+		Operations: []policy.Operation{
 			{ID: "reports", API: "reports", Method: "GET", Target: "/reports", Access: "allow", Auth: "none"},
 			{ID: "order", API: "orders", Method: "GET", Target: "/orders/*", Access: "allow", Auth: "none"},
 			{ID: "create", API: "orders", Method: "POST", Target: "/orders", Access: "allow", Auth: "none", Body: jsonBody(1024, anyObject)},

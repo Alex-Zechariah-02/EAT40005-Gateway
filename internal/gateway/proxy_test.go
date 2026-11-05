@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // An admitted request reaches the upstream with its method, target,
@@ -146,11 +148,11 @@ func TestClientCannotSelectUpstream(t *testing.T) {
 }
 
 // policyWithUpstream adds operation GET /z, served by its own upstream.
-func (e *env) policyWithUpstream(dial string) Policy {
+func (e *env) policyWithUpstream(dial string) policy.Policy {
 	p := e.policy(e.a, false)
-	p.Upstreams = append(p.Upstreams, Upstream{ID: "Z", Dial: dial})
-	p.APIs = append(p.APIs, API{ID: "z", Upstream: "Z"})
-	p.Operations = append(p.Operations, Operation{ID: "read-z", API: "z", Method: "GET", Target: "/z", Access: "allow", Auth: "none"})
+	p.Upstreams = append(p.Upstreams, policy.Upstream{ID: "Z", Dial: dial})
+	p.APIs = append(p.APIs, policy.API{ID: "z", Upstream: "Z"})
+	p.Operations = append(p.Operations, policy.Operation{ID: "read-z", API: "z", Method: "GET", Target: "/z", Access: "allow", Auth: "none"})
 	return p
 }
 

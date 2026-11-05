@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // These tests cover temporary overrides together with confirmed policy
@@ -18,9 +20,9 @@ import (
 
 // upstreamCandidate moves API a from upstream A to upstream C and changes
 // nothing else, so it touches no target an override in these tests relies on.
-func (e *env) upstreamCandidate() Policy {
+func (e *env) upstreamCandidate() policy.Policy {
 	p := e.protectedPolicy()
-	p.Upstreams = append(p.Upstreams, Upstream{ID: "C", Dial: e.c.addr})
+	p.Upstreams = append(p.Upstreams, policy.Upstream{ID: "C", Dial: e.c.addr})
 	p.APIs[0].Upstream = "C"
 	return p
 }
@@ -51,39 +53,39 @@ func TestCandidateAgainstActiveOverrides(t *testing.T) {
 	before := e.status()
 
 	refused := map[string]struct {
-		policy Policy
+		policy policy.Policy
 		holder int64
 	}{}
 	refused["same permit as an override"] = struct {
-		policy Policy
+		policy policy.Policy
 		holder int64
 	}{grantCandidate, grant.Override}
 	newCount := e.protectedPolicy()
 	newCount.Operations[0].Rate = rate(6, 60)
 	refused["rate count of an overridden rule"] = struct {
-		policy Policy
+		policy policy.Policy
 		holder int64
 	}{newCount, raise.Override}
 	noReader := e.protectedPolicy()
 	noReader.Operations[0].Rate = rate(4, 60)
-	noReader.Roles = []Role{{ID: "WRITER"}}
-	noReader.Permits = slices.DeleteFunc(noReader.Permits, func(p Permit) bool { return p.Role == "READER" })
+	noReader.Roles = []policy.Role{{ID: "WRITER"}}
+	noReader.Permits = slices.DeleteFunc(noReader.Permits, func(p policy.Permit) bool { return p.Role == "READER" })
 	refused["role an override grants removed"] = struct {
-		policy Policy
+		policy policy.Policy
 		holder int64
 	}{noReader, grant.Override}
 	narrower := e.protectedPolicy()
 	narrower.Operations[0].Rate = rate(4, 60)
-	narrower.Operations = append(narrower.Operations, Operation{ID: "special-a", API: "a", Method: "GET", Target: "/a/special", Access: "allow", Auth: "none"})
+	narrower.Operations = append(narrower.Operations, policy.Operation{ID: "special-a", API: "a", Method: "GET", Target: "/a/special", Access: "allow", Auth: "none"})
 	refused["more specific route inside an overridden prefix"] = struct {
-		policy Policy
+		policy policy.Policy
 		holder int64
 	}{narrower, raise.Override}
 	reRouted := e.protectedPolicy()
 	reRouted.Operations[0].Rate = rate(4, 60)
 	reRouted.Operations[3].Target = "/bee/*"
 	refused["contained operation moved"] = struct {
-		policy Policy
+		policy policy.Policy
 		holder int64
 	}{reRouted, closeB.Override}
 

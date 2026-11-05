@@ -11,14 +11,16 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // ratePolicy is the protected test policy with a rate rule on each of its
 // authenticated operations and a TRIAL role for a third subject.
-func (e *env) ratePolicy(read, write *RateRule) Policy {
+func (e *env) ratePolicy(read, write *policy.RateRule) policy.Policy {
 	p := e.protectedPolicy()
-	p.Roles = append(p.Roles, Role{ID: "TRIAL"})
-	p.Permits = append(p.Permits, Permit{Role: "TRIAL", Operation: "read-a"})
+	p.Roles = append(p.Roles, policy.Role{ID: "TRIAL"})
+	p.Permits = append(p.Permits, policy.Permit{Role: "TRIAL", Operation: "read-a"})
 	for i := range p.Operations {
 		switch p.Operations[i].ID {
 		case "read-a":
@@ -136,7 +138,7 @@ func TestRateLimitThroughGateway(t *testing.T) {
 
 // newRateEnv starts a fault-injection gateway whose limiter reads the
 // controlled clock.
-func newRateEnv(t *testing.T, policy func(e *env) Policy, at int64) (*env, *controlledClock) {
+func newRateEnv(t *testing.T, policy func(e *env) policy.Policy, at int64) (*env, *controlledClock) {
 	e := newEnv(t)
 	seed(t, e.database, policy(e), seedOptions{})
 	clock := newControlledClock(t, at)
@@ -150,7 +152,7 @@ const base = int64(1_800_000_000_000)
 // The weighted estimate across a bucket boundary matches the reference
 // vectors on the real gateway, with receipts counted at the upstream.
 func TestWeightedWindowThroughGateway(t *testing.T) {
-	e, clock := newRateEnv(t, func(e *env) Policy { return e.ratePolicy(rate(4, 10), nil) }, base+1000)
+	e, clock := newRateEnv(t, func(e *env) policy.Policy { return e.ratePolicy(rate(4, 10), nil) }, base+1000)
 
 	if got := e.sendAs("alice", http.MethodGet, "/a/x", "", 6); !statusesAre(got, 200, 200, 200, 200, 429, 429) {
 		t.Fatalf("first bucket: %v", got)
@@ -184,7 +186,7 @@ func TestWeightedWindowThroughGateway(t *testing.T) {
 // Requests refused by JWT or RBAC never reach the limiter, so they consume
 // nothing.
 func TestEarlierRejectionsConsumeNoQuota(t *testing.T) {
-	e, _ := newRateEnv(t, func(e *env) Policy { return e.ratePolicy(rate(2, 60), rate(2, 60)) }, base)
+	e, _ := newRateEnv(t, func(e *env) policy.Policy { return e.ratePolicy(rate(2, 60), rate(2, 60)) }, base)
 
 	expired := issuer.token(t, changed(validClaims("alice"), map[string]any{"exp": time.Now().Add(-time.Minute).Unix()}))
 	for range 5 {
@@ -201,7 +203,7 @@ func TestEarlierRejectionsConsumeNoQuota(t *testing.T) {
 	}
 	// Grant TRIAL write-a; carol's quota is untouched by the refusals.
 	p := e.ratePolicy(rate(2, 60), rate(2, 60))
-	p.Permits = append(p.Permits, Permit{Role: "TRIAL", Operation: "write-a"})
+	p.Permits = append(p.Permits, policy.Permit{Role: "TRIAL", Operation: "write-a"})
 	if outcome, code := e.publish(Change{ID: "grant", Expected: 1, Policy: mustJSON(p)}); code != http.StatusOK {
 		t.Fatalf("publish: %d %+v", code, outcome)
 	}

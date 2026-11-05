@@ -10,12 +10,14 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // Simultaneous requests near the quota never admit more than the rule
 // allows, for one subject and for many at once.
 func TestConcurrentRequestsThroughGateway(t *testing.T) {
-	e, _ := newRateEnv(t, func(e *env) Policy {
+	e, _ := newRateEnv(t, func(e *env) policy.Policy {
 		p := e.ratePolicy(rate(10, 60), nil)
 		return p
 	}, base)
@@ -77,9 +79,9 @@ func TestConcurrentRequestsThroughGateway(t *testing.T) {
 // rollback and temporary-override publications never grant a fresh quota.
 // Each request uses the rule of the generation it captured.
 func TestRateCountersAcrossPublication(t *testing.T) {
-	e, clock := newRateEnv(t, func(e *env) Policy { return e.ratePolicy(rate(3, 60), nil) }, base)
+	e, clock := newRateEnv(t, func(e *env) policy.Policy { return e.ratePolicy(rate(3, 60), nil) }, base)
 	revision := int64(1)
-	publish := func(id string, read *RateRule) {
+	publish := func(id string, read *policy.RateRule) {
 		t.Helper()
 		outcome, code := e.publish(Change{ID: id, Expected: revision, Policy: mustJSON(e.ratePolicy(read, nil))})
 		if code != http.StatusOK {
@@ -169,7 +171,7 @@ func waitForFile(t *testing.T, path string) {
 // Counters live in the gateway process: a restart starts them empty, and no
 // endpoint on either listener resets them.
 func TestRateCountersAndRestart(t *testing.T) {
-	e, _ := newRateEnv(t, func(e *env) Policy { return e.ratePolicy(rate(2, 60), nil) }, base)
+	e, _ := newRateEnv(t, func(e *env) policy.Policy { return e.ratePolicy(rate(2, 60), nil) }, base)
 	if got := e.sendAs("alice", http.MethodGet, "/a/x", "", 3); !statusesAre(got, 200, 200, 429) {
 		t.Fatalf("before reset attempts: %v", got)
 	}

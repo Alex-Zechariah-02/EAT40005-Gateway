@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 type historyItem struct {
@@ -156,7 +158,7 @@ func TestHistoryOrderAndFilters(t *testing.T) {
 
 	tooMany := strings.TrimSuffix(strings.Repeat("a.b,", maxHistoryKinds+1), ",")
 	for _, query := range []string{"order=up", "order=", "order=desc&order=asc", "kind=", "kind=Account.block", "kind=a,,b",
-		"kind=" + tooMany, "kind=a&kind=b", "outcome=pending", "outcome=", "actor=", "actor=" + strings.Repeat("x", maxIDLength+1),
+		"kind=" + tooMany, "kind=a&kind=b", "outcome=pending", "outcome=", "actor=", "actor=" + strings.Repeat("x", policy.MaxIDLength+1),
 		"sort=seq", "order=desc&after=x"} {
 		code, body, _ := e.harnessCall(http.MethodGet, "/admin/history?"+query, "")
 		if code != http.StatusBadRequest || !strings.Contains(body, `"page"`) {

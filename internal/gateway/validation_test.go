@@ -8,10 +8,12 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // schemaPolicy is threeAPIPolicy with the given body schema on orders.create.
-func schemaPolicy(schema string) Policy {
+func schemaPolicy(schema string) policy.Policy {
 	p := threeAPIPolicy()
 	p.Operations[2].Body = jsonBody(1024, schema)
 	return p
@@ -92,13 +94,13 @@ func TestSchemaCompilation(t *testing.T) {
 		{"unbounded number literal", `{"type":"object","additionalProperties":true,"properties":{"a":{"type":"integer","maximum":1e99999}}}`, "SCHEMA_INVALID", field},
 		{"empty enum", `{"type":"object","additionalProperties":true,"properties":{"a":{"type":"string","enum":[]}}}`, "INVALID_VALUE", field + ".properties.a.enum"},
 		{"enum of objects", `{"type":"object","additionalProperties":true,"properties":{"a":{"type":"object","additionalProperties":true,"enum":[{}]}}}`, "UNSUPPORTED_FEATURE", field + ".properties.a.enum"},
-		{"too many enum values", `{"type":"object","additionalProperties":true,"properties":{"a":{"type":"integer","enum":[` + numbers(maxEnumValues+1) + `]}}}`, "INVALID_VALUE", field + ".properties.a.enum"},
-		{"too many properties", `{"type":"object","additionalProperties":true,"properties":{` + properties(maxSchemaProperties+1) + `}}`, "INVALID_VALUE", field + ".properties"},
+		{"too many enum values", `{"type":"object","additionalProperties":true,"properties":{"a":{"type":"integer","enum":[` + numbers(policy.MaxEnumValues+1) + `]}}}`, "INVALID_VALUE", field + ".properties.a.enum"},
+		{"too many properties", `{"type":"object","additionalProperties":true,"properties":{` + properties(policy.MaxSchemaProperties+1) + `}}`, "INVALID_VALUE", field + ".properties"},
 	}
 	for _, tc := range invalid {
 		started := time.Now()
 		g, err := Compile(schemaPolicy(tc.schema), 1, time.Time{})
-		policyErr, _ := err.(*PolicyError)
+		policyErr, _ := err.(*policy.PolicyError)
 		if g != nil || policyErr == nil || policyErr.Code != tc.code || policyErr.Field != tc.field {
 			t.Errorf("%s: generation %v error %v, want %s at %s", tc.name, g != nil, err, tc.code, tc.field)
 		}
@@ -139,7 +141,7 @@ func TestSchemaCompilation(t *testing.T) {
 		p := threeAPIPolicy()
 		p.Operations[2].Headers = json.RawMessage(tc.schema)
 		_, err := Compile(p, 1, time.Time{})
-		policyErr, _ := err.(*PolicyError)
+		policyErr, _ := err.(*policy.PolicyError)
 		if tc.code == "" && err != nil || tc.code != "" && (policyErr == nil || policyErr.Code != tc.code || policyErr.Field != tc.field) {
 			t.Errorf("%s: %v, want %q at %s", tc.name, err, tc.code, tc.field)
 		}
@@ -225,18 +227,18 @@ func TestBodyDecoding(t *testing.T) {
 		{"lone high surrogate", `{"a":"\ud800"}`, "invalid_encoding"},
 		{"lone low surrogate", `{"a":"\udc00x"}`, "invalid_encoding"},
 		{"reversed pair", `{"a":"\udc00\ud800"}`, "invalid_encoding"},
-		{"nesting at the bound", deep(maxJSONDepth), ""},
-		{"nesting above the bound", deep(maxJSONDepth + 1), "limit_exceeded"},
-		{"values at the bound", "[" + strings.TrimSuffix(strings.Repeat("1,", maxJSONValues-1), ",") + "]", ""},
-		{"values above the bound", "[" + strings.TrimSuffix(strings.Repeat("1,", maxJSONValues), ",") + "]", "limit_exceeded"},
-		{"long number", `{"a":` + strings.Repeat("1", maxNumberLength+1) + `}`, "limit_exceeded"},
+		{"nesting at the bound", deep(policy.MaxJSONDepth), ""},
+		{"nesting above the bound", deep(policy.MaxJSONDepth + 1), "limit_exceeded"},
+		{"values at the bound", "[" + strings.TrimSuffix(strings.Repeat("1,", policy.MaxJSONValues-1), ",") + "]", ""},
+		{"values above the bound", "[" + strings.TrimSuffix(strings.Repeat("1,", policy.MaxJSONValues), ",") + "]", "limit_exceeded"},
+		{"long number", `{"a":` + strings.Repeat("1", policy.MaxNumberLength+1) + `}`, "limit_exceeded"},
 		{"large exponent", `{"a":1e999}`, ""},
 		{"exponent above the bound", `{"a":1e1000}`, "limit_exceeded"},
 		{"negative exponent above the bound", `{"a":1E-1000}`, "limit_exceeded"},
 	}
 	for _, tc := range cases {
 		started := time.Now()
-		_, reason := decodeJSON([]byte(tc.body))
+		_, reason := policy.DecodeJSON([]byte(tc.body))
 		if reason != tc.reason {
 			t.Errorf("%s: reason %q, want %q", tc.name, reason, tc.reason)
 		}
@@ -246,7 +248,7 @@ func TestBodyDecoding(t *testing.T) {
 	}
 
 	// The decoded value keeps numbers exact and every member.
-	value, _ := decodeJSON([]byte(`{"n":12345678901234567890,"e":[],"o":{}}`))
+	value, _ := policy.DecodeJSON([]byte(`{"n":12345678901234567890,"e":[],"o":{}}`))
 	object := value.(map[string]any)
 	if object["n"] != json.Number("12345678901234567890") || len(object["e"].([]any)) != 0 || len(object["o"].(map[string]any)) != 0 {
 		t.Fatalf("decoded %#v", value)

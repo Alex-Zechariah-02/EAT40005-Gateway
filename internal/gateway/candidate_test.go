@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // Failure to read metadata after a committed stage must retain its receipt.
@@ -104,7 +106,7 @@ func TestCandidateStagingChangesNothingEnforced(t *testing.T) {
 		t.Fatalf("staging changed the status: %+v -> %+v", before, after)
 	}
 	_, body, header := e.as(harness, http.MethodGet, "/admin/policy", "")
-	confirmed, err := DecodePolicy(fromJSON[revisionInfo](t, body).Document)
+	confirmed, err := policy.DecodePolicy(fromJSON[revisionInfo](t, body).Document)
 	if err != nil || header.Get("ETag") != `"r1"` || confirmed.APIs[0].Upstream != "A" {
 		t.Fatalf("confirmed policy after staging: %v %s", err, body)
 	}
@@ -146,9 +148,9 @@ func TestCandidateRefusals(t *testing.T) {
 	before := e.status()
 
 	duplicateID := e.protectedPolicy()
-	duplicateID.Operations = append(duplicateID.Operations, Operation{ID: "read-a", API: "a", Method: "GET", Target: "/z/*", Access: "deny", Auth: "none"})
+	duplicateID.Operations = append(duplicateID.Operations, policy.Operation{ID: "read-a", API: "a", Method: "GET", Target: "/z/*", Access: "deny", Auth: "none"})
 	duplicateRoute := e.protectedPolicy()
-	duplicateRoute.Operations = append(duplicateRoute.Operations, Operation{ID: "read-a-again", API: "b", Method: "GET", Target: "/a/*", Access: "deny", Auth: "none"})
+	duplicateRoute.Operations = append(duplicateRoute.Operations, policy.Operation{ID: "read-a-again", API: "b", Method: "GET", Target: "/a/*", Access: "deny", Auth: "none"})
 	badTarget := e.protectedPolicy()
 	badTarget.Operations[0].Target = "/a/../admin/*"
 	badMethod := e.protectedPolicy()
@@ -160,10 +162,10 @@ func TestCandidateRefusals(t *testing.T) {
 	unknownUpstream := e.protectedPolicy()
 	unknownUpstream.Upstreams = unknownUpstream.Upstreams[1:] // API a and d still name A
 	roleStillHeld := e.protectedPolicy()
-	roleStillHeld.Roles = []Role{{ID: "READER"}} // alice still holds WRITER
-	roleStillHeld.Permits = []Permit{{Role: "WRITER", Operation: "read-a"}}
+	roleStillHeld.Roles = []policy.Role{{ID: "READER"}} // alice still holds WRITER
+	roleStillHeld.Permits = []policy.Permit{{Role: "WRITER", Operation: "read-a"}}
 	futureSchema := mustJSON(e.protectedPolicy())
-	futureSchema = []byte(strings.Replace(string(futureSchema), fmt.Sprintf(`"schema_version":%d`, schemaVersion), `"schema_version":99`, 1))
+	futureSchema = []byte(strings.Replace(string(futureSchema), fmt.Sprintf(`"schema_version":%d`, policy.SchemaVersion), `"schema_version":99`, 1))
 
 	cases := []struct {
 		name   string

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 const recentEventLimit = 10000
@@ -122,7 +124,7 @@ func (o *observations) record(event Event) {
 	view := requestView(event)
 	var routingPath string
 	if event.Stages[stageCanonical] == stagePass {
-		routingPath = strings.Clone(event.Path[:min(len(event.Path), maxTargetLength+1)])
+		routingPath = strings.Clone(event.Path[:min(len(event.Path), policy.MaxTargetLength+1)])
 	}
 	o.mu.Lock()
 	defer o.mu.Unlock()

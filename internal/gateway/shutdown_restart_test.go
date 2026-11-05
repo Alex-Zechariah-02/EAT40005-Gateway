@@ -12,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // A stop during traffic on kept connections, with administrative changes in
@@ -22,8 +24,8 @@ import (
 func TestNativeStopUnderLoad(t *testing.T) {
 	e := newEnv(t)
 	provisional := e.protectedPolicy()
-	provisional.Roles = append(provisional.Roles, Role{ID: "TRIAL"})
-	provisional.Permits = append(provisional.Permits, Permit{Role: "TRIAL", Operation: "read-a"})
+	provisional.Roles = append(provisional.Roles, policy.Role{ID: "TRIAL"})
+	provisional.Permits = append(provisional.Permits, policy.Permit{Role: "TRIAL", Operation: "read-a"})
 	base := e.protectedPolicy()
 	seed(t, e.database, base, seedOptions{provisional: &provisional, deadline: time.Now().Add(time.Hour)})
 	e.interruptible = true
@@ -137,8 +139,8 @@ func TestNativeRestartAfterGracefulStop(t *testing.T) {
 
 	override := e.mustOverride(harness, operationContainment("read-b", 3), `"r1"`, "restart-override-create")
 	candidate := e.protectedPolicy()
-	candidate.Roles = append(candidate.Roles, Role{ID: "TRIAL"})
-	candidate.Permits = append(candidate.Permits, Permit{Role: "TRIAL", Operation: "read-a"})
+	candidate.Roles = append(candidate.Roles, policy.Role{ID: "TRIAL"})
+	candidate.Permits = append(candidate.Permits, policy.Permit{Role: "TRIAL", Operation: "read-a"})
 	_, activated := e.provisionalFrom(harness, candidate, 1, 3, "restart-cpa")
 	if code, _ := e.get("/a/x", bearer(t, "carol")...); code != http.StatusOK {
 		t.Fatalf("carol under the provisional base: %d", code)

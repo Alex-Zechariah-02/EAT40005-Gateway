@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 func controlError(code string) json.RawMessage {
@@ -163,7 +164,7 @@ func (c *Controller) handleBlockedAccounts(w http.ResponseWriter, r *http.Reques
 
 func (c *Controller) handleBlockAccount(w http.ResponseWriter, r *http.Request, who caller) {
 	subject := r.PathValue("subject")
-	if !isSubjectID(subject) {
+	if !policy.IsSubjectID(subject) {
 		adminError(w, http.StatusBadRequest, "bad_request", "subject")
 		return
 	}
@@ -188,7 +189,7 @@ func (c *Controller) handleBlockAccount(w http.ResponseWriter, r *http.Request, 
 
 func (c *Controller) handleUnblockAccount(w http.ResponseWriter, r *http.Request, who caller) {
 	subject := r.PathValue("subject")
-	if !isSubjectID(subject) {
+	if !policy.IsSubjectID(subject) {
 		adminError(w, http.StatusBadRequest, "bad_request", "subject")
 		return
 	}

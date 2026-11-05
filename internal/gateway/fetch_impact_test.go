@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 func TestFetchImpactOfNewRole(t *testing.T) {
@@ -19,8 +21,8 @@ func TestFetchImpactOfNewRole(t *testing.T) {
 	if code, _ := e.get("/a/new-role", "Authorization", "Bearer "+token); code != 403 {
 		t.Fatalf("unknown role: %d", code)
 	}
-	p.Roles = append(p.Roles, Role{ID: "ALIEN"})
-	p.Permits = append(p.Permits, Permit{Role: "ALIEN", Operation: "read-a"})
+	p.Roles = append(p.Roles, policy.Role{ID: "ALIEN"})
+	p.Permits = append(p.Permits, policy.Permit{Role: "ALIEN", Operation: "read-a"})
 	code, staged, body := e.stage(admin, p, `"r1"`, "impact-new-role-candidate")
 	if code != 201 {
 		t.Fatalf("stage: %d %s", code, body)

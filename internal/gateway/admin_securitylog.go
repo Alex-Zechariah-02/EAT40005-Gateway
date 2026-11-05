@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 const (
@@ -145,7 +147,7 @@ func parseSecurityLogQuery(values map[string][]string) (securityLogQuery, string
 	}
 	q := securityLogQuery{ref: strings.ToLower(get("ref")), subject: get("subject"), operation: get("operation"), decision: get("decision")}
 	for name, value := range map[string]string{"ref": q.ref, "subject": q.subject, "operation": q.operation} {
-		if len(value) > maxIDLength {
+		if len(value) > policy.MaxIDLength {
 			return q, name
 		}
 	}

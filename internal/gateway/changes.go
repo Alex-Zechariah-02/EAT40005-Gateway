@@ -5,6 +5,8 @@ package gateway
 import (
 	"encoding/json"
 	"sort"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // controlChange names one control and the target it applies to. It is the
@@ -19,14 +21,14 @@ type controlChange struct {
 // definition differs between two complete policies: an upstream, API,
 // operation (route, method, access, authentication, body and header rules),
 // its rate rule, a role or a permit (role and operation).
-func policyChanges(before, after Policy) []controlChange {
+func policyChanges(before, after policy.Policy) []controlChange {
 	// encode gives a definition a comparable form; policy types always encode.
 	encode := func(value any) string {
 		data, _ := json.Marshal(value)
 		return string(data)
 	}
 	// collect maps each control to its targets and their definitions.
-	collect := func(p Policy) map[string]map[string]string {
+	collect := func(p policy.Policy) map[string]map[string]string {
 		d := map[string]map[string]string{"upstream": {}, "api": {}, "operation": {}, "rate": {}, "role": {}, "permit": {}}
 		for _, u := range p.Upstreams {
 			d["upstream"][u.ID] = u.Dial

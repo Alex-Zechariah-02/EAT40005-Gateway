@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // runRestore performs a declared historical restore. The backup is copied
@@ -100,7 +101,7 @@ func checkBackup(backup string) (backupManifest, error) {
 	if err != nil {
 		return manifest, fmt.Errorf("reading the backup manifest: %w", err)
 	}
-	if err := decodeStrict(data, &manifest); err != nil || manifest.Format != backupFormat {
+	if err := policy.DecodeStrict(data, &manifest); err != nil || manifest.Format != backupFormat {
 		return manifest, errors.New("the backup manifest is not a gateway backup manifest")
 	}
 	sum, size, err := fileDigest(backup)

@@ -7,6 +7,8 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // EstablishBase confirms a validated deny-all candidate as the first
@@ -52,7 +54,7 @@ func (c *Controller) EstablishBase(ctx context.Context, kind, actor string, cand
 	case record.Checksum != checksum || documentChecksum(record.Document) != checksum:
 		return c.reject(ctx, t, "PRECONDITION_FAILED", "checksum", now)
 	}
-	policy, err := DecodePolicy(record.Document)
+	policy, err := policy.DecodePolicy(record.Document)
 	if err != nil {
 		code, field := policyRejection(err)
 		return c.reject(ctx, t, code, field, now)
@@ -116,7 +118,7 @@ func (c *Controller) Activate(ctx context.Context, t transitionRecord, candidate
 	case documentChecksum(record.Document) != record.Checksum:
 		return c.reject(ctx, t, "CANDIDATE_INTEGRITY", "", now)
 	}
-	policy, err := DecodePolicy(record.Document)
+	policy, err := policy.DecodePolicy(record.Document)
 	if err != nil {
 		code, field := policyRejection(err)
 		return c.reject(ctx, t, code, field, now)

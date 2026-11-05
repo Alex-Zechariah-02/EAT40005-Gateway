@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // publishAuthority compiles committed authority, the active base with its
@@ -33,7 +34,7 @@ func (c *Controller) publishAuthority(a authority) bool {
 // authorityGeneration compiles the active base of a with the given overrides,
 // keeping a provisional base's deadline.
 func authorityGeneration(a authority, overrides []override) (*Generation, error) {
-	p, err := DecodePolicy(a.document)
+	p, err := policy.DecodePolicy(a.document)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +67,7 @@ func (c *Controller) compileEffective(ctx context.Context, revision int64, deadl
 // swap the generation in, and record the publication receipt and the durable
 // outcome event. Callers have checked that the policy changes no target the
 // overrides depend on.
-func (c *Controller) publish(ctx context.Context, t transitionRecord, policy Policy, change revisionChange, overrides []override, now time.Time) (Outcome, int) {
+func (c *Controller) publish(ctx context.Context, t transitionRecord, policy policy.Policy, change revisionChange, overrides []override, now time.Time) (Outcome, int) {
 	if _, err := effectiveGeneration(policy, 0, change.deadline, overrides); err != nil {
 		code, field := policyRejection(err)
 		return c.reject(ctx, t, code, field, now)
@@ -181,7 +182,7 @@ func (c *Controller) Publish(ctx context.Context, actor string, change Change) (
 	if a.provisional != 0 {
 		return c.reject(ctx, t, "PROVISIONAL_ACTIVE", "", now)
 	}
-	policy, err := DecodePolicy(change.Policy)
+	policy, err := policy.DecodePolicy(change.Policy)
 	if err != nil {
 		code, field := policyRejection(err)
 		return c.reject(ctx, t, code, field, now)
@@ -195,8 +196,8 @@ func (c *Controller) Publish(ctx context.Context, actor string, change Change) (
 // rejectConflict refuses, with the active override it conflicts with, a whole
 // policy that would replace the active base of a while changing or
 // invalidating an active override. It reports whether it refused.
-func (c *Controller) rejectConflict(ctx context.Context, t transitionRecord, a authority, next Policy, now time.Time) (Outcome, int, bool) {
-	current, err := DecodePolicy(a.document)
+func (c *Controller) rejectConflict(ctx context.Context, t transitionRecord, a authority, next policy.Policy, now time.Time) (Outcome, int, bool) {
+	current, err := policy.DecodePolicy(a.document)
 	if err != nil {
 		result, status := c.storeFailure(t.ID, err)
 		return result, status, true

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // allStages is the stage map of a request that passed every control and was
@@ -68,7 +70,7 @@ func TestFiveControlsAdmitValidRequest(t *testing.T) {
 
 // fixtureWithRate is the fixture policy with another rate rule on
 // orders.create and, when schema is set, another body schema.
-func fixtureWithRate(fixtures map[string]*fixtureProcess, r *RateRule, schema string) Policy {
+func fixtureWithRate(fixtures map[string]*fixtureProcess, r *policy.RateRule, schema string) policy.Policy {
 	p := fixturePolicy(fixtures)
 	for i := range p.Operations {
 		if p.Operations[i].ID == "orders.create" {
@@ -221,11 +223,11 @@ func TestForgedControlHeadersSkipNothing(t *testing.T) {
 func TestUpstreamFailureUnderFiveControls(t *testing.T) {
 	e := newEnv(t)
 	p := e.ratePolicy(rate(30, 60), nil)
-	p.Upstreams = append(p.Upstreams, Upstream{ID: "Z", Dial: freeAddr(t)})
-	p.APIs = append(p.APIs, API{ID: "z", Upstream: "Z"})
-	p.Operations = append(p.Operations, Operation{ID: "write-z", API: "z", Method: "POST", Target: "/z", Access: "allow", Auth: "required",
+	p.Upstreams = append(p.Upstreams, policy.Upstream{ID: "Z", Dial: freeAddr(t)})
+	p.APIs = append(p.APIs, policy.API{ID: "z", Upstream: "Z"})
+	p.Operations = append(p.Operations, policy.Operation{ID: "write-z", API: "z", Method: "POST", Target: "/z", Access: "allow", Auth: "required",
 		Body: jsonBody(1024, `{"type":"object","additionalProperties":false,"required":["n"],"properties":{"n":{"type":"integer"}}}`), Rate: rate(20, 60)})
-	p.Permits = append(p.Permits, Permit{Role: "WRITER", Operation: "write-z"})
+	p.Permits = append(p.Permits, policy.Permit{Role: "WRITER", Operation: "write-z"})
 	seed(t, e.database, p, seedOptions{})
 	e.start(binaries.plain)
 

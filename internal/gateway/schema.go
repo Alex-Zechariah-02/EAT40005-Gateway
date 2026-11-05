@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"slices"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
@@ -41,15 +42,15 @@ var schemaTypes = []string{"object", "array", "string", "integer", "number", "bo
 // also returns the decoded root object.
 func compileSchema(raw json.RawMessage, kind schemaKind, field string) (*jsonschema.Schema, map[string]any, error) {
 	if len(raw) == 0 {
-		return nil, nil, invalid("INVALID_VALUE", "%s", field)
+		return nil, nil, policy.Invalid("INVALID_VALUE", "%s", field)
 	}
-	document, reason := decodeJSON(raw)
+	document, reason := policy.DecodeJSON(raw)
 	if reason != "" {
-		return nil, nil, invalid("SCHEMA_INVALID", "%s", field)
+		return nil, nil, policy.Invalid("SCHEMA_INVALID", "%s", field)
 	}
 	root, ok := document.(map[string]any)
 	if !ok || (root["type"] != "object" && (kind == schemaHeaders || root["type"] != "array")) {
-		return nil, nil, invalid("INVALID_VALUE", "%s.type", field)
+		return nil, nil, policy.Invalid("INVALID_VALUE", "%s.type", field)
 	}
 	if err := checkSchema(root, field); err != nil {
 		return nil, nil, err
@@ -64,11 +65,11 @@ func compileSchema(raw json.RawMessage, kind schemaKind, field string) (*jsonsch
 	compiler.DefaultDraft(jsonschema.Draft2020)
 	compiler.UseLoader(jsonschema.SchemeURLLoader{})
 	if err := compiler.AddResource(schemaURL, document); err != nil {
-		return nil, nil, invalid("SCHEMA_INVALID", "%s", field)
+		return nil, nil, policy.Invalid("SCHEMA_INVALID", "%s", field)
 	}
 	schema, err := compiler.Compile(schemaURL)
 	if err != nil {
-		return nil, nil, invalid("SCHEMA_INVALID", "%s", field)
+		return nil, nil, policy.Invalid("SCHEMA_INVALID", "%s", field)
 	}
 	return schema, root, nil
 }
@@ -114,10 +115,10 @@ func checkSchema(schema map[string]any, field string) error {
 		case "items", "minItems", "maxItems":
 			applies = types["array"]
 		default:
-			return invalid("UNSUPPORTED_FEATURE", "%s.%s", field, keyword)
+			return policy.Invalid("UNSUPPORTED_FEATURE", "%s.%s", field, keyword)
 		}
 		if !applies {
-			return invalid("INVALID_VALUE", "%s.%s", field, keyword)
+			return policy.Invalid("INVALID_VALUE", "%s.%s", field, keyword)
 		}
 	}
 
@@ -165,10 +166,10 @@ func checkHeaderSchema(root map[string]any, field string) error {
 	for name, value := range properties {
 		path := field + ".properties." + name
 		if !isHeaderName(name) || isGatewayHeader(name) || unforwardedHeaders[name] {
-			return invalid("INVALID_VALUE", "%s", path)
+			return policy.Invalid("INVALID_VALUE", "%s", path)
 		}
 		if value.(map[string]any)["type"] != "string" {
-			return invalid("INVALID_VALUE", "%s.type", path)
+			return policy.Invalid("INVALID_VALUE", "%s.type", path)
 		}
 	}
 	return nil
@@ -176,7 +177,7 @@ func checkHeaderSchema(root map[string]any, field string) error {
 
 // isHeaderName accepts canonical header names of letters, digits and '-'.
 func isHeaderName(name string) bool {
-	if name == "" || len(name) > maxHeaderName || http.CanonicalHeaderKey(name) != name {
+	if name == "" || len(name) > policy.MaxHeaderName || http.CanonicalHeaderKey(name) != name {
 		return false
 	}
 	for i := 0; i < len(name); i++ {

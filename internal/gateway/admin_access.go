@@ -5,6 +5,8 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // accessCheck asks whether a request would pass the checks that do not depend
@@ -50,11 +52,11 @@ func (c *Controller) handleAccessCheck(w http.ResponseWriter, r *http.Request, w
 		adminError(w, http.StatusBadRequest, "bad_request", "path")
 		return
 	}
-	if len(check.Roles) > maxRoles || slices.ContainsFunc(check.Roles, func(role string) bool { return role == "" || len(role) > maxIDLength }) {
+	if len(check.Roles) > policy.MaxRoles || slices.ContainsFunc(check.Roles, func(role string) bool { return role == "" || len(role) > policy.MaxIDLength }) {
 		adminError(w, http.StatusBadRequest, "bad_request", "roles")
 		return
 	}
-	if check.Subject != nil && (*check.Subject == "" || len(*check.Subject) > maxIDLength) {
+	if check.Subject != nil && (*check.Subject == "" || len(*check.Subject) > policy.MaxIDLength) {
 		adminError(w, http.StatusBadRequest, "bad_request", "subject")
 		return
 	}
@@ -118,7 +120,7 @@ func (c *Controller) handleAccessCheck(w http.ResponseWriter, r *http.Request, w
 // checkedPath applies the request handler's own canonical-path check to a
 // path given as text, so the same targets are refused before routing.
 func checkedPath(text string) (string, bool) {
-	if !strings.HasPrefix(text, "/") || len(text) > maxTargetLength || strings.ContainsAny(text, "?#") {
+	if !strings.HasPrefix(text, "/") || len(text) > policy.MaxTargetLength || strings.ContainsAny(text, "?#") {
 		return "", false
 	}
 	parsed, err := url.ParseRequestURI(text)
