@@ -1,6 +1,6 @@
 // Canonical paths, route matching and role authorisation.
 
-package gateway
+package compile
 
 import (
 	"net/http"
@@ -19,7 +19,7 @@ func parseTarget(pattern string) (string, bool) {
 	if isPrefix {
 		path += "/"
 	}
-	if !isCanonical(path) || strings.Contains(path, "*") {
+	if !IsCanonical(path) || strings.Contains(path, "*") {
 		return "", false
 	}
 	if isPrefix {
@@ -39,13 +39,13 @@ func CanonicalPath(r *http.Request) (string, bool) {
 		}
 	}
 	path := r.URL.Path
-	if !isCanonical(path) {
+	if !IsCanonical(path) {
 		return "", false
 	}
 	return path, true
 }
 
-func isCanonical(path string) bool {
+func IsCanonical(path string) bool {
 	if !strings.HasPrefix(path, "/") {
 		return false
 	}
@@ -68,10 +68,10 @@ func isCanonical(path string) bool {
 	return true
 }
 
-// match selects the most specific target for a canonical path, then the
+// Match selects the most specific target for a canonical path, then the
 // method on that target only. A less specific target is never consulted for a
 // missing method.
-func (g *Generation) match(path, method string) (*target, *rule) {
+func (g *Generation) Match(path, method string) (*target, *Rule) {
 	t := g.exact[path]
 	if t == nil {
 		for _, candidate := range g.prefixes {
@@ -88,9 +88,9 @@ func (g *Generation) match(path, method string) (*target, *rule) {
 	return t, t.methods[method]
 }
 
-// authorise retains only declared roles from already verified claims. Unknown
+// Authorise retains only declared roles from already verified claims. Unknown
 // roles are returned for audit; a subject name never creates a permission.
-func (g *Generation) authorise(asserted []string, r *rule) (roles, ignored []string, reason string) {
+func (g *Generation) Authorise(asserted []string, r *Rule) (roles, ignored []string, reason string) {
 	allowed := false
 	for _, role := range asserted {
 		if g.roles[role] {

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
@@ -33,7 +34,7 @@ func (c *Controller) publishAuthority(a authority) bool {
 
 // authorityGeneration compiles the active base of a with the given overrides,
 // keeping a provisional base's deadline.
-func authorityGeneration(a authority, overrides []override) (*Generation, error) {
+func authorityGeneration(a authority, overrides []override) (*compile.Generation, error) {
 	p, err := policy.DecodePolicy(a.document)
 	if err != nil {
 		return nil, err
@@ -54,7 +55,7 @@ func overrideIDs(overrides []override) []int64 {
 }
 
 // compileEffective compiles a stored revision with the given overrides.
-func (c *Controller) compileEffective(ctx context.Context, revision int64, deadline time.Time, overrides []override) (*Generation, error) {
+func (c *Controller) compileEffective(ctx context.Context, revision int64, deadline time.Time, overrides []override) (*compile.Generation, error) {
 	p, err := c.storedPolicy(ctx, revision)
 	if err != nil {
 		return nil, err
@@ -123,7 +124,7 @@ func (c *Controller) finish(ctx context.Context, result Outcome, event Event) (O
 		result.Reason = "OUTCOME_AUDIT_PENDING"
 		return result, http.StatusServiceUnavailable
 	}
-	if err := c.store.markAudited(ctx, result.Transition, trustedNow()); err != nil {
+	if err := c.store.markAudited(ctx, result.Transition, compile.TrustedNow()); err != nil {
 		c.logger.Error("recording audit receipt", "error", err)
 	}
 	fault.CrashPoint("after-outcome")
@@ -153,7 +154,7 @@ func (c *Controller) Publish(ctx context.Context, actor string, change Change) (
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	now := trustedNow()
+	now := compile.TrustedNow()
 	if c.store == nil || c.state != modeNormal {
 		return unavailableOutcome(change.ID)
 	}

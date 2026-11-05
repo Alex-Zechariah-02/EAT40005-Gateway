@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
@@ -56,7 +57,7 @@ func compileJSON(t *testing.T, document string) error {
 	if err != nil {
 		return err
 	}
-	_, err = Compile(p, 1, time.Time{})
+	_, err = compile.Compile(p, 1, time.Time{})
 	return err
 }
 
@@ -74,7 +75,7 @@ func TestValidPolicyCompilesDeterministically(t *testing.T) {
 	p := threeAPIPolicy()
 	original, _ := json.Marshal(p)
 
-	first, err := Compile(p, 7, time.Time{})
+	first, err := compile.Compile(p, 7, time.Time{})
 	if err != nil {
 		t.Fatalf("valid policy rejected: %v", err)
 	}
@@ -87,7 +88,7 @@ func TestValidPolicyCompilesDeterministically(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := Compile(decoded, 7, time.Time{})
+	second, err := compile.Compile(decoded, 7, time.Time{})
 	if err != nil || second.ID != first.ID || first.Profile != policy.ProfileCore {
 		t.Fatalf("recompile: %v, ids %s and %s", err, first.ID, second.ID)
 	}
@@ -97,19 +98,19 @@ func TestValidPolicyCompilesDeterministically(t *testing.T) {
 	p.Upstreams[0].Dial = "127.0.0.1:1"
 	p.Roles[1].ID = "OTHER"
 	p.Permits[0].Role = "CUSTOMER"
-	_, r := first.match("/orders", "GET")
-	if r == nil || !r.permitted || r.dial != "127.0.0.1:9101" || r.api != "orders" || r.upstream != "orders" {
+	_, r := first.Match("/orders", "GET")
+	if r == nil || !r.Permitted() || r.Dial() != "127.0.0.1:9101" || r.API() != "orders" || r.Upstream() != "orders" {
 		t.Fatalf("generation changed with its source policy: %+v", r)
 	}
-	if _, _, reason := first.authorise([]string{"STAFF"}, r); reason != "" {
+	if _, _, reason := first.Authorise([]string{"STAFF"}, r); reason != "" {
 		t.Fatalf("permit changed with its source policy: %s", reason)
 	}
-	if _, ignored, reason := first.authorise([]string{"OTHER"}, r); reason != "no_permit" || !slices.Equal(ignored, []string{"OTHER"}) {
+	if _, ignored, reason := first.Authorise([]string{"OTHER"}, r); reason != "no_permit" || !slices.Equal(ignored, []string{"OTHER"}) {
 		t.Fatalf("declared roles changed with source: %s %v", reason, ignored)
 	}
 
 	// A different revision is a different generation.
-	other, _ := Compile(threeAPIPolicy(), 8, time.Time{})
+	other, _ := compile.Compile(threeAPIPolicy(), 8, time.Time{})
 	if other.ID == first.ID {
 		t.Fatal("revision is not part of the generation identity")
 	}
@@ -220,6 +221,6 @@ func TestPolicyCountAndLengthLimits(t *testing.T) {
 }
 
 func compileErr(p policy.Policy) error {
-	_, err := Compile(p, 1, time.Time{})
+	_, err := compile.Compile(p, 1, time.Time{})
 	return err
 }

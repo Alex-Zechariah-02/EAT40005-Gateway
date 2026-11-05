@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
@@ -47,12 +48,12 @@ func TestFetchPolicyVersion4(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Fetch v4 policy must decode: %v", err)
 	}
-	generation, err := Compile(policy, 1, time.Time{})
+	generation, err := compile.Compile(policy, 1, time.Time{})
 	if err != nil {
 		t.Fatalf("public client-address rate must compile: %v", err)
 	}
-	_, operation := generation.match("/inventory/search", "GET")
-	if operation == nil || !operation.public || !operation.permitted || operation.rate == nil {
+	_, operation := generation.Match("/inventory/search", "GET")
+	if operation == nil || !operation.Public() || !operation.Permitted() || operation.Rate() == nil {
 		t.Fatalf("compiled public search lost its controls: %+v", operation)
 	}
 }

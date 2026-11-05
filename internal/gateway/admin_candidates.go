@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
@@ -214,7 +215,7 @@ func (c *Controller) handleProvisional(w http.ResponseWriter, r *http.Request, w
 		adminError(w, http.StatusServiceUnavailable, "unavailable", "")
 		return
 	}
-	view := map[string]any{"activation": record, "changes": policyChanges(before, after)}
+	view := map[string]any{"activation": record, "changes": compile.PolicyChanges(before, after)}
 	if g := c.current.Load(); g != nil && g.Revision == a.provisional {
 		view["generation"] = g.ID
 	}

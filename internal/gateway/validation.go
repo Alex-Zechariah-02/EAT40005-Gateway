@@ -7,10 +7,10 @@ import (
 	"io"
 	"mime"
 	"net/http"
-	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
@@ -31,14 +31,14 @@ type rejection struct {
 // it bounds the bytes read as well as the declared length: a chunked body, or
 // an HTTP/2 body without a content-length field, declares no length, so a
 // check of the declared length alone would let it pass the global ceiling.
-func readBody(r *http.Request, rule *bodyRule, globalMaxBytes int64) (any, *rejection) {
+func readBody(r *http.Request, rule *compile.BodyRule, globalMaxBytes int64) (any, *rejection) {
 	if rule == nil {
 		if r.ContentLength != 0 || len(r.TransferEncoding) > 0 {
 			return nil, &rejection{http.StatusBadRequest, "bad_request", "unexpected_body"}
 		}
 		return nil, nil
 	}
-	maxBytes := min(rule.maxBytes, globalMaxBytes)
+	maxBytes := min(rule.MaxBytes(), globalMaxBytes)
 	if r.ContentLength > maxBytes {
 		return nil, &rejection{http.StatusRequestEntityTooLarge, "payload_too_large", "too_large"}
 	}
@@ -87,21 +87,21 @@ func isJSONMediaType(fields []string) bool {
 // validateRequest checks the declared request headers and the decoded body
 // against the operation's schemas. It returns the rejection reason, or "".
 // Library error text can quote the input, so it is never returned.
-func validateRequest(header http.Header, document any, r *rule) string {
+func validateRequest(header http.Header, document any, r *compile.Rule) string {
 	// The proxy removes every field named in Connection, so a validated field
 	// named there would not reach the upstream as it was checked: a declared
 	// header, or the media type of a validated body. Such a request is refused
 	// rather than forwarded without it.
 	for _, name := range connectionNames(header) {
-		validatedHeader := r.headers != nil && slices.Contains(r.headers.names, name)
-		validatedMediaType := r.body != nil && name == "Content-Type"
+		validatedHeader := r.Headers() != nil && r.Headers().Declares(name)
+		validatedMediaType := r.Body() != nil && name == "Content-Type"
 		if validatedHeader || validatedMediaType {
 			return "connection_nominated"
 		}
 	}
-	if r.headers != nil {
+	if r.Headers() != nil {
 		declared := map[string]any{}
-		for _, name := range r.headers.names {
+		for name := range r.Headers().Names() {
 			values := header.Values(name)
 			if len(values) > 1 {
 				return "repeated_header"
@@ -110,11 +110,11 @@ func validateRequest(header http.Header, document any, r *rule) string {
 				declared[name] = values[0]
 			}
 		}
-		if r.headers.schema.Validate(declared) != nil {
+		if r.Headers().Validate(declared) != nil {
 			return "header_mismatch"
 		}
 	}
-	if r.body != nil && r.body.schema.Validate(document) != nil {
+	if r.Body() != nil && r.Body().Validate(document) != nil {
 		return "schema_mismatch"
 	}
 	return ""

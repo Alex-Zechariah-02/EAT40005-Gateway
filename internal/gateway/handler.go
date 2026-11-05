@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 )
 
@@ -76,7 +77,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !strings.HasPrefix(r.RequestURI, "/") ||
 		r.Method == http.MethodConnect ||
 		r.Header.Get("Upgrade") != "" ||
-		slices.ContainsFunc(connectionNames(r.Header), isGatewayHeader) {
+		slices.ContainsFunc(connectionNames(r.Header), compile.IsGatewayHeader) {
 		q.reject(stageIngress, http.StatusBadRequest, "bad_request")
 		return
 	}
@@ -95,7 +96,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// A generation past its earliest deadline (a provisional base's or an
 	// override's) admits nothing, even if the controller's timer is late; the
 	// controller is asked to end what expired now.
-	if g.expired(trustedNow()) {
+	if g.Expired(compile.TrustedNow()) {
 		h.controller.deadlinePassed(g)
 		q.reject(stageCapture, http.StatusServiceUnavailable, "gateway_unavailable")
 		return
@@ -104,27 +105,27 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	q.pass(stageCapture)
 	fault.SignalCapture(r.URL.Path, g.ID)
 
-	path, ok := CanonicalPath(r)
+	path, ok := compile.CanonicalPath(r)
 	if !ok {
 		q.reject(stageCanonical, http.StatusBadRequest, "bad_request")
 		return
 	}
 	q.pass(stageCanonical)
 
-	t, rule := g.match(path, r.Method)
+	t, rule := g.Match(path, r.Method)
 	if t == nil {
 		q.reject(stageRoute, http.StatusNotFound, "not_found")
 		return
 	}
 	if rule == nil {
-		w.Header().Set("Allow", t.allow)
+		w.Header().Set("Allow", t.Allow())
 		q.reject(stageRoute, http.StatusMethodNotAllowed, "method_not_allowed")
 		return
 	}
-	q.event.Operation, q.event.API, q.event.Upstream = rule.operation, rule.api, rule.upstream
+	q.event.Operation, q.event.API, q.event.Upstream = rule.Operation(), rule.API(), rule.Upstream()
 	q.pass(stageRoute)
 
-	if !rule.permitted {
+	if !rule.Permitted() {
 		q.reject(stageAccess, http.StatusForbidden, "forbidden")
 		return
 	}
@@ -134,7 +135,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// public. Roles come only from verified claims and are filtered through
 	// the declared roles of the one captured generation.
 	var roles []string
-	if rule.public {
+	if rule.Public() {
 		q.event.Stages[stageJWT] = stageNotApplicable
 		q.event.Stages[stageRBAC] = stageNotApplicable
 	} else {
@@ -152,7 +153,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		q.pass(stageJWT)
-		roles, q.event.IgnoredRoles, reason = g.authorise(verified.roles, rule)
+		roles, q.event.IgnoredRoles, reason = g.Authorise(verified.roles, rule)
 		q.event.Roles = roles
 		blocked := h.controller.blocked.Load()
 		if blocked == nil {
@@ -175,11 +176,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Rate limiting uses either the verified subject or the direct socket
 	// peer. Client forwarding headers never choose an address counter.
-	if rule.rate == nil {
+	if rule.Rate() == nil {
 		q.event.Stages[stageRate] = stageNotApplicable
 	} else {
-		key := counterKey{operation: rule.operation, keyType: rule.rateKey, key: q.event.Subject}
-		if rule.rateKey == rateKeyAddress {
+		key := counterKey{operation: rule.Operation(), keyType: rule.RateKey(), key: q.event.Subject}
+		if rule.RateKey() == compile.RateKeyAddress {
 			if q.event.ClientAddress == "" {
 				q.event.Reason = "invalid_peer_address"
 				q.reject(stageRate, http.StatusBadRequest, "bad_request")
@@ -187,7 +188,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			key.key = q.event.ClientAddress
 		}
-		switch h.controller.limiter.admit(key, rule.rate, h.controller.clock.now()) {
+		switch h.controller.limiter.admit(key, rule.Rate(), h.controller.clock.now()) {
 		case rateExceeded:
 			q.event.Reason = "quota_exceeded"
 			q.reject(stageRate, http.StatusTooManyRequests, "rate_limited")
@@ -200,7 +201,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		q.pass(stageRate)
 	}
 
-	document, refused := readBody(r, rule.body, h.maxBodyBytes)
+	document, refused := readBody(r, rule.Body(), h.maxBodyBytes)
 	if refused != nil {
 		q.event.Reason = refused.reason
 		q.reject(stageBody, refused.status, refused.code)
@@ -209,7 +210,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	q.bodyPending = false
 	q.pass(stageBody)
 
-	if rule.body == nil && rule.headers == nil {
+	if rule.Body() == nil && rule.Headers() == nil {
 		q.event.Stages[stageValidation] = stageNotApplicable
 	} else {
 		if reason := validateRequest(r.Header, document, rule); reason != "" {
@@ -233,13 +234,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	r.Header.Set("X-Request-Id", q.event.RequestID)
 	r.Header.Set("X-Gateway-Generation", g.ID)
-	if !rule.public {
+	if !rule.Public() {
 		// The upstream can rely on these for its own object-level rules: client
 		// copies were removed at ingress.
 		r.Header.Set("X-Gateway-Subject", q.event.Subject)
 		r.Header.Set("X-Gateway-Roles", strings.Join(roles, ","))
 	}
-	r = r.WithContext(context.WithValue(r.Context(), bindingKey{}, binding{dial: rule.dial}))
+	r = r.WithContext(context.WithValue(r.Context(), bindingKey{}, binding{dial: rule.Dial()}))
 	q.pass(stageBind)
 
 	recorder := &statusRecorder{ResponseWriter: w}

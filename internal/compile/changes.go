@@ -1,6 +1,6 @@
 // Control changes between two generations.
 
-package gateway
+package compile
 
 import (
 	"encoding/json"
@@ -9,19 +9,19 @@ import (
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
-// controlChange names one control and the target it applies to. It is the
+// ControlChange names one control and the target it applies to. It is the
 // identity by which a candidate's effect on enforcement is reported, and by
 // which a temporary override will be compared with a candidate.
-type controlChange struct {
+type ControlChange struct {
 	Control string `json:"control"`
 	Target  string `json:"target"`
 }
 
-// policyChanges lists, in a stable order, every control target whose
+// PolicyChanges lists, in a stable order, every control target whose
 // definition differs between two complete policies: an upstream, API,
 // operation (route, method, access, authentication, body and header rules),
 // its rate rule, a role or a permit (role and operation).
-func policyChanges(before, after policy.Policy) []controlChange {
+func PolicyChanges(before, after policy.Policy) []ControlChange {
 	// encode gives a definition a comparable form; policy types always encode.
 	encode := func(value any) string {
 		data, _ := json.Marshal(value)
@@ -53,16 +53,16 @@ func policyChanges(before, after policy.Policy) []controlChange {
 	}
 	old, current := collect(before), collect(after)
 
-	changes := []controlChange{}
+	changes := []ControlChange{}
 	for control, targets := range current {
 		for target, definition := range targets {
 			if previous, found := old[control][target]; !found || previous != definition {
-				changes = append(changes, controlChange{control, target})
+				changes = append(changes, ControlChange{control, target})
 			}
 		}
 		for target := range old[control] {
 			if _, found := targets[target]; !found {
-				changes = append(changes, controlChange{control, target})
+				changes = append(changes, ControlChange{control, target})
 			}
 		}
 	}

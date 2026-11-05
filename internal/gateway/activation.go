@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
@@ -18,7 +19,7 @@ import (
 func (c *Controller) EstablishBase(ctx context.Context, kind, actor string, candidate int64, checksum string) (Outcome, int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	now := trustedNow()
+	now := compile.TrustedNow()
 	if !c.ready() {
 		return unavailableOutcome(kind)
 	}
@@ -59,7 +60,7 @@ func (c *Controller) EstablishBase(ctx context.Context, kind, actor string, cand
 		code, field := policyRejection(err)
 		return c.reject(ctx, t, code, field, now)
 	}
-	if !denyAll(policy) {
+	if !compile.DenyAll(policy) {
 		return c.reject(ctx, t, "NOT_DENY_ALL", "", now)
 	}
 	change := revisionChange{origin: t.Kind, actor: actor, mode: modeNormal, candidate: candidate}
@@ -75,7 +76,7 @@ func (c *Controller) EstablishBase(ctx context.Context, kind, actor string, cand
 func (c *Controller) Activate(ctx context.Context, t transitionRecord, candidate int64, checksum string, seconds int64) (Outcome, int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	now := deadlineNow()
+	now := compile.DeadlineNow()
 	if !c.ready() {
 		return unavailableOutcome(t.ID)
 	}
@@ -145,7 +146,7 @@ func (c *Controller) Activate(ctx context.Context, t transitionRecord, candidate
 func (c *Controller) Resolve(ctx context.Context, t transitionRecord, provisional int64, disposition string) (Outcome, int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	now := trustedNow()
+	now := compile.TrustedNow()
 	if !c.ready() {
 		return unavailableOutcome(t.ID)
 	}

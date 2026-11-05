@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
@@ -17,7 +18,7 @@ import (
 func (c *Controller) StageCandidate(ctx context.Context, t transitionRecord, document []byte) (Outcome, int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	now := trustedNow()
+	now := compile.TrustedNow()
 	if !c.ready() {
 		return unavailableOutcome(t.ID)
 	}
@@ -38,7 +39,7 @@ func (c *Controller) StageCandidate(ctx context.Context, t transitionRecord, doc
 	}
 	policy, err := policy.DecodePolicy(document)
 	if err == nil {
-		_, err = Compile(policy, 0, time.Time{})
+		_, err = compile.Compile(policy, 0, time.Time{})
 	}
 	if err != nil {
 		code, field := policyRejection(err)
@@ -49,7 +50,7 @@ func (c *Controller) StageCandidate(ctx context.Context, t transitionRecord, doc
 		return auditUnavailable(t.ID)
 	}
 	canonical, _ := json.Marshal(policy)
-	record := candidateRecord{Parent: parent, Document: canonical, Checksum: documentChecksum(canonical), DenyAll: denyAll(policy), Actor: t.Actor}
+	record := candidateRecord{Parent: parent, Document: canonical, Checksum: documentChecksum(canonical), DenyAll: compile.DenyAll(policy), Actor: t.Actor}
 	id, err := c.store.commitCandidate(ctx, t, record, now)
 	if err != nil {
 		return c.storeFailure(t.ID, err)
@@ -63,7 +64,7 @@ func (c *Controller) StageCandidate(ctx context.Context, t transitionRecord, doc
 func (c *Controller) WithdrawCandidate(ctx context.Context, t transitionRecord, id int64) (Outcome, int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	now := trustedNow()
+	now := compile.TrustedNow()
 	if !c.ready() {
 		return unavailableOutcome(t.ID)
 	}

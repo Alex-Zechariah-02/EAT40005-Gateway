@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 )
 
 // A staged candidate changes nothing. Its activation publishes it
@@ -56,11 +58,11 @@ func TestActivationAndConfirmation(t *testing.T) {
 	// The provisional view names the activation and every changed target.
 	code, body, header := e.as(harness, http.MethodGet, "/admin/provisional", "")
 	view := fromJSON[struct {
-		Activation activationRecord `json:"activation"`
-		Generation string           `json:"generation"`
-		Changes    []controlChange  `json:"changes"`
+		Activation activationRecord        `json:"activation"`
+		Generation string                  `json:"generation"`
+		Changes    []compile.ControlChange `json:"changes"`
 	}](t, body)
-	wantChanges := []controlChange{{"api", "a"}, {"permit", "READER:read-b"}, {"permit", "READER:write-a"}, {"upstream", "C"}}
+	wantChanges := []compile.ControlChange{{Control: "api", Target: "a"}, {Control: "permit", Target: "READER:read-b"}, {Control: "permit", Target: "READER:write-a"}, {Control: "upstream", Target: "C"}}
 	if code != http.StatusOK || header.Get("ETag") != `"r1"` || view.Activation.Revision != 2 || view.Activation.RollbackTarget != 1 ||
 		view.Activation.Disposition != "" || view.Generation != activated.Generation || !slices.Equal(view.Changes, wantChanges) {
 		t.Fatalf("provisional view: %d %s", code, body)

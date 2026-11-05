@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
@@ -23,15 +24,15 @@ func rate(count, windowSeconds int64) *policy.RateRule {
 func TestRateRuleCompilation(t *testing.T) {
 	p := threeAPIPolicy()
 	p.Operations[0].Rate = rate(10, 60)
-	g, err := Compile(p, 1, time.Time{})
+	g, err := compile.Compile(p, 1, time.Time{})
 	if err != nil {
 		t.Fatalf("valid rate rule rejected: %v", err)
 	}
-	_, r := g.match("/orders", "GET")
-	if r.rate == nil || r.rate.count != 10 || r.rate.window != 60000 {
-		t.Fatalf("compiled rule %+v", r.rate)
+	_, r := g.Match("/orders", "GET")
+	if r.Rate() == nil || r.Rate().Count() != 10 || r.Rate().Window() != 60000 {
+		t.Fatalf("compiled rule %+v", r.Rate())
 	}
-	if _, other := g.match("/orders/1", "GET"); other.rate != nil {
+	if _, other := g.Match("/orders/1", "GET"); other.Rate() != nil {
 		t.Fatal("a rate rule applied to an operation that does not declare one")
 	}
 
@@ -43,10 +44,10 @@ func TestRateRuleCompilation(t *testing.T) {
 	}{
 		{"zero count", policy.RateRule{Algorithm: "sliding-window", Count: 0, WindowSeconds: 60, Key: "subject"}, "INVALID_VALUE", "operations[0].rate.count"},
 		{"negative count", policy.RateRule{Algorithm: "sliding-window", Count: -1, WindowSeconds: 60, Key: "subject"}, "INVALID_VALUE", "operations[0].rate.count"},
-		{"count above the bound", policy.RateRule{Algorithm: "sliding-window", Count: maxRateCount + 1, WindowSeconds: 60, Key: "subject"}, "INVALID_VALUE", "operations[0].rate.count"},
+		{"count above the bound", policy.RateRule{Algorithm: "sliding-window", Count: compile.MaxRateCount + 1, WindowSeconds: 60, Key: "subject"}, "INVALID_VALUE", "operations[0].rate.count"},
 		{"zero window", policy.RateRule{Algorithm: "sliding-window", Count: 10, WindowSeconds: 0, Key: "subject"}, "INVALID_VALUE", "operations[0].rate.window_seconds"},
 		{"negative window", policy.RateRule{Algorithm: "sliding-window", Count: 10, WindowSeconds: -60, Key: "subject"}, "INVALID_VALUE", "operations[0].rate.window_seconds"},
-		{"window above the bound", policy.RateRule{Algorithm: "sliding-window", Count: 10, WindowSeconds: maxRateWindowSec + 1, Key: "subject"}, "INVALID_VALUE", "operations[0].rate.window_seconds"},
+		{"window above the bound", policy.RateRule{Algorithm: "sliding-window", Count: 10, WindowSeconds: compile.MaxRateWindowSec + 1, Key: "subject"}, "INVALID_VALUE", "operations[0].rate.window_seconds"},
 		{"token bucket", policy.RateRule{Algorithm: "token-bucket", Count: 10, WindowSeconds: 60, Key: "subject"}, "UNSUPPORTED_FEATURE", "operations[0].rate.algorithm"},
 		{"fixed window", policy.RateRule{Algorithm: "fixed-window", Count: 10, WindowSeconds: 60, Key: "subject"}, "UNSUPPORTED_FEATURE", "operations[0].rate.algorithm"},
 		{"missing algorithm", policy.RateRule{Algorithm: "", Count: 10, WindowSeconds: 60, Key: "subject"}, "UNSUPPORTED_FEATURE", "operations[0].rate.algorithm"},
@@ -57,7 +58,7 @@ func TestRateRuleCompilation(t *testing.T) {
 	for _, tc := range cases {
 		p := threeAPIPolicy()
 		p.Operations[0].Rate = &tc.rule
-		g, err := Compile(p, 1, time.Time{})
+		g, err := compile.Compile(p, 1, time.Time{})
 		policyErr, ok := errors.AsType[*policy.PolicyError](err)
 		if g != nil || !ok || policyErr.Code != tc.code || policyErr.Field != tc.field {
 			t.Errorf("%s: generation %v error %v, want %s at %s", tc.name, g != nil, err, tc.code, tc.field)
@@ -75,7 +76,7 @@ func TestRateRuleCompilation(t *testing.T) {
 	p = threeAPIPolicy()
 	p.Operations[0].Rate = rate(10, 60)
 	p.Operations[2].Body.Schema = []byte(`{"type":"object","additionalProperties":true,"$ref":"#"}`)
-	if g, err := Compile(p, 1, time.Time{}); g != nil || errorCode(err) != "UNSUPPORTED_FEATURE" {
+	if g, err := compile.Compile(p, 1, time.Time{}); g != nil || errorCode(err) != "UNSUPPORTED_FEATURE" {
 		t.Errorf("valid rate rule with an invalid schema: generation %v error %v", g != nil, err)
 	}
 
@@ -115,7 +116,7 @@ type step struct {
 	admit bool
 }
 
-func runSteps(t *testing.T, name string, l *limiter, key counterKey, rule *rateRule, steps []step) {
+func runSteps(t *testing.T, name string, l *limiter, key counterKey, rule *compile.RateRule, steps []step) {
 	t.Helper()
 	for i, s := range steps {
 		got := l.admit(key, rule, s.at) == rateAdmitted
@@ -142,7 +143,7 @@ func TestSlidingWindowReferenceVectors(t *testing.T) {
 
 	// N=10, W=60 s, buckets start at multiples of 60 000 ms.
 	l := newLimiter()
-	rule := &rateRule{count: 10, window: 60000}
+	rule := quota(10, 60000)
 	var steps []step
 	steps = append(steps, repeatStep(10, 1000, true)...)   // bucket 0, fresh: the first 10 are admitted
 	steps = append(steps, repeatStep(5, 2000, false)...)   // C=10: refused, and refusals are not counted
@@ -161,7 +162,7 @@ func TestSlidingWindowReferenceVectors(t *testing.T) {
 
 	// N=3, W=1 s: fractional weights at the equality boundary.
 	l = newLimiter()
-	rule = &rateRule{count: 3, window: 1000}
+	rule = quota(3, 1000)
 	runSteps(t, "N=3", l, key, rule, []step{
 		{0, true}, {500, true}, {999, true}, {999, false}, // bucket 0 fills
 		{1500, true},  // bucket 1, d=500: P=3, E = 1.5; 2.5 <= 3
@@ -179,7 +180,7 @@ func TestSlidingWindowReferenceVectors(t *testing.T) {
 	// N=1, W=1 s: one request per bucket at most, and exactly at the
 	// boundary the previous request still weighs fully.
 	l = newLimiter()
-	rule = &rateRule{count: 1, window: 1000}
+	rule = quota(1, 1000)
 	runSteps(t, "N=1", l, key, rule, []step{
 		{10, true}, {999, false},
 		{1000, false}, // d=0: E = 1; 2 > 1
@@ -222,12 +223,12 @@ func (m *referenceCounter) admit(n, w, now int64) bool {
 // The limiter agrees with the reference model on random request sequences
 // with fixed seeds, across several quotas and windows.
 func TestSlidingWindowAgainstReferenceModel(t *testing.T) {
-	configs := []struct{ n, w int64 }{{1, 1000}, {3, 1000}, {7, 10000}, {10, 60000}, {100, 3600000}, {maxRateCount, maxRateWindowSec * 1000}}
+	configs := []struct{ n, w int64 }{{1, 1000}, {3, 1000}, {7, 10000}, {10, 60000}, {100, 3600000}, {compile.MaxRateCount, compile.MaxRateWindowSec * 1000}}
 	for _, c := range configs {
 		for seed := uint64(1); seed <= 5; seed++ {
 			random := rand.New(rand.NewPCG(seed, uint64(c.n)))
 			l := newLimiter()
-			rule := &rateRule{count: c.n, window: c.w}
+			rule := quota(c.n, c.w)
 			key := counterKey{"op", "subject", "s"}
 			var model referenceCounter
 			now := int64(1_700_000_000_000)
@@ -251,7 +252,7 @@ func TestSlidingWindowAgainstReferenceModel(t *testing.T) {
 // then weighs fully. A forward jump only ages counts as real time would.
 func TestClockMovementNeverGrantsExtraQuota(t *testing.T) {
 	l := newLimiter()
-	rule := &rateRule{count: 3, window: 1000}
+	rule := quota(3, 1000)
 	key := counterKey{"op", "subject", "alice"}
 	runSteps(t, "clock", l, key, rule, []step{
 		{5000, true}, {5100, true}, {5200, true}, {5300, false}, // bucket 5 fills

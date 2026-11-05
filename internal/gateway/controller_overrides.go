@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 )
 
@@ -56,7 +57,7 @@ func proposeOverride(a authority, expected int64, request OverrideRequest, actor
 func (c *Controller) ValidateOverride(ctx context.Context, actor string, expected int64, request OverrideRequest) (Outcome, int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	now := trustedNow()
+	now := compile.TrustedNow()
 	if !c.ready() {
 		return unavailableOutcome("")
 	}
@@ -87,7 +88,7 @@ func (c *Controller) ValidateOverride(ctx context.Context, actor string, expecte
 func (c *Controller) CreateOverride(ctx context.Context, t transitionRecord, request OverrideRequest) (Outcome, int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	now := deadlineNow()
+	now := compile.DeadlineNow()
 	if !c.ready() {
 		return unavailableOutcome(t.ID)
 	}
@@ -124,7 +125,7 @@ func (c *Controller) CreateOverride(ctx context.Context, t transitionRecord, req
 func (c *Controller) RevokeOverride(ctx context.Context, t transitionRecord, id int64) (Outcome, int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	now := trustedNow()
+	now := compile.TrustedNow()
 	if !c.ready() {
 		return unavailableOutcome(t.ID)
 	}

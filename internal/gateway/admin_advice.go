@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strconv"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 )
 
 // The fixed checks, rule set version "checks-0.2": static
@@ -52,45 +54,27 @@ func sortFindings(items []finding) {
 	})
 }
 
-// rules lists every compiled endpoint rule of a generation once.
-func (g *Generation) rules() []*rule {
-	var list []*rule
-	add := func(t *target) {
-		for _, r := range t.methods {
-			list = append(list, r)
-		}
-	}
-	for _, t := range g.exact {
-		add(t)
-	}
-	for _, t := range g.prefixes {
-		add(t)
-	}
-	slices.SortFunc(list, func(a, b *rule) int { return cmp.Compare(a.operation, b.operation) })
-	return list
-}
-
 // configurationWarnings reads the compiled generation only.
-func configurationWarnings(g *Generation) []finding {
+func configurationWarnings(g *compile.Generation) []finding {
 	items := []finding{}
 	usedRoles := map[string]bool{}
-	for _, r := range g.rules() {
-		for role := range r.roles {
+	for _, r := range g.Rules() {
+		for _, role := range r.Roles() {
 			usedRoles[role] = true
 		}
-		if !r.permitted {
+		if !r.Permitted() {
 			continue
 		}
 		switch {
-		case r.public && r.rate == nil:
-			items = append(items, finding{"W1", "high", r.operation, "A public endpoint has no rate limit, so anyone can call it without limit."})
-		case !r.public && len(r.roles) == 0:
-			items = append(items, finding{"W2", "medium", r.operation, "The endpoint is switched on and needs sign-in, but no role has permission, so no one can call it."})
-		case !r.public && r.rate == nil:
-			items = append(items, finding{"W4", "low", r.operation, "A signed-in endpoint has no rate limit."})
+		case r.Public() && r.Rate() == nil:
+			items = append(items, finding{"W1", "high", r.Operation(), "A public endpoint has no rate limit, so anyone can call it without limit."})
+		case !r.Public() && len(r.Roles()) == 0:
+			items = append(items, finding{"W2", "medium", r.Operation(), "The endpoint is switched on and needs sign-in, but no role has permission, so no one can call it."})
+		case !r.Public() && r.Rate() == nil:
+			items = append(items, finding{"W4", "low", r.Operation(), "A signed-in endpoint has no rate limit."})
 		}
 	}
-	for role := range g.roles {
+	for _, role := range g.Roles() {
 		if !usedRoles[role] {
 			items = append(items, finding{"W3", "low", role, "The role has no permissions."})
 		}
@@ -114,7 +98,7 @@ type unusedReport struct {
 // unusedPermissions lists permits no allowed request in the security log
 // used, once the records read cover enough time and requests. missing names
 // log files moved away, which were not read.
-func unusedPermissions(g *Generation, use logUse, missing []string, now time.Time) unusedReport {
+func unusedPermissions(g *compile.Generation, use logUse, missing []string, now time.Time) unusedReport {
 	report := unusedReport{
 		Requests: use.requests, Complete: use.complete, FilesSearched: use.searched, FilesMissing: missing, Items: []finding{},
 		MinMinute: int(unusedMinSpan / time.Minute), MinCount: unusedMinRequests,
@@ -134,13 +118,13 @@ func unusedPermissions(g *Generation, use logUse, missing []string, now time.Tim
 		report.Withheld = &reason
 		return report
 	}
-	for _, r := range g.rules() {
-		if r.public || !r.permitted {
+	for _, r := range g.Rules() {
+		if r.Public() || !r.Permitted() {
 			continue
 		}
-		for role := range r.roles {
-			if !use.used[[2]string{role, r.operation}] {
-				report.Items = append(report.Items, finding{"U1", "low", role + " → " + r.operation, "No allowed request in the security log used this permission. Review whether the role still needs it."})
+		for _, role := range r.Roles() {
+			if !use.used[[2]string{role, r.Operation()}] {
+				report.Items = append(report.Items, finding{"U1", "low", role + " → " + r.Operation(), "No allowed request in the security log used this permission. Review whether the role still needs it."})
 			}
 		}
 	}
@@ -165,7 +149,7 @@ func (c *Controller) handleAdvice(w http.ResponseWriter, r *http.Request, who ca
 			return
 		}
 		candidate = &id
-	} else if g == nil || g.expired(trustedNow()) {
+	} else if g == nil || g.Expired(compile.TrustedNow()) {
 		adminError(w, http.StatusServiceUnavailable, "gateway_unavailable", "")
 		return
 	}

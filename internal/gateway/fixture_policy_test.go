@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 	fixture "github.com/Alex-Zechariah-02/apiward/internal/services/testfixture"
 )
@@ -110,7 +111,7 @@ func TestPolicyAgreesWithCatalogue(t *testing.T) {
 	p := fixturePolicy(map[string]*fixtureProcess{
 		"orders": {addr: "127.0.0.1:1"}, "inventory": {addr: "127.0.0.1:2"}, "reports": {addr: "127.0.0.1:3"},
 	})
-	if _, err := Compile(p, 1, time.Time{}); err != nil {
+	if _, err := compile.Compile(p, 1, time.Time{}); err != nil {
 		t.Fatalf("fixture policy does not compile: %v", err)
 	}
 

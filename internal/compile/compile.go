@@ -1,6 +1,6 @@
 // Compiling a policy document into an immutable generation.
 
-package gateway
+package compile
 
 import (
 	"crypto/sha256"
@@ -41,11 +41,11 @@ type Generation struct {
 type target struct {
 	pattern string
 	prefix  string // "/a/" for "/a/*", "/" for "/*"; empty for exact targets
-	methods map[string]*rule
+	methods map[string]*Rule
 	allow   string // value for the Allow header
 }
 
-type rule struct {
+type Rule struct {
 	operation string
 	api       string
 	upstream  string
@@ -53,9 +53,9 @@ type rule struct {
 	permitted bool
 	public    bool            // auth "none": no token is read
 	roles     map[string]bool // roles holding a permit for this operation
-	body      *bodyRule       // nil: the operation accepts no body
+	body      *BodyRule       // nil: the operation accepts no body
 	headers   *headerRule     // nil: no header schema
-	rate      *rateRule       // nil: no rate limit
+	rate      *RateRule       // nil: no rate limit
 	rateKey   string          // subject or direct peer address, checked by the compiler
 }
 
@@ -86,7 +86,7 @@ func Compile(p policy.Policy, revision int64, notAfter time.Time) (*Generation, 
 		if _, exists := dials[u.ID]; exists {
 			return nil, policy.Invalid("DUPLICATE_ID", "upstreams[%d].id", i)
 		}
-		if !isLoopbackDial(u.Dial) {
+		if !IsLoopbackDial(u.Dial) {
 			return nil, policy.Invalid("INVALID_UPSTREAM", "upstreams[%d].dial", i)
 		}
 		// Two upstream identities for one destination would make receipts
@@ -117,7 +117,7 @@ func Compile(p policy.Policy, revision int64, notAfter time.Time) (*Generation, 
 		g.NotAfter = notAfter.Round(0)
 	}
 	targets := map[string]*target{}
-	rules := map[string]*rule{}
+	rules := map[string]*Rule{}
 	for i, op := range p.Operations {
 		if err := policy.CheckID(op.ID, "operations[%d].id", i); err != nil {
 			return nil, err
@@ -145,13 +145,13 @@ func Compile(p policy.Policy, revision int64, notAfter time.Time) (*Generation, 
 
 		t := targets[op.Target]
 		if t == nil {
-			t = &target{pattern: op.Target, prefix: prefix, methods: map[string]*rule{}}
+			t = &target{pattern: op.Target, prefix: prefix, methods: map[string]*Rule{}}
 			targets[op.Target] = t
 		}
 		if _, exists := t.methods[op.Method]; exists {
 			return nil, policy.Invalid("DUPLICATE_OPERATION", "operations[%d]", i)
 		}
-		r := &rule{
+		r := &Rule{
 			operation: op.ID,
 			api:       op.API,
 			upstream:  upstream,
@@ -191,15 +191,15 @@ func Compile(p policy.Policy, revision int64, notAfter time.Time) (*Generation, 
 	// order.
 	sort.Slice(g.prefixes, func(i, j int) bool { return len(g.prefixes[i].prefix) > len(g.prefixes[j].prefix) })
 
-	g.ID = generationID(p, revision, notAfter, nil)
+	g.ID = GenerationID(p, revision, notAfter, nil)
 	return g, nil
 }
 
-// denyAll reports whether the policy can admit no request at all: it holds no
+// DenyAll reports whether the policy can admit no request at all: it holds no
 // permits, so no authenticated request can pass RBAC, and no
 // operation is both allowed and public. Only such a policy may become the
 // first base of an installation or the base that ends a recovery.
-func denyAll(p policy.Policy) bool {
+func DenyAll(p policy.Policy) bool {
 	if len(p.Permits) > 0 {
 		return false
 	}
@@ -213,17 +213,17 @@ func denyAll(p policy.Policy) bool {
 
 // compileControls compiles an operation's body schema, header schema and rate
 // rule into its rule. A rule that cannot be compiled rejects the whole policy.
-func compileControls(op policy.Operation, i int, r *rule) error {
+func compileControls(op policy.Operation, i int, r *Rule) error {
 	var err error
 	if op.Body != nil {
 		if op.Body.MaxBytes <= 0 || op.Body.MaxBytes > policy.MaxBodyLimit {
 			return policy.Invalid("INVALID_VALUE", "operations[%d].body.max_bytes", i)
 		}
-		schema, _, err := compileSchema(op.Body.Schema, schemaBody, fmt.Sprintf("operations[%d].body.schema", i))
+		schema, _, err := CompileSchema(op.Body.Schema, SchemaBody, fmt.Sprintf("operations[%d].body.schema", i))
 		if err != nil {
 			return err
 		}
-		r.body = &bodyRule{maxBytes: op.Body.MaxBytes, schema: schema}
+		r.body = &BodyRule{maxBytes: op.Body.MaxBytes, schema: schema}
 	}
 	if op.Headers != nil {
 		r.headers, err = compileHeaders(op.Headers, fmt.Sprintf("operations[%d].headers", i))
@@ -232,10 +232,10 @@ func compileControls(op policy.Operation, i int, r *rule) error {
 		}
 	}
 	if op.Rate != nil {
-		if r.public && op.Rate.Key == rateKeySubject {
+		if r.public && op.Rate.Key == RateKeySubject {
 			return policy.Invalid("INVALID_VALUE", "operations[%d].rate", i)
 		}
-		r.rate, err = compileRate(*op.Rate, fmt.Sprintf("operations[%d].rate", i))
+		r.rate, err = CompileRate(*op.Rate, fmt.Sprintf("operations[%d].rate", i))
 		if err != nil {
 			return err
 		}
@@ -244,10 +244,10 @@ func compileControls(op policy.Operation, i int, r *rule) error {
 	return nil
 }
 
-// generationID identifies a generation by its base revision, the overrides
+// GenerationID identifies a generation by its base revision, the overrides
 // applied to it (as "+o<id>.<id>…") and a digest of the compiled document and
 // deadline. A generation without overrides keeps the form "r<revision>-…".
-func generationID(p policy.Policy, revision int64, notAfter time.Time, overrides []int64) string {
+func GenerationID(p policy.Policy, revision int64, notAfter time.Time, overrides []int64) string {
 	document, _ := json.Marshal(p)
 	sum := sha256.New()
 	fmt.Fprintf(sum, "%s|%d|%d|", compilerVersion, revision, notAfter.UnixMilli())

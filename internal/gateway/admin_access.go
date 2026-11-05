@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
@@ -67,7 +68,7 @@ func (c *Controller) handleAccessCheck(w http.ResponseWriter, r *http.Request, w
 		if _, g, ok = c.candidateGeneration(w, r, *check.Candidate); !ok {
 			return
 		}
-	} else if g == nil || g.expired(trustedNow()) {
+	} else if g == nil || g.Expired(compile.TrustedNow()) {
 		adminError(w, http.StatusServiceUnavailable, "gateway_unavailable", "")
 		return
 	}
@@ -82,7 +83,7 @@ func (c *Controller) handleAccessCheck(w http.ResponseWriter, r *http.Request, w
 		answer.Decision, answer.Check, answer.Code = "refused", &check, &code
 		writeJSON(w, http.StatusOK, answer)
 	}
-	target, rule := g.match(path, check.Method)
+	target, rule := g.Match(path, check.Method)
 	if target == nil {
 		refuse("route", "not_found")
 		return
@@ -91,16 +92,17 @@ func (c *Controller) handleAccessCheck(w http.ResponseWriter, r *http.Request, w
 		refuse("route", "method_not_allowed")
 		return
 	}
-	answer.Operation, answer.API, answer.Public = &rule.operation, &rule.api, rule.public
-	if !rule.permitted {
+	operation, api := rule.Operation(), rule.API()
+	answer.Operation, answer.API, answer.Public = &operation, &api, rule.Public()
+	if !rule.Permitted() {
 		refuse("access", "forbidden")
 		return
 	}
-	if !rule.public {
+	if !rule.Public() {
 		// A real request also needs a valid token from the trusted issuer;
 		// the roles given here stand for its verified roles.
 		answer.NotChecked = []string{"token", "rate", "body"}
-		roles, ignored, reason := g.authorise(check.Roles, rule)
+		roles, ignored, reason := g.Authorise(check.Roles, rule)
 		answer.Roles, answer.IgnoredRoles = nonNil(roles), nonNil(ignored)
 		if check.Subject != nil {
 			if _, found := (*blocked)[*check.Subject]; found {
@@ -127,7 +129,7 @@ func checkedPath(text string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	return CanonicalPath(&http.Request{URL: parsed})
+	return compile.CanonicalPath(&http.Request{URL: parsed})
 }
 
 func nonNil(values []string) []string {

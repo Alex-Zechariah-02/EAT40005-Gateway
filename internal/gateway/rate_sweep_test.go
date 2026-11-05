@@ -6,23 +6,25 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 )
 
 // A full table of live counters refuses a new key without scanning every
 // counter under the lock.
 func TestFullTableRefusalIsBounded(t *testing.T) {
 	l := newLimiter()
-	rule := &rateRule{count: 10, window: 60_000}
+	rule := quota(10, 60_000)
 	now := int64(1_000_000)
-	for i := range maxCounters {
-		if l.admit(counterKey{"search", rateKeyAddress, "2001:db8::" + strconv.Itoa(i)}, rule, now) != rateAdmitted {
+	for i := range compile.MaxCounters {
+		if l.admit(counterKey{"search", compile.RateKeyAddress, "2001:db8::" + strconv.Itoa(i)}, rule, now) != rateAdmitted {
 			t.Fatalf("filling the table: counter %d refused", i)
 		}
 	}
 	const refusals = 100
 	start := time.Now()
 	for i := range refusals {
-		if got := l.admit(counterKey{"search", rateKeyAddress, "2001:db8:1::" + strconv.Itoa(i)}, rule, now); got != rateNoCapacity {
+		if got := l.admit(counterKey{"search", compile.RateKeyAddress, "2001:db8:1::" + strconv.Itoa(i)}, rule, now); got != rateNoCapacity {
 			t.Fatalf("new key with a full table: %v, want no capacity", got)
 		}
 	}
@@ -34,7 +36,7 @@ func TestFullTableRefusalIsBounded(t *testing.T) {
 // The limiter decides exactly as the original single-map limiter with full
 // sweeps, and keeps exactly the same counters, for random request sequences.
 func TestLimiterMatchesReference(t *testing.T) {
-	short, long := &rateRule{count: 3, window: 1_000}, &rateRule{count: 5, window: 7_000}
+	short, long := quota(3, 1_000), quota(5, 7_000)
 	for seed := range uint64(40) {
 		random := rand.New(rand.NewPCG(seed, 99))
 		capacity := []int{4, 16, 4096}[seed%3]
@@ -48,7 +50,7 @@ func TestLimiterMatchesReference(t *testing.T) {
 			if random.IntN(3) == 0 {
 				rule = long // the same key may change window
 			}
-			key := counterKey{"op", rateKeySubject, strconv.Itoa(random.IntN(40))}
+			key := counterKey{"op", compile.RateKeySubject, strconv.Itoa(random.IntN(40))}
 			got, want := l.admit(key, rule, now), reference.admit(key, rule, now)
 			if got != want {
 				t.Fatalf("seed %d step %d: decision %v, want %v", seed, step, got, want)
@@ -77,10 +79,10 @@ type referenceLimiter struct {
 }
 
 func newReferenceLimiter() *referenceLimiter {
-	return &referenceLimiter{counters: map[counterKey]*counter{}, capacity: maxCounters}
+	return &referenceLimiter{counters: map[counterKey]*counter{}, capacity: compile.MaxCounters}
 }
 
-func (l *referenceLimiter) admit(key counterKey, rule *rateRule, now int64) rateDecision {
+func (l *referenceLimiter) admit(key counterKey, rule *compile.RateRule, now int64) rateDecision {
 	c := l.counters[key]
 	if c == nil {
 		if len(l.counters) >= l.capacity {
@@ -89,20 +91,20 @@ func (l *referenceLimiter) admit(key counterKey, rule *rateRule, now int64) rate
 		if len(l.counters) >= l.capacity {
 			return rateNoCapacity
 		}
-		c = &counter{window: rule.window, bucket: now / rule.window}
+		c = &counter{window: rule.Window(), bucket: now / rule.Window()}
 		l.counters[key] = c
 	}
 	c.roll(now)
-	if c.window != rule.window {
+	if c.window != rule.Window() {
 		used := (c.usage(now) + c.window - 1) / c.window
-		*c = counter{window: rule.window, bucket: now / rule.window, current: used}
+		*c = counter{window: rule.Window(), bucket: now / rule.Window(), current: used}
 	}
-	if c.usage(now)+rule.window > rule.count*rule.window {
+	if c.usage(now)+rule.Window() > rule.Count()*rule.Window() {
 		return rateExceeded
 	}
 	c.current++
 	l.admissions++
-	if l.admissions%sweepInterval == 0 {
+	if l.admissions%compile.SweepInterval == 0 {
 		l.sweep(now)
 	}
 	return rateAdmitted

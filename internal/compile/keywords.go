@@ -1,6 +1,6 @@
 // JSON Schema keyword checks.
 
-package gateway
+package compile
 
 import (
 	"encoding/json"

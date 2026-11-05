@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
@@ -129,7 +130,7 @@ func (c *Controller) reloadKeys(ctx context.Context, t transitionRecord) (json.R
 	if body, status, done := c.replayControl(ctx, t); done {
 		return body, status
 	}
-	now := trustedNow()
+	now := compile.TrustedNow()
 	cfg, err := loadNativeConfig(c.config.settingsFile)
 	if err != nil {
 		return c.rejectControl(ctx, t, "KEYS_INVALID", now)
@@ -211,7 +212,7 @@ func (c *Controller) changeBlock(ctx context.Context, t transitionRecord, reason
 	if body, status, done := c.replayControl(ctx, t); done {
 		return body, status
 	}
-	now := trustedNow().UTC().Truncate(time.Millisecond)
+	now := compile.TrustedNow().UTC().Truncate(time.Millisecond)
 	current := c.blocked.Load()
 	if current == nil {
 		return controlError("gateway_unavailable"), http.StatusServiceUnavailable

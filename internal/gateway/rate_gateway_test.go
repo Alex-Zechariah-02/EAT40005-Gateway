@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
@@ -84,7 +85,7 @@ func times(n, status int) []int {
 // change nothing.
 func TestRateLimitThroughGateway(t *testing.T) {
 	e := newEnv(t)
-	seed(t, e.database, e.ratePolicy(rate(3, maxRateWindowSec), rate(2, maxRateWindowSec)), seedOptions{})
+	seed(t, e.database, e.ratePolicy(rate(3, compile.MaxRateWindowSec), rate(2, compile.MaxRateWindowSec)), seedOptions{})
 	e.start(binaries.plain)
 
 	if got := e.sendAs("alice", http.MethodGet, "/a/x", "", 4); !statusesAre(got, 200, 200, 200, 429) {

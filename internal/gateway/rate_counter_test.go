@@ -7,6 +7,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 )
 
 // Counter identity and transitions: the counter belongs to the operation and
@@ -16,42 +18,42 @@ func TestRateCounterTransitions(t *testing.T) {
 
 	t.Run("count change keeps usage", func(t *testing.T) {
 		l := newLimiter()
-		runSteps(t, "N=10", l, key, &rateRule{10, 60000}, repeatStep(6, 1000, true))
-		runSteps(t, "N=5", l, key, &rateRule{5, 60000}, []step{{2000, false}}) // 6+1 > 5
-		runSteps(t, "N=8", l, key, &rateRule{8, 60000}, []step{{3000, true}, {3000, true}, {3000, false}})
+		runSteps(t, "N=10", l, key, quota(10, 60000), repeatStep(6, 1000, true))
+		runSteps(t, "N=5", l, key, quota(5, 60000), []step{{2000, false}}) // 6+1 > 5
+		runSteps(t, "N=8", l, key, quota(8, 60000), []step{{3000, true}, {3000, true}, {3000, false}})
 	})
 	t.Run("window change carries usage", func(t *testing.T) {
 		l := newLimiter()
-		runSteps(t, "W=60s", l, key, &rateRule{10, 60000}, repeatStep(8, 1000, true))
+		runSteps(t, "W=60s", l, key, quota(10, 60000), repeatStep(8, 1000, true))
 		// At 20 s under W=60 s the usage is 8. It becomes the current count of
 		// a W=30 s counter, so only 2 more fit.
-		runSteps(t, "W=30s", l, key, &rateRule{10, 30000}, []step{{20000, true}, {20000, true}, {20000, false}})
+		runSteps(t, "W=30s", l, key, quota(10, 30000), []step{{20000, true}, {20000, true}, {20000, false}})
 		// Next 30 s bucket, d=0: P=10, E = 10: refused.
-		runSteps(t, "W=30s next bucket", l, key, &rateRule{10, 30000}, []step{{30000, false}})
+		runSteps(t, "W=30s next bucket", l, key, quota(10, 30000), []step{{30000, false}})
 	})
 	t.Run("window change rounds usage up", func(t *testing.T) {
 		l := newLimiter()
-		runSteps(t, "W=1s", l, key, &rateRule{3, 1000}, repeatStep(3, 0, true))
+		runSteps(t, "W=1s", l, key, quota(3, 1000), repeatStep(3, 0, true))
 		// At 1.5 s under W=1 s: P=3, d=500, usage 1.5, rounded up to 2. Under
 		// W=10 s with N=3 one more fits.
-		runSteps(t, "W=10s", l, key, &rateRule{3, 10000}, []step{{1500, true}, {1500, false}})
+		runSteps(t, "W=10s", l, key, quota(3, 10000), []step{{1500, true}, {1500, false}})
 	})
 	t.Run("equivalent rule keeps usage", func(t *testing.T) {
 		l := newLimiter()
-		runSteps(t, "first", l, key, &rateRule{3, 60000}, repeatStep(3, 1000, true))
+		runSteps(t, "first", l, key, quota(3, 60000), repeatStep(3, 1000, true))
 		// A republished generation compiles a new but equal rule object.
-		runSteps(t, "republished", l, key, &rateRule{3, 60000}, []step{{1000, false}})
+		runSteps(t, "republished", l, key, quota(3, 60000), []step{{1000, false}})
 	})
 	t.Run("rule disabled and enabled keeps usage", func(t *testing.T) {
 		l := newLimiter()
-		runSteps(t, "enabled", l, key, &rateRule{3, 60000}, repeatStep(3, 1000, true))
+		runSteps(t, "enabled", l, key, quota(3, 60000), repeatStep(3, 1000, true))
 		// While disabled the limiter is not called. Re-enabled within the
 		// window the earlier requests still count.
-		runSteps(t, "re-enabled", l, key, &rateRule{3, 60000}, []step{{30000, false}})
+		runSteps(t, "re-enabled", l, key, quota(3, 60000), []step{{30000, false}})
 	})
 	t.Run("keys are independent", func(t *testing.T) {
 		l := newLimiter()
-		rule := &rateRule{2, 60000}
+		rule := quota(2, 60000)
 		runSteps(t, "alice", l, key, rule, append(repeatStep(2, 1000, true), step{1000, false}))
 		runSteps(t, "bob", l, counterKey{"op", "subject", "bob"}, rule, repeatStep(2, 1000, true))
 		runSteps(t, "other operation", l, counterKey{"op2", "subject", "alice"}, rule, repeatStep(2, 1000, true))
@@ -64,7 +66,7 @@ func TestRateCounterTransitions(t *testing.T) {
 func TestCounterReclamationAndCapacity(t *testing.T) {
 	l := newLimiter()
 	l.capacity = 3
-	rule := &rateRule{1, 1000}
+	rule := quota(1, 1000)
 	for i := range 3 {
 		if l.admit(counterKey{"op", "subject", strconv.Itoa(i)}, rule, 0) != rateAdmitted {
 			t.Fatal("first request refused")
@@ -91,27 +93,27 @@ func TestCounterReclamationAndCapacity(t *testing.T) {
 
 	// The periodic sweep removes only expired counters.
 	l = newLimiter()
-	long := &rateRule{maxRateCount, 3600000}
+	long := quota(compile.MaxRateCount, 3600000)
 	l.admit(counterKey{"long", "subject", "a"}, long, 0)
-	for i := range sweepInterval {
+	for i := range compile.SweepInterval {
 		l.admit(counterKey{"short", "subject", strconv.Itoa(i)}, rule, 0)
 	}
 	l.admit(counterKey{"short", "subject", "late"}, rule, 5000)
-	for i := range sweepInterval - 1 {
+	for i := range compile.SweepInterval - 1 {
 		l.admit(counterKey{"long", "subject", "a"}, long, 5000+int64(i))
 	}
 	if _, ok := l.counters[counterKey{"long", "subject", "a"}]; !ok || len(l.counters) > 2 {
 		t.Fatalf("after sweeping: %d counters, long-window counter present %v", len(l.counters), ok)
 	}
-	if c := l.counters[counterKey{"long", "subject", "a"}]; c.current != sweepInterval {
-		t.Fatalf("long-window counter holds %d, want %d", c.current, sweepInterval)
+	if c := l.counters[counterKey{"long", "subject", "a"}]; c.current != compile.SweepInterval {
+		t.Fatalf("long-window counter holds %d, want %d", c.current, compile.SweepInterval)
 	}
 }
 
 // Simultaneous admissions never exceed the quota, for one key or many.
 func TestConcurrentAdmissionsRespectQuota(t *testing.T) {
 	l := newLimiter()
-	rule := &rateRule{1000, 3600000}
+	rule := quota(1000, 3600000)
 	var admitted atomic.Int64
 	var wg sync.WaitGroup
 	for range 64 {
@@ -133,7 +135,7 @@ func TestConcurrentAdmissionsRespectQuota(t *testing.T) {
 		for range 4 {
 			wg.Go(func() {
 				for range 20 {
-					if l.admit(counterKey{"op", "subject", strconv.Itoa(i)}, &rateRule{30, 3600000}, 1000) == rateAdmitted {
+					if l.admit(counterKey{"op", "subject", strconv.Itoa(i)}, quota(30, 3600000), 1000) == rateAdmitted {
 						perKey[i].Add(1)
 					}
 				}

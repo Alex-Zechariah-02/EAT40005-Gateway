@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
@@ -69,7 +70,7 @@ func (r OverrideRequest) check() (override, error) {
 		return override{}, policy.Invalid("INVALID_VALUE", "count")
 	}
 	if r.Count != nil {
-		if *r.Count < 1 || *r.Count > maxRateCount {
+		if *r.Count < 1 || *r.Count > compile.MaxRateCount {
 			return override{}, policy.Invalid("INVALID_VALUE", "count")
 		}
 		o.Count = *r.Count
@@ -91,7 +92,7 @@ func (r OverrideRequest) check() (override, error) {
 func overrideConflict(before, after policy.Policy, overrides []override) *override {
 	changed := map[string]bool{}
 	var movedTargets []string
-	for _, c := range policyChanges(before, after) {
+	for _, c := range compile.PolicyChanges(before, after) {
 		changed[c.Control+":"+c.Target] = true
 		if c.Control != controlOperation {
 			continue

@@ -1,6 +1,6 @@
 // Bounded JSON Schema compilation for bodies and headers.
 
-package gateway
+package compile
 
 import (
 	"encoding/json"
@@ -15,8 +15,8 @@ import (
 // other resources, and the compiler has no loader, so nothing is ever fetched.
 const schemaURL = "urn:gateway:schema"
 
-// bodyRule is a compiled body declaration.
-type bodyRule struct {
+// BodyRule is a compiled body declaration.
+type BodyRule struct {
 	maxBytes int64
 	schema   *jsonschema.Schema
 }
@@ -30,17 +30,17 @@ type headerRule struct {
 type schemaKind int
 
 const (
-	schemaBody schemaKind = iota
-	schemaHeaders
+	SchemaBody schemaKind = iota
+	SchemaHeaders
 )
 
 var schemaTypes = []string{"object", "array", "string", "integer", "number", "boolean", "null"}
 
-// compileSchema accepts a JSON Schema 2020-12 document only if every keyword
+// CompileSchema accepts a JSON Schema 2020-12 document only if every keyword
 // in it belongs to the supported subset, then compiles it with the library.
 // Checking the subset first means no keyword is ever silently ignored. It
 // also returns the decoded root object.
-func compileSchema(raw json.RawMessage, kind schemaKind, field string) (*jsonschema.Schema, map[string]any, error) {
+func CompileSchema(raw json.RawMessage, kind schemaKind, field string) (*jsonschema.Schema, map[string]any, error) {
 	if len(raw) == 0 {
 		return nil, nil, policy.Invalid("INVALID_VALUE", "%s", field)
 	}
@@ -49,13 +49,13 @@ func compileSchema(raw json.RawMessage, kind schemaKind, field string) (*jsonsch
 		return nil, nil, policy.Invalid("SCHEMA_INVALID", "%s", field)
 	}
 	root, ok := document.(map[string]any)
-	if !ok || (root["type"] != "object" && (kind == schemaHeaders || root["type"] != "array")) {
+	if !ok || (root["type"] != "object" && (kind == SchemaHeaders || root["type"] != "array")) {
 		return nil, nil, policy.Invalid("INVALID_VALUE", "%s.type", field)
 	}
 	if err := checkSchema(root, field); err != nil {
 		return nil, nil, err
 	}
-	if kind == schemaHeaders {
+	if kind == SchemaHeaders {
 		if err := checkHeaderSchema(root, field); err != nil {
 			return nil, nil, err
 		}
@@ -75,7 +75,7 @@ func compileSchema(raw json.RawMessage, kind schemaKind, field string) (*jsonsch
 }
 
 func compileHeaders(raw json.RawMessage, field string) (*headerRule, error) {
-	schema, root, err := compileSchema(raw, schemaHeaders, field)
+	schema, root, err := CompileSchema(raw, SchemaHeaders, field)
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +165,7 @@ func checkHeaderSchema(root map[string]any, field string) error {
 	properties, _ := root["properties"].(map[string]any)
 	for name, value := range properties {
 		path := field + ".properties." + name
-		if !isHeaderName(name) || isGatewayHeader(name) || unforwardedHeaders[name] {
+		if !isHeaderName(name) || IsGatewayHeader(name) || unforwardedHeaders[name] {
 			return policy.Invalid("INVALID_VALUE", "%s", path)
 		}
 		if value.(map[string]any)["type"] != "string" {

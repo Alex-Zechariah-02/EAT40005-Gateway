@@ -7,6 +7,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
@@ -103,7 +104,7 @@ func applyOverride(p *policy.Policy, o override) error {
 // one generation. It expires at the earliest of the provisional deadline (if
 // any) and the overrides' expiry times, so a generation never serves past the
 // first of them. Its identity names the base revision and every override.
-func effectiveGeneration(base policy.Policy, revision int64, deadline time.Time, overrides []override) (*Generation, error) {
+func effectiveGeneration(base policy.Policy, revision int64, deadline time.Time, overrides []override) (*compile.Generation, error) {
 	if len(overrides) > maxActiveOverrides {
 		return nil, policy.Invalid("LIMIT_EXCEEDED", "overrides")
 	}
@@ -121,14 +122,14 @@ func effectiveGeneration(base policy.Policy, revision int64, deadline time.Time,
 	}
 	slices.Sort(ids)
 
-	g, err := Compile(p, revision, notAfter)
+	g, err := compile.Compile(p, revision, notAfter)
 	if err != nil {
 		return nil, err
 	}
 	if len(ids) > 0 {
 		// Not yet published, so the generation can still be labelled.
 		g.Overrides = ids
-		g.ID = generationID(p, revision, notAfter, ids)
+		g.ID = compile.GenerationID(p, revision, notAfter, ids)
 	}
 	return g, nil
 }

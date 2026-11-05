@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"sync/atomic"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 )
 
 // upstreamTimeouts bounds the phases of one exchange with an upstream.
@@ -96,7 +98,7 @@ func newUpstreamProxy(timeouts upstreamTimeouts, logger *slog.Logger) (*upstream
 // server, so the handler must be served by one.
 func (p *upstreamProxy) forward(w http.ResponseWriter, r *http.Request) error {
 	b, bound := r.Context().Value(bindingKey{}).(binding)
-	if !bound || !isLoopbackDial(b.dial) {
+	if !bound || !compile.IsLoopbackDial(b.dial) {
 		return fmt.Errorf("%w: %w", errNoUpstream, errNotSent)
 	}
 

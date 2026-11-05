@@ -3,6 +3,8 @@ package gateway
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 )
 
 // The limits read reports each built-in limit with its current use, taken
@@ -30,7 +32,7 @@ func TestAdminLimits(t *testing.T) {
 	}
 	want := map[string]int64{
 		"temporary_rules": maxActiveOverrides, "live_views": maxEventStreams, "administrator_sessions": maxSessions,
-		"rate_counters": maxCounters, "recent_requests": recentEventLimit,
+		"rate_counters": compile.MaxCounters, "recent_requests": recentEventLimit,
 	}
 	for name, max := range want {
 		if limits[name].Max != max {

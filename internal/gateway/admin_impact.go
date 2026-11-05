@@ -9,13 +9,14 @@ import (
 	"slices"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // candidateGeneration compiles a stored draft with the active overrides,
 // as an activation would, beside the generation in force. It settles no
 // deadline and publishes nothing. On failure it has answered the request.
-func (c *Controller) candidateGeneration(w http.ResponseWriter, r *http.Request, id int64) (current, candidate *Generation, ok bool) {
+func (c *Controller) candidateGeneration(w http.ResponseWriter, r *http.Request, id int64) (current, candidate *compile.Generation, ok bool) {
 	stored, found, err := c.store.candidate(r.Context(), id)
 	if err != nil {
 		adminError(w, http.StatusServiceUnavailable, "gateway_unavailable", "")
@@ -35,7 +36,7 @@ func (c *Controller) candidateGeneration(w http.ResponseWriter, r *http.Request,
 	// resolver as an activation, including independent temporary controls.
 	c.mu.Lock()
 	current = c.Current()
-	if current == nil || current.expired(trustedNow()) {
+	if current == nil || current.Expired(compile.TrustedNow()) {
 		c.mu.Unlock()
 		adminError(w, 503, "gateway_unavailable", "")
 		return nil, nil, false
@@ -79,8 +80,8 @@ func (c *Controller) handleImpact(w http.ResponseWriter, r *http.Request, who ca
 	groups := map[string]*flip{}
 	unknown := 0
 	for _, event := range events {
-		old, _, oldOperation, oldKnown := before.previewDecision(event)
-		current, code, operation, currentKnown := after.previewDecision(event)
+		old, _, oldOperation, oldKnown := previewDecision(before, event)
+		current, code, operation, currentKnown := previewDecision(after, event)
 		if !oldKnown || !currentKnown {
 			unknown++
 			continue

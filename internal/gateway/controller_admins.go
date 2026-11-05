@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 )
 
@@ -17,7 +18,7 @@ import (
 func (c *Controller) Enrol(ctx context.Context, e enrolment, passwordHash string) (Outcome, int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	now := trustedNow()
+	now := compile.TrustedNow()
 	t := transitionRecord{ID: "enrol:" + e.Secret[:32], Kind: "admin.enrol", Actor: e.Name, Target: e.Name, Digest: e.Secret}
 	if !c.ready() {
 		return unavailableOutcome(t.ID)
@@ -46,7 +47,7 @@ func (c *Controller) Enrol(ctx context.Context, e enrolment, passwordHash string
 func (c *Controller) ChangePassword(ctx context.Context, admin administrator, passwordHash string) (Outcome, int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	now := trustedNow()
+	now := compile.TrustedNow()
 	t := transitionRecord{
 		ID:     fmt.Sprintf("password:%s:%d", admin.Name, admin.Credential),
 		Kind:   "admin.password",

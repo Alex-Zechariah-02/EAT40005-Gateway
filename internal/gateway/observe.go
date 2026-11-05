@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
@@ -226,35 +227,35 @@ func (o *observations) close() {
 
 // previewDecision shares canonical matching and permit evaluation with the
 // request pipeline. It deliberately does not touch counters or validate bodies.
-func (g *Generation) previewDecision(event observedRequest) (decision, code, operation string, known bool) {
+func previewDecision(g *compile.Generation, event observedRequest) (decision, code, operation string, known bool) {
 	if event.routingPath == "" {
 		return "refused", "bad_request", "", true
 	}
-	target, rule := g.match(event.routingPath, event.Method)
+	target, rule := g.Match(event.routingPath, event.Method)
 	if target == nil {
 		return "refused", "not_found", "", true
 	}
 	if rule == nil {
 		return "refused", "method_not_allowed", "", true
 	}
-	if !rule.permitted {
-		return "refused", "forbidden", rule.operation, true
+	if !rule.Permitted() {
+		return "refused", "forbidden", rule.Operation(), true
 	}
-	if !rule.public {
+	if !rule.Public() {
 		if !event.identityKnown {
-			return "", "", rule.operation, false
+			return "", "", rule.Operation(), false
 		}
 		if event.Subject == nil {
-			return "refused", "unauthenticated", rule.operation, true
+			return "refused", "unauthenticated", rule.Operation(), true
 		}
 		if event.Stage == "blocked" {
-			return "refused", "account_blocked", rule.operation, true
+			return "refused", "account_blocked", rule.Operation(), true
 		}
-		if _, _, reason := g.authorise(event.assertedRoles, rule); reason != "" {
-			return "refused", "forbidden", rule.operation, true
+		if _, _, reason := g.Authorise(event.assertedRoles, rule); reason != "" {
+			return "refused", "forbidden", rule.Operation(), true
 		}
 	}
-	return "allowed", "", rule.operation, true
+	return "allowed", "", rule.Operation(), true
 }
 
 // traffic failures are refusals from the caller's perspective, while request

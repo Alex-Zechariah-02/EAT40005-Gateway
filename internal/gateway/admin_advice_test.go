@@ -7,10 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
-func adviceGeneration(t *testing.T) *Generation {
+func adviceGeneration(t *testing.T) *compile.Generation {
 	t.Helper()
 	g, err := effectiveGeneration(policy.Policy{
 		SchemaVersion: policy.SchemaVersion, Profile: policy.ProfileCore,

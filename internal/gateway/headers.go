@@ -5,6 +5,8 @@ package gateway
 import (
 	"net/http"
 	"strings"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 )
 
 // connectionNames returns, in canonical form, the field names that the
@@ -34,7 +36,7 @@ func connectionNames(header http.Header) []string {
 // schema may declare such a name.
 func stripUntrustedHeaders(header http.Header) {
 	for name := range header {
-		if isGatewayHeader(name) || strings.ContainsAny(name, "_.") {
+		if compile.IsGatewayHeader(name) || strings.ContainsAny(name, "_.") {
 			delete(header, name)
 		}
 	}

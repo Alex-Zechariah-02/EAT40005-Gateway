@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
@@ -136,18 +137,18 @@ func TestSpecificityIgnoresDeclarationOrder(t *testing.T) {
 		}
 		q := p
 		q.Operations = shuffled
-		g, err := Compile(q, 1, time.Time{})
+		g, err := compile.Compile(q, 1, time.Time{})
 		if err != nil {
 			t.Fatal(err)
 		}
 		var got []string
 		for _, r := range requests {
-			_, rule := g.match(r.path, "GET")
+			_, rule := g.Match(r.path, "GET")
 			if rule == nil {
 				got = append(got, "")
 				continue
 			}
-			got = append(got, rule.operation)
+			got = append(got, rule.Operation())
 		}
 		if round == 0 {
 			reference = got
@@ -170,7 +171,7 @@ func TestDenyAllPolicyCompiles(t *testing.T) {
 		p.Operations[i].Access = "deny"
 	}
 	p.Permits = nil
-	g, err := Compile(p, 1, time.Time{})
+	g, err := compile.Compile(p, 1, time.Time{})
 	if err != nil {
 		t.Fatalf("deny-all policy rejected: %v", err)
 	}
@@ -179,23 +180,23 @@ func TestDenyAllPolicyCompiles(t *testing.T) {
 		if prefix, ok := strings.CutSuffix(op.Target, "*"); ok {
 			path = prefix + "x"
 		}
-		if _, r := g.match(path, op.Method); r == nil || r.permitted {
+		if _, r := g.Match(path, op.Method); r == nil || r.Permitted() {
 			t.Errorf("%s %s: %+v, want a matched, denied operation", op.Method, path, r)
 		}
 	}
 
 	// Without permits no subject is allowed anything, whatever its roles.
 	for _, op := range p.Operations {
-		_, r := g.match(strings.Replace(op.Target, "*", "x", 1), op.Method)
+		_, r := g.Match(strings.Replace(op.Target, "*", "x", 1), op.Method)
 		for _, subject := range []string{"cust-001", "staff-01", "both@example.test", "nobody-01", "former-01"} {
-			if roles, _, reason := g.authorise(testRoles(subject), r); reason == "" {
+			if roles, _, reason := g.Authorise(testRoles(subject), r); reason == "" {
 				t.Errorf("%s allowed %s with roles %v under deny-all", subject, op.ID, roles)
 			}
 		}
 	}
 
 	empty := policy.Policy{SchemaVersion: policy.SchemaVersion, Profile: policy.ProfileCore}
-	if _, err := Compile(empty, 1, time.Time{}); err != nil {
+	if _, err := compile.Compile(empty, 1, time.Time{}); err != nil {
 		t.Fatalf("empty policy rejected: %v", err)
 	}
 }
@@ -203,7 +204,7 @@ func TestDenyAllPolicyCompiles(t *testing.T) {
 // Roles are flat: a subject is allowed an operation exactly when one of its
 // own trusted roles holds a permit for that operation.
 func TestRoleEvaluation(t *testing.T) {
-	g, err := Compile(threeAPIPolicy(), 1, time.Time{})
+	g, err := compile.Compile(threeAPIPolicy(), 1, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,11 +232,11 @@ func TestRoleEvaluation(t *testing.T) {
 		{"staff-01", "GET", "/reports/summary", "no_permit", nil},
 	}
 	for _, tc := range cases {
-		_, r := g.match(tc.path, tc.method)
+		_, r := g.Match(tc.path, tc.method)
 		if r == nil {
 			t.Fatalf("%s %s matched nothing", tc.method, tc.path)
 		}
-		roles, _, reason := g.authorise(testRoles(tc.subject), r)
+		roles, _, reason := g.Authorise(testRoles(tc.subject), r)
 		if reason != "" {
 			roles = nil
 		} // these cases compare grants, not retained audit roles
@@ -262,14 +263,14 @@ func FuzzDecodeAndCompile(f *testing.F) {
 			}
 			return
 		}
-		first, err := Compile(p, 1, time.Time{})
+		first, err := compile.Compile(p, 1, time.Time{})
 		if err != nil {
 			if _, ok := errors.AsType[*policy.PolicyError](err); !ok {
 				t.Fatalf("untyped error %v", err)
 			}
 			return
 		}
-		second, _ := Compile(p, 1, time.Time{})
+		second, _ := compile.Compile(p, 1, time.Time{})
 		if second == nil || first.ID != second.ID {
 			t.Fatal("accepted policy compiled to different identities")
 		}

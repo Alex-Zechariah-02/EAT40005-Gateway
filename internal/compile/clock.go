@@ -1,6 +1,6 @@
 // Trusted time and generation expiry.
 
-package gateway
+package compile
 
 import (
 	"sync/atomic"
@@ -9,28 +9,28 @@ import (
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 )
 
-// expired reports whether the generation's earliest deadline has passed at
+// Expired reports whether the generation's earliest deadline has passed at
 // now, a reading of trustedNow.
-func (g *Generation) expired(now time.Time) bool {
+func (g *Generation) Expired(now time.Time) bool {
 	return !g.NotAfter.IsZero() && !now.Before(g.NotAfter)
 }
 
-// processStart anchors this process's monotonic clock to the wall clock once,
+// ProcessStart anchors this process's monotonic clock to the wall clock once,
 // at startup. It is never changed.
-var processStart = time.Now()
+var ProcessStart = time.Now()
 
 // wallLead is the furthest, in nanoseconds, that the wall clock has been ahead
 // of the monotonic estimate when a deadline was set in this process. It only
 // grows.
 var wallLead atomic.Int64
 
-// trustedNow is the time against which every persisted deadline is decided
+// TrustedNow is the time against which every persisted deadline is decided
 // and every controller timestamp is taken; see trustedTime.
-func trustedNow() time.Time {
-	return trustedTime(time.Now().Round(0).Add(fault.WallOffset()), time.Since(processStart))
+func TrustedNow() time.Time {
+	return TrustedTime(time.Now().Round(0).Add(fault.WallOffset()), time.Since(ProcessStart))
 }
 
-// deadlineNow is trustedNow for setting a deadline: a provisional base's or an
+// DeadlineNow is trustedNow for setting a deadline: a provisional base's or an
 // override's. It first keeps any lead the wall clock has over the monotonic
 // estimate, so a deadline set from a wall clock that is ahead is still reached
 // after its own period if that clock is later set back. The cost is that, once
@@ -39,20 +39,20 @@ func trustedNow() time.Time {
 // deadline's own record already carries the lead. Other readings, including
 // every request, never raise it, so a brief forward step with no new deadline
 // leaves no trace.
-func deadlineNow() time.Time {
+func DeadlineNow() time.Time {
 	wall := time.Now().Round(0).Add(fault.WallOffset())
-	elapsed := time.Since(processStart)
-	lead := int64(wall.Sub(processStart.Round(0).Add(elapsed)))
+	elapsed := time.Since(ProcessStart)
+	lead := int64(wall.Sub(ProcessStart.Round(0).Add(elapsed)))
 	for {
 		seen := wallLead.Load()
 		if lead <= seen || wallLead.CompareAndSwap(seen, lead) {
 			break
 		}
 	}
-	return trustedTime(wall, elapsed)
+	return TrustedTime(wall, elapsed)
 }
 
-// trustedTime returns the later of the wall clock reading wall and the wall
+// TrustedTime returns the later of the wall clock reading wall and the wall
 // time the monotonic clock implies after elapsed since processStart, advanced
 // by the wall clock's largest lead when a deadline was set. A deadline has
 // passed once either clock reaches it: a wall clock set back cannot extend it,
@@ -61,8 +61,8 @@ func deadlineNow() time.Time {
 // The monotonic estimate is anchored at process start, not at each
 // publication, so republishing after a wall clock change cannot move a
 // deadline either.
-func trustedTime(wall time.Time, elapsed time.Duration) time.Time {
-	estimate := processStart.Round(0).Add(elapsed + time.Duration(wallLead.Load()))
+func TrustedTime(wall time.Time, elapsed time.Duration) time.Time {
+	estimate := ProcessStart.Round(0).Add(elapsed + time.Duration(wallLead.Load()))
 	if wall.After(estimate) {
 		return wall
 	}

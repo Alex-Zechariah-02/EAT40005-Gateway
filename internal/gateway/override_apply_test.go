@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
@@ -87,7 +88,7 @@ func TestApplyOverrides(t *testing.T) {
 			t.Fatalf("order %v gave %v %v, want %s", overrideIDs(shuffled), again, err, first.ID)
 		}
 	}
-	plain, err := Compile(basePolicy, 7, deadline)
+	plain, err := compile.Compile(basePolicy, 7, deadline)
 	if err != nil {
 		t.Fatal(err)
 	}

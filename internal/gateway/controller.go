@@ -14,6 +14,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 )
 
 const (
@@ -71,7 +73,7 @@ type Config struct {
 type Controller struct {
 	config Config
 
-	current atomic.Pointer[Generation]
+	current atomic.Pointer[compile.Generation]
 
 	// ui reads the dashboard files; nil when AdminUI is not set.
 	ui fs.FS
@@ -180,7 +182,7 @@ func NewController(cfg Config, logger *slog.Logger) (*Controller, error) {
 		return c, nil
 	}
 	c.blocked.Store(&blocked)
-	c.reconcile(trustedNow())
+	c.reconcile(compile.TrustedNow())
 	return c, nil
 }
 
@@ -228,4 +230,4 @@ func (cfg *Config) applyDefaults() error {
 }
 
 // Current returns the published generation, or nil when nothing may be served.
-func (c *Controller) Current() *Generation { return c.current.Load() }
+func (c *Controller) Current() *compile.Generation { return c.current.Load() }

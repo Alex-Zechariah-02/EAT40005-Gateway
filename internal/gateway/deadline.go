@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 )
 
@@ -16,7 +17,7 @@ import (
 // deadline the generation depends on. The timer only wakes the controller:
 // every deadline is persisted and is also enforced on every request by the
 // generation itself.
-func (c *Controller) scheduleDeadline(g *Generation) {
+func (c *Controller) scheduleDeadline(g *compile.Generation) {
 	if c.timer != nil {
 		c.timer.Stop()
 		c.timer = nil
@@ -24,13 +25,13 @@ func (c *Controller) scheduleDeadline(g *Generation) {
 	if g.NotAfter.IsZero() || fault.TimerFault() {
 		return
 	}
-	c.timer = time.AfterFunc(g.NotAfter.Sub(trustedNow()), func() { c.expire(g) })
+	c.timer = time.AfterFunc(g.NotAfter.Sub(compile.TrustedNow()), func() { c.expire(g) })
 }
 
 // deadlinePassed is called by the request path when the generation it
 // captured has expired. It starts at most one check at a time, so a late or
 // missing timer cannot keep the gateway refusing every request.
-func (c *Controller) deadlinePassed(g *Generation) {
+func (c *Controller) deadlinePassed(g *compile.Generation) {
 	if !c.expiring.CompareAndSwap(false, true) {
 		return
 	}
@@ -45,15 +46,15 @@ func (c *Controller) deadlinePassed(g *Generation) {
 // timer or wake-up that arrives after another transition does nothing. A timer
 // that fires before g has expired (the wall clock was set back after it was
 // armed) is armed again.
-func (c *Controller) expire(g *Generation) {
+func (c *Controller) expire(g *compile.Generation) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	now := trustedNow()
+	now := compile.TrustedNow()
 	// After beginStop no generation is published, so this is never g.
 	if c.current.Load() != g {
 		return
 	}
-	if !g.expired(now) {
+	if !g.Expired(now) {
 		c.scheduleDeadline(g)
 		return
 	}

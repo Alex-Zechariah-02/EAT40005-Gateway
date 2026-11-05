@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 )
 
@@ -105,14 +106,14 @@ type limiter struct {
 }
 
 func newLimiter() *limiter {
-	return &limiter{counters: map[counterKey]*counter{}, capacity: maxCounters}
+	return &limiter{counters: map[counterKey]*counter{}, capacity: compile.MaxCounters}
 }
 
 // admit applies the rule at now (Unix milliseconds): with C requests admitted
 // in the current bucket, P in the previous one and offset d into the current
 // bucket, the request is admitted when C + P*(W-d)/W + 1 <= N, and only an
 // admitted request is counted.
-func (l *limiter) admit(key counterKey, rule *rateRule, now int64) rateDecision {
+func (l *limiter) admit(key counterKey, rule *compile.RateRule, now int64) rateDecision {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -124,30 +125,30 @@ func (l *limiter) admit(key counterKey, rule *rateRule, now int64) rateDecision 
 		if len(l.counters) >= l.capacity {
 			return rateNoCapacity
 		}
-		c = &counter{window: rule.window, bucket: now / rule.window, key: key}
+		c = &counter{window: rule.Window(), bucket: now / rule.Window(), key: key}
 		l.counters[key] = c
 		heap.Push(&l.expiry, c)
 	}
 
 	removable := c.removable()
 	c.roll(now)
-	if c.window != rule.window {
+	if c.window != rule.Window() {
 		// The window changed: carry the usage so far, rounded up, into a
 		// counter for the new window, so a change never forgives requests.
 		used := (c.usage(now) + c.window - 1) / c.window
-		c.window, c.bucket, c.current, c.previous = rule.window, now/rule.window, used, 0
+		c.window, c.bucket, c.current, c.previous = rule.Window(), now/rule.Window(), used, 0
 	}
 	if c.removable() != removable {
 		heap.Fix(&l.expiry, c.index)
 	}
 
-	if c.usage(now)+rule.window > rule.count*rule.window {
+	if c.usage(now)+rule.Window() > rule.Count()*rule.Window() {
 		return rateExceeded
 	}
 	c.current++
 
 	l.admissions++
-	if l.admissions%sweepInterval == 0 {
+	if l.admissions%compile.SweepInterval == 0 {
 		l.sweep(now)
 	}
 	return rateAdmitted

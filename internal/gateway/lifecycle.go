@@ -5,6 +5,8 @@ package gateway
 import (
 	"context"
 	"errors"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 )
 
 // Start serves the Admin API on its loopback listener. Protected admission
@@ -115,7 +117,7 @@ func (c *Controller) admission() string {
 	switch {
 	case g == nil:
 		return "unavailable"
-	case g.expired(trustedNow()):
+	case g.Expired(compile.TrustedNow()):
 		return "generation_expired"
 	case c.audit.failed.Load():
 		return "audit_failed"

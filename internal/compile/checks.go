@@ -1,6 +1,6 @@
 // Policy count, permit and upstream address checks.
 
-package gateway
+package compile
 
 import (
 	"net/netip"
@@ -32,7 +32,7 @@ func checkCounts(p policy.Policy) error {
 // them, and records each permit on its operation's rule. Unknown roles and
 // operations are rejected, so a reference can never grant anything by
 // accident. It returns the declared roles.
-func checkPermits(p policy.Policy, rules map[string]*rule) (map[string]bool, error) {
+func checkPermits(p policy.Policy, rules map[string]*Rule) (map[string]bool, error) {
 	roles := map[string]bool{}
 	for i, r := range p.Roles {
 		if err := policy.CheckID(r.ID, "roles[%d].id", i); err != nil {
@@ -65,9 +65,9 @@ func checkPermits(p policy.Policy, rules map[string]*rule) (map[string]bool, err
 	return roles, nil
 }
 
-// isLoopbackDial accepts only literal loopback addresses, so a destination can
+// IsLoopbackDial accepts only literal loopback addresses, so a destination can
 // neither be resolved through DNS nor expanded from request placeholders.
-func isLoopbackDial(dial string) bool {
+func IsLoopbackDial(dial string) bool {
 	addr, err := netip.ParseAddrPort(dial)
 	return err == nil && addr.Port() != 0 && addr.Addr().IsLoopback()
 }

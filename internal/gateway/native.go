@@ -16,6 +16,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 )
 
 // The native gateway: the controller, its enforcement handler and the native
@@ -339,7 +341,7 @@ func isWebsitePage(target string) bool {
 		"/merchant", "/rider", "/support", "/ops", "/lab", "/account":
 		return true
 	}
-	if !isCanonical(target) {
+	if !compile.IsCanonical(target) {
 		return false
 	}
 	for _, prefix := range []string{"/store/", "/item/", "/my-orders/", "/help/"} {

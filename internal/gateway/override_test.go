@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
@@ -175,7 +176,7 @@ func TestOverrideRequestGrammar(t *testing.T) {
 		{"rate without count", OverrideRequest{Type: overrideException, Control: controlRate, Operation: "read-a", ExpiresInSeconds: 60}, "INVALID_VALUE@count"},
 		{"zero count", rateOverride(overrideContainment, "read-a", 0, 60), "INVALID_VALUE@count"},
 		{"negative count", rateOverride(overrideContainment, "read-a", -1, 60), "INVALID_VALUE@count"},
-		{"unlimited count", rateOverride(overrideException, "read-a", maxRateCount+1, 60), "INVALID_VALUE@count"},
+		{"unlimited count", rateOverride(overrideException, "read-a", compile.MaxRateCount+1, 60), "INVALID_VALUE@count"},
 		{"missing expiry", withSeconds(permit, 0), "INVALID_EXPIRY@expires_in_seconds"},
 		{"negative expiry", withSeconds(permit, -60), "INVALID_EXPIRY@expires_in_seconds"},
 		{"expiry above a day", withSeconds(permit, maxOverrideSeconds+1), "INVALID_EXPIRY@expires_in_seconds"},

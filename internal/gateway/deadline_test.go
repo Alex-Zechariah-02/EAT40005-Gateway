@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 )
 
 // These tests cover the confirmation deadline: the clock rule itself, the
@@ -35,7 +37,7 @@ func waitFor(t *testing.T, limit time.Time, what string, cond func() bool) {
 // TestOverrideExpiryUnderClockChanges.)
 func TestDeadlinePredicate(t *testing.T) {
 	deadline := time.UnixMilli(time.Now().Add(time.Hour).UnixMilli())
-	g, err := Compile(threeAPIPolicy(), 2, deadline)
+	g, err := compile.Compile(threeAPIPolicy(), 2, deadline)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,40 +53,40 @@ func TestDeadlinePredicate(t *testing.T) {
 		{deadline.Add(time.Millisecond), true},
 	}
 	for _, w := range wall {
-		if got := g.expired(w.at); got != w.expired {
+		if got := g.Expired(w.at); got != w.expired {
 			t.Errorf("wall clock %v: expired %v, want %v", w.at, got, w.expired)
 		}
 	}
-	if g.expired(trustedNow()) {
+	if g.Expired(compile.TrustedNow()) {
 		t.Fatal("expired an hour before its deadline")
 	}
-	if !g.expired(trustedNow().Add(time.Hour + time.Second)) {
+	if !g.Expired(compile.TrustedNow().Add(time.Hour + time.Second)) {
 		t.Fatal("not expired a second after its deadline on both clocks")
 	}
 
 	// The trusted time is the later of the wall clock and the monotonic
 	// clock's estimate of it, measured from the process start.
-	start := processStart.Round(0)
+	start := compile.ProcessStart.Round(0)
 	// The wall clock was set back an hour, but by the monotonic clock the
 	// deadline has passed.
 	monotonicDeadline := start.Add(2 * time.Hour)
-	setBack := &Generation{NotAfter: monotonicDeadline}
-	if now := trustedTime(monotonicDeadline.Add(-time.Hour), 2*time.Hour); !setBack.expired(now) || !now.Equal(monotonicDeadline) {
+	setBack := &compile.Generation{NotAfter: monotonicDeadline}
+	if now := compile.TrustedTime(monotonicDeadline.Add(-time.Hour), 2*time.Hour); !setBack.Expired(now) || !now.Equal(monotonicDeadline) {
 		t.Fatalf("a wall clock set back extended the deadline (trusted time %v)", now)
 	}
 	// The monotonic clock paused (system suspend) while the wall clock moved
 	// past the deadline.
 	wallDeadline := start.Add(3 * time.Hour)
-	suspended := &Generation{NotAfter: wallDeadline}
-	if now := trustedTime(wallDeadline.Add(time.Millisecond), time.Hour); !suspended.expired(now) || !now.Equal(wallDeadline.Add(time.Millisecond)) {
+	suspended := &compile.Generation{NotAfter: wallDeadline}
+	if now := compile.TrustedTime(wallDeadline.Add(time.Millisecond), time.Hour); !suspended.Expired(now) || !now.Equal(wallDeadline.Add(time.Millisecond)) {
 		t.Fatalf("a paused monotonic clock extended the deadline (trusted time %v)", now)
 	}
 	// Neither clock has reached the deadline.
-	if now := trustedTime(wallDeadline.Add(-time.Minute), time.Hour); suspended.expired(now) {
+	if now := compile.TrustedTime(wallDeadline.Add(-time.Minute), time.Hour); suspended.Expired(now) {
 		t.Fatalf("expired before either clock reached the deadline (trusted time %v)", now)
 	}
-	confirmed, err := Compile(threeAPIPolicy(), 2, time.Time{})
-	if err != nil || confirmed.expired(trustedNow().Add(1000*time.Hour)) {
+	confirmed, err := compile.Compile(threeAPIPolicy(), 2, time.Time{})
+	if err != nil || confirmed.Expired(compile.TrustedNow().Add(1000*time.Hour)) {
 		t.Fatalf("a confirmed generation expired: %v", err)
 	}
 }

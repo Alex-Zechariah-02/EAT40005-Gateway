@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
@@ -58,7 +59,7 @@ func TestFetchRateKeyCompilation(t *testing.T) {
 			Operations: []policy.Operation{{ID: "search", API: "inventory", Method: "GET", Target: "/inventory/search", Access: "allow", Auth: tc.auth,
 				Rate: &policy.RateRule{Algorithm: "sliding-window", Count: 2, WindowSeconds: 60, Key: tc.key}}},
 		}
-		_, err := Compile(p, 1, time.Time{})
+		_, err := compile.Compile(p, 1, time.Time{})
 		if code := errorCode(err); code != tc.code {
 			t.Errorf("auth=%s key=%q: %v, want %q", tc.auth, tc.key, err, tc.code)
 		}

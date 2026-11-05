@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
@@ -54,12 +55,12 @@ func TestFetchArraySchemas(t *testing.T) {
 			schema = `{"type":"object","additionalProperties":false,"required":["items"],"properties":{"items":` + items + `}}`
 		}
 		p := schemaPolicy(schema)
-		g, err := Compile(p, 1, time.Time{})
+		g, err := compile.Compile(p, 1, time.Time{})
 		if err != nil {
 			t.Errorf("wrapped=%t: array schema refused: %v", wrapped, err)
 			continue
 		}
-		_, operation := g.match("/orders", "POST")
+		_, operation := g.Match("/orders", "POST")
 		for _, tc := range []struct {
 			body string
 			ok   bool
@@ -102,12 +103,12 @@ func TestFetchArraySchemaRefusals(t *testing.T) {
 		{`{"type":"array","items":{"type":"string"},"uniqueItems":true}`, "UNSUPPORTED_FEATURE"},
 		{`{"type":"object","additionalProperties":true,"items":{"type":"string"}}`, "INVALID_VALUE"},
 	} {
-		_, _, err := compileSchema(json.RawMessage(tc.schema), schemaBody, "body")
+		_, _, err := compile.CompileSchema(json.RawMessage(tc.schema), compile.SchemaBody, "body")
 		if code := errorCode(err); code != tc.code {
 			t.Errorf("%s: %v, want %s", tc.schema, err, tc.code)
 		}
 	}
-	if _, _, err := compileSchema(json.RawMessage(`{"type":"array","items":{"type":"string"}}`), schemaHeaders, "headers"); err == nil {
+	if _, _, err := compile.CompileSchema(json.RawMessage(`{"type":"array","items":{"type":"string"}}`), compile.SchemaHeaders, "headers"); err == nil {
 		t.Fatal("header root accepted an array")
 	}
 }

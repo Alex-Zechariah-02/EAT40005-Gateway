@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 )
 
 // A refused or malformed override request changes nothing: no row, no
@@ -48,7 +50,7 @@ func TestOverrideRefusals(t *testing.T) {
 		{"already granted", permitOverride(overrideException, "WRITER", "write-a", 60), `"r1"`, 400, "INVALID_VALUE", "role"},
 		{"rate exception lowering", rateOverride(overrideException, "read-a", 2, 60), `"r1"`, 400, "INVALID_VALUE", "count"},
 		{"rate on an unrated operation", rateOverride(overrideContainment, "write-a", 1, 60), `"r1"`, 400, "INVALID_VALUE", "operation"},
-		{"unlimited rate", rateOverride(overrideException, "read-a", maxRateCount+1, 60), `"r1"`, 400, "INVALID_VALUE", "count"},
+		{"unlimited rate", rateOverride(overrideException, "read-a", compile.MaxRateCount+1, 60), `"r1"`, 400, "INVALID_VALUE", "count"},
 		{"no expiry", `{"type":"exception","control":"permit","operation":"write-a","role":"READER"}`, `"r1"`, 400, "INVALID_EXPIRY", "expires_in_seconds"},
 		{"expired already", permitOverride(overrideException, "READER", "write-a", -1), `"r1"`, 400, "INVALID_EXPIRY", "expires_in_seconds"},
 		{"expiry above a day", permitOverride(overrideException, "READER", "write-a", 86401), `"r1"`, 400, "INVALID_EXPIRY", "expires_in_seconds"},
