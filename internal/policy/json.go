@@ -20,6 +20,11 @@ import (
 // an upstream could read different documents. It returns the value, or the
 // rejection reason.
 func DecodeJSON(data []byte) (any, string) {
+	return DecodeBounded(data, MaxJSONDepth, MaxJSONValues)
+}
+
+// DecodeBounded is DecodeJSON with the caller's nesting and value limits.
+func DecodeBounded(data []byte, maxDepth, maxValues int) (any, string) {
 	if !utf8.Valid(data) || hasLoneSurrogate(data) {
 		return nil, "invalid_encoding"
 	}
@@ -60,7 +65,7 @@ func DecodeJSON(data []byte) (any, string) {
 		case json.Delim:
 			if t == '{' || t == '[' {
 				values++
-				if values > MaxJSONValues || len(stack) == MaxJSONDepth {
+				if values > maxValues || len(stack) == maxDepth {
 					return nil, "limit_exceeded"
 				}
 				opened := &container{}
@@ -82,13 +87,13 @@ func DecodeJSON(data []byte) (any, string) {
 			}
 		case json.Number:
 			values++
-			if values > MaxJSONValues || !isBoundedNumber(t) {
+			if values > maxValues || !isBoundedNumber(t) {
 				return nil, "limit_exceeded"
 			}
 			value = t
 		default:
 			values++
-			if values > MaxJSONValues {
+			if values > maxValues {
 				return nil, "limit_exceeded"
 			}
 			value = t

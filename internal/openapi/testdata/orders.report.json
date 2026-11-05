@@ -1,0 +1,43 @@
+{
+  "spec_version": "3.1.0",
+  "source_format": "json",
+  "api": "orders",
+  "operations_in_spec": 8,
+  "mapped": [
+    {"method": "GET", "path": "/health", "operation": "orders.health", "target": "/health", "auth": "none", "note": "public: consider a rate limit by client address"},
+    {"method": "GET", "path": "/orders", "operation": "orders.listOrders", "target": "/orders", "auth": "required"},
+    {"method": "POST", "path": "/orders", "operation": "orders.createOrder", "target": "/orders", "auth": "required"},
+    {"method": "GET", "path": "/stock", "operation": "orders.listStock", "target": "/stock", "auth": "required", "note": "no security stated; sign-in required by default"}
+  ],
+  "widened": [
+    {"method": "GET", "path": "/orders/{id}", "operation": "orders.getOrder", "target": "/orders/*", "auth": "required", "note": "matches /orders/<anything>, including deeper paths"},
+    {"method": "PATCH", "path": "/orders/{id}", "operation": "orders.updateOrder", "target": "/orders/*", "auth": "required", "note": "matches /orders/<anything>, including deeper paths"}
+  ],
+  "assumed": [
+    {"operation": "orders.createOrder", "field": "body.max_bytes", "value": 16384},
+    {"operation": "orders.updateOrder", "field": "body.max_bytes", "value": 16384},
+    {"operation": "orders.updateOrder", "field": "body.schema.additionalProperties", "value": true, "note": "set false to refuse unknown fields"}
+  ],
+  "changed": [
+    {"operation": "orders.updateOrder", "field": "body", "note": "The description allows no body; the gateway refuses a request without one (415 without a JSON Content-Type, else 400 malformed_json)."},
+    {"operation": "orders.updateOrder", "field": "body.media_type", "note": "The gateway accepts only Content-Type application/json; a request sent as application/merge-patch+json is refused with 415."}
+  ],
+  "refused": [
+    {"method": "TRACE", "path": "/health", "code": "METHOD_REFUSED", "message": "TRACE is never forwarded."},
+    {"method": "GET", "path": "/orders/{id}/items", "code": "PATH_TEMPLATE_UNSUPPORTED", "message": "A templated segment followed by more segments cannot be expressed."}
+  ],
+  "needs_permissions": ["orders.listOrders", "orders.createOrder", "orders.getOrder", "orders.updateOrder", "orders.listStock"],
+  "scopes_not_mapped": ["orders:read"],
+  "not_enforced": [
+    {"operation": "orders.listOrders", "parameter": "page", "in": "query"},
+    {"operation": "orders.getOrder", "parameter": "id", "in": "path"},
+    {"operation": "orders.updateOrder", "parameter": "id", "in": "path"}
+  ],
+  "annotations_removed": [
+    {"operation": "orders.createOrder", "field": "#/components/schemas/NewOrder/description"},
+    {"operation": "orders.createOrder", "field": "#/components/schemas/NewOrder/properties/item/example"}
+  ],
+  "removed_operations": ["orders.old"],
+  "removed_permits": [{"role": "customer", "operation": "orders.old"}],
+  "ignored": ["links", "responses", "servers", "tags"]
+}

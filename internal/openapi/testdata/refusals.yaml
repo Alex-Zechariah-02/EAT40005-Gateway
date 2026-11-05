@@ -1,0 +1,180 @@
+openapi: 3.0.3
+info:
+  title: Refusals
+  version: "1"
+paths:
+  /a/{x}:
+    get:
+      operationId: collideA
+  /a/{y}:
+    get:
+      operationId: collideB
+  /bad-id:
+    get:
+      operationId: list orders
+  /no-id:
+    get:
+      summary: No identifier.
+  /dup1:
+    get:
+      operationId: dup
+  /dup2:
+    get:
+      operationId: dup
+  /apikey:
+    get:
+      operationId: apiKey
+      security:
+        - key: []
+  /basic:
+    get:
+      operationId: basic
+      security:
+        - basic: []
+        - bearer: []
+  /optional:
+    get:
+      operationId: optional
+      security:
+        - {}
+        - bearer: []
+  /unknown-scheme:
+    get:
+      operationId: unknownScheme
+      security:
+        - nobody: []
+  /form:
+    post:
+      operationId: form
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+  /cycle:
+    post:
+      operationId: cycle
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Tree"
+  /external:
+    post:
+      operationId: external
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "other.yaml#/Thing"
+  /missing:
+    post:
+      operationId: missing
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Missing"
+  /format:
+    post:
+      operationId: format
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                email:
+                  type: string
+                  format: email
+  /extra:
+    post:
+      operationId: extra
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                type: string
+  /sibling:
+    post:
+      operationId: sibling
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Tree"
+              maxProperties: 3
+  /fanout:
+    post:
+      operationId: fanout
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Fan1"
+  /count:
+    get:
+      operationId: count
+      parameters:
+        - name: X-Count
+          in: header
+          schema:
+            type: integer
+  /content-header:
+    get:
+      operationId: contentHeader
+      parameters:
+        - name: X-Filter
+          in: header
+          content:
+            application/json:
+              schema:
+                type: object
+  /untyped:
+    post:
+      operationId: untyped
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                a:
+                  type: string
+components:
+  securitySchemes:
+    key:
+      type: apiKey
+      in: header
+      name: X-Key
+    basic:
+      type: http
+      scheme: basic
+    bearer:
+      type: http
+      scheme: bearer
+  schemas:
+    Tree:
+      type: object
+      additionalProperties: false
+      properties:
+        child:
+          $ref: "#/components/schemas/Tree"
+    Fan1:
+      type: object
+      additionalProperties: false
+      properties: {p1: {$ref: "#/components/schemas/Fan2"}, p2: {$ref: "#/components/schemas/Fan2"}, p3: {$ref: "#/components/schemas/Fan2"}, p4: {$ref: "#/components/schemas/Fan2"}, p5: {$ref: "#/components/schemas/Fan2"}, p6: {$ref: "#/components/schemas/Fan2"}, p7: {$ref: "#/components/schemas/Fan2"}, p8: {$ref: "#/components/schemas/Fan2"}}
+    Fan2:
+      type: object
+      additionalProperties: false
+      properties: {p1: {$ref: "#/components/schemas/Fan3"}, p2: {$ref: "#/components/schemas/Fan3"}, p3: {$ref: "#/components/schemas/Fan3"}, p4: {$ref: "#/components/schemas/Fan3"}, p5: {$ref: "#/components/schemas/Fan3"}, p6: {$ref: "#/components/schemas/Fan3"}, p7: {$ref: "#/components/schemas/Fan3"}, p8: {$ref: "#/components/schemas/Fan3"}}
+    Fan3:
+      type: object
+      additionalProperties: false
+      properties: {p1: {$ref: "#/components/schemas/Fan4"}, p2: {$ref: "#/components/schemas/Fan4"}, p3: {$ref: "#/components/schemas/Fan4"}, p4: {$ref: "#/components/schemas/Fan4"}, p5: {$ref: "#/components/schemas/Fan4"}, p6: {$ref: "#/components/schemas/Fan4"}, p7: {$ref: "#/components/schemas/Fan4"}, p8: {$ref: "#/components/schemas/Fan4"}}
+    Fan4:
+      type: object
+      additionalProperties: false
+      properties: {p1: {type: string}, p2: {type: string}, p3: {type: string}, p4: {type: string}, p5: {type: string}, p6: {type: string}, p7: {type: string}, p8: {type: string}}

@@ -23,6 +23,50 @@ A policy can pass all checks and still cause problems when it is in use. Adminis
 - **Confirmed Policy Activation.** A new permanent policy starts as provisional and is enforced at once, with a confirmation deadline of 1 second to 24 hours. An administrator confirms it or rolls it back. If nobody confirms it in time, the gateway goes back to the previous policy by itself, also when it was stopped over the deadline. A provisional policy never admits a request after its deadline, even if the rollback runs late. Only one provisional policy can exist at a time, and each one ends exactly once.
 - **Temporary Policy Override.** An administrator can give a role one more operation or take one away, raise or lower an operation's rate limit, or block an operation, for 1 second to 24 hours. The change is applied on top of the permanent policy without changing it, and it ends by itself at its expiry time or when it is revoked. It cannot skip token checks or request checks, reduce logging, open a blocked operation or change where requests go. Two overrides cannot change the same thing, and a new permanent policy that would clash with an override is refused. While a provisional policy waits for confirmation, no new override can be made. Rate counts carry over, so an override never gives a fresh quota. A restored backup never brings an old override back.
 
+## Import an OpenAPI description
+
+`gateway policy import-openapi` turns an OpenAPI 3.0 or 3.1 description (JSON, or YAML 1.2) into a new policy file for review. It runs offline: it reads only the files it is given, never fetches a `$ref`, and never activates anything. Stage the result as a draft, trial it and confirm it like any other change.
+
+```
+gateway policy import-openapi --spec <file.json|.yaml|.yml> --api <id> --upstream <id>
+  --base <policy.json> [--max-body-bytes <n>] --out <new file> --report <new file>
+```
+
+| Flag | Meaning |
+|---|---|
+| `--spec` | The description, at most 1 MiB; the extension chooses JSON or YAML |
+| `--api` | The API to create, or to replace with its operations and the permits that name them |
+| `--upstream` | An upstream already in `--base` that serves the API |
+| `--base` | The policy to build on, for example the output of `demo policy export` |
+| `--max-body-bytes` | Body limit for imported request bodies: 1 to 1,048,576, default 16,384 |
+| `--out`, `--report` | New files; the command never overwrites a file and writes both or neither |
+
+Exit status: `0` every operation mapped; `2` both files written, but some operations were refused or widened (read the report); `1` nothing written (bad flags, unreadable or refused description, an output file exists, or the result does not compile).
+
+**How it maps.** Each path and method becomes one operation `<api>.<operationId>`, allowed, with sign-in required unless the description says `security: []`. No permits are created; grant roles afterwards. A path whose last segment is a parameter (`/orders/{id}`) becomes the prefix `/orders/*`, which also matches deeper paths. Header parameters become the header schema; query, path and cookie parameters are listed as not enforced. A JSON request body becomes a body rule. Schema `$ref`s inside the file are inlined, descriptive keywords (`description`, `example`, `x-…`) are removed, and an object without `additionalProperties` allows extra fields, as OpenAPI does. Every operation is checked by the gateway's own compiler, and the whole result is compiled before anything is written.
+
+**What is refused.** An operation is left out, with a code in the report, when it cannot be expressed exactly: `TRACE` (`METHOD_REFUSED`); a missing or invalid `operationId` (`OPERATION_ID_INVALID`, with a suggestion) or one used twice (`OPERATION_ID_DUPLICATE`); a parameter in the middle of a path (`PATH_TEMPLATE_UNSUPPORTED`); two operations on the same method and target (`TARGET_COLLISION`); API keys, Basic, mutual TLS or optional sign-in (`SECURITY_SCHEME_UNSUPPORTED`); non-JSON bodies (`MEDIA_TYPE_UNSUPPORTED`); a schema keyword the gateway cannot enforce, such as `format`, `pattern` or `oneOf` (`SCHEMA_KEYWORD_UNSUPPORTED`; dropping it would accept more than described); a `$ref` to another file (`EXTERNAL_REF`), a missing one (`REF_INVALID`) or a circular one (`SCHEMA_CYCLE`); a schema deeper than 16 levels or larger than 4,096 values once inlined (`SCHEMA_LIMIT_EXCEEDED`); and anything else the compiler rejects (`COMPILER_REFUSED`, with its code and field). YAML anchors, aliases, merge keys, tags, several documents in one file, duplicate or non-string keys and `.nan`/`.inf` refuse the whole file, naming the line.
+
+**Report.** JSON; every list is always present:
+
+```json
+{"spec_version": "3.1.0", "source_format": "yaml", "api": "orders", "operations_in_spec": 8,
+ "mapped": [{"method": "GET", "path": "/orders", "operation": "orders.listOrders", "target": "/orders", "auth": "required"}],
+ "widened": [{"method": "GET", "path": "/orders/{id}", "operation": "orders.getOrder", "target": "/orders/*", "auth": "required", "note": "matches /orders/<anything>, including deeper paths"}],
+ "assumed": [{"operation": "orders.createOrder", "field": "body.max_bytes", "value": 16384}],
+ "changed": [{"operation": "orders.updateOrder", "field": "body", "note": "The description allows no body; the gateway refuses a request without one (415 without a JSON Content-Type, else 400 malformed_json)."}],
+ "refused": [{"method": "GET", "path": "/orders/{id}/items", "code": "PATH_TEMPLATE_UNSUPPORTED", "message": "A templated segment followed by more segments cannot be expressed."}],
+ "needs_permissions": ["orders.listOrders", "orders.getOrder"],
+ "scopes_not_mapped": ["orders:read"],
+ "not_enforced": [{"operation": "orders.listOrders", "parameter": "page", "in": "query"}],
+ "annotations_removed": [{"operation": "orders.createOrder", "field": "#/components/schemas/NewOrder/description"}],
+ "removed_operations": ["orders.old"],
+ "removed_permits": [{"role": "customer", "operation": "orders.old"}],
+ "ignored": ["responses", "servers", "tags"]}
+```
+
+`mapped` and `widened` list the imported operations (`note` explains a default they rely on); `assumed` lists values the import chose; `changed` lists behaviour the gateway enforces differently from the description; `refused` entries may add `field` (a JSON Pointer into the description, or the compiler's field) and `suggestion`; `needs_permissions` lists the signed-in operations no role can call yet; `removed_operations` and `removed_permits` are what replacing `--api` took out of the base; `ignored` names description members with no effect on the policy (`servers`, `responses`, `callbacks`, `webhooks`, `links`, `tags`).
+
 ## How it is built
 
 - The gateway has its own HTTP server and reverse proxy, built on the Go standard library. It serves HTTP/1.0 and HTTP/1.1 in plain text. Each request passes all five controls in one pipeline and then goes only to the API that the policy names, once.
@@ -45,13 +89,14 @@ Each package under `internal/` imports only the packages listed before it; a tes
 - `internal/forward`: sends an admitted request to the one upstream it is bound to, on a new connection each time; a missing or non-loopback binding is sent nowhere.
 - `internal/store`: the one SQLite database (policy versions, draft changes, temporary rules, blocked accounts, administrators, change receipts); the only code that runs SQL, holding the database exclusively.
 - `internal/audit`: the durable security log; an admitted request is acknowledged only after its record is synced to disk, and the writer never deletes a file.
+- `internal/openapi`: the offline OpenAPI import; it turns a description into a candidate policy and checks it with the compiler.
 - `internal/gateway`: the gateway itself, which uses the packages above.
 
 ## Build and test
 
 You need Go 1.26 or newer. `go.mod` selects the Go 1.27.3 toolchain; with `GOTOOLCHAIN=auto`, Go uses or downloads that toolchain when needed. Programs live in `cmd/`, with shared code in `internal/gateway` and `internal/services`. The preserved controlled APIs for gateway regression tests live in `internal/services/testfixture`. The two web applications are in `dashboard/` and `client/`.
 
-- `cmd/gateway` runs the gateway from one strict JSON configuration file. It has the commands `run`, `install`, `enrol`, `backup`, `restore` and `migrate`, each with `--config <file>`. The local commands `install`, `enrol`, `backup`, `restore` and `migrate` run while the gateway is stopped.
+- `cmd/gateway` runs the gateway from one strict JSON configuration file. It has the commands `run`, `install`, `enrol`, `backup`, `restore` and `migrate`, each with `--config <file>`, and the offline `policy import-openapi` (see above). The local commands `install`, `enrol`, `backup`, `restore` and `migrate` run while the gateway is stopped.
 - `cmd/services -service inventory|orders|reports|support -secret-file <service.secret>` runs a Fetch business API, with independent authenticated receipts, state and reset. Defaults honor `EAT_PORT_OFFSET`; `-listen` and `-control` select explicit loopback addresses. Orders uses `-inventory <http-origin>` and Reports uses `-orders <http-origin>` for authenticated internal calls.
 - `cmd/accounts -secret-file <service.secret> -signing-settings <accounts.json>` runs Fetch Accounts. Signing settings contain `kid` and an absolute `private_key_file`. Only Accounts signs application tokens, which last 15 minutes. Account and signing secrets stay in the private demonstration state.
 - `cmd/testfixture` preserves the three earlier controlled APIs for gateway regression tests. The Fetch demonstration does not build or run it.

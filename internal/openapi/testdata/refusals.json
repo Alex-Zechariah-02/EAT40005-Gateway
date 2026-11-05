@@ -1,0 +1,404 @@
+{
+  "components": {
+    "schemas": {
+      "Fan1": {
+        "additionalProperties": false,
+        "properties": {
+          "p1": {
+            "$ref": "#/components/schemas/Fan2"
+          },
+          "p2": {
+            "$ref": "#/components/schemas/Fan2"
+          },
+          "p3": {
+            "$ref": "#/components/schemas/Fan2"
+          },
+          "p4": {
+            "$ref": "#/components/schemas/Fan2"
+          },
+          "p5": {
+            "$ref": "#/components/schemas/Fan2"
+          },
+          "p6": {
+            "$ref": "#/components/schemas/Fan2"
+          },
+          "p7": {
+            "$ref": "#/components/schemas/Fan2"
+          },
+          "p8": {
+            "$ref": "#/components/schemas/Fan2"
+          }
+        },
+        "type": "object"
+      },
+      "Fan2": {
+        "additionalProperties": false,
+        "properties": {
+          "p1": {
+            "$ref": "#/components/schemas/Fan3"
+          },
+          "p2": {
+            "$ref": "#/components/schemas/Fan3"
+          },
+          "p3": {
+            "$ref": "#/components/schemas/Fan3"
+          },
+          "p4": {
+            "$ref": "#/components/schemas/Fan3"
+          },
+          "p5": {
+            "$ref": "#/components/schemas/Fan3"
+          },
+          "p6": {
+            "$ref": "#/components/schemas/Fan3"
+          },
+          "p7": {
+            "$ref": "#/components/schemas/Fan3"
+          },
+          "p8": {
+            "$ref": "#/components/schemas/Fan3"
+          }
+        },
+        "type": "object"
+      },
+      "Fan3": {
+        "additionalProperties": false,
+        "properties": {
+          "p1": {
+            "$ref": "#/components/schemas/Fan4"
+          },
+          "p2": {
+            "$ref": "#/components/schemas/Fan4"
+          },
+          "p3": {
+            "$ref": "#/components/schemas/Fan4"
+          },
+          "p4": {
+            "$ref": "#/components/schemas/Fan4"
+          },
+          "p5": {
+            "$ref": "#/components/schemas/Fan4"
+          },
+          "p6": {
+            "$ref": "#/components/schemas/Fan4"
+          },
+          "p7": {
+            "$ref": "#/components/schemas/Fan4"
+          },
+          "p8": {
+            "$ref": "#/components/schemas/Fan4"
+          }
+        },
+        "type": "object"
+      },
+      "Fan4": {
+        "additionalProperties": false,
+        "properties": {
+          "p1": {
+            "type": "string"
+          },
+          "p2": {
+            "type": "string"
+          },
+          "p3": {
+            "type": "string"
+          },
+          "p4": {
+            "type": "string"
+          },
+          "p5": {
+            "type": "string"
+          },
+          "p6": {
+            "type": "string"
+          },
+          "p7": {
+            "type": "string"
+          },
+          "p8": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Tree": {
+        "additionalProperties": false,
+        "properties": {
+          "child": {
+            "$ref": "#/components/schemas/Tree"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "basic": {
+        "scheme": "basic",
+        "type": "http"
+      },
+      "bearer": {
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "key": {
+        "in": "header",
+        "name": "X-Key",
+        "type": "apiKey"
+      }
+    }
+  },
+  "info": {
+    "title": "Refusals",
+    "version": "1"
+  },
+  "openapi": "3.0.3",
+  "paths": {
+    "/a/{x}": {
+      "get": {
+        "operationId": "collideA"
+      }
+    },
+    "/a/{y}": {
+      "get": {
+        "operationId": "collideB"
+      }
+    },
+    "/apikey": {
+      "get": {
+        "operationId": "apiKey",
+        "security": [
+          {
+            "key": []
+          }
+        ]
+      }
+    },
+    "/bad-id": {
+      "get": {
+        "operationId": "list orders"
+      }
+    },
+    "/basic": {
+      "get": {
+        "operationId": "basic",
+        "security": [
+          {
+            "basic": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/content-header": {
+      "get": {
+        "operationId": "contentHeader",
+        "parameters": [
+          {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "in": "header",
+            "name": "X-Filter"
+          }
+        ]
+      }
+    },
+    "/count": {
+      "get": {
+        "operationId": "count",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Count",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    },
+    "/cycle": {
+      "post": {
+        "operationId": "cycle",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Tree"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/dup1": {
+      "get": {
+        "operationId": "dup"
+      }
+    },
+    "/dup2": {
+      "get": {
+        "operationId": "dup"
+      }
+    },
+    "/external": {
+      "post": {
+        "operationId": "external",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "other.yaml#/Thing"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/extra": {
+      "post": {
+        "operationId": "extra",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/fanout": {
+      "post": {
+        "operationId": "fanout",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Fan1"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/form": {
+      "post": {
+        "operationId": "form",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/format": {
+      "post": {
+        "operationId": "format",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "email": {
+                    "format": "email",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/missing": {
+      "post": {
+        "operationId": "missing",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Missing"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/no-id": {
+      "get": {
+        "summary": "No identifier."
+      }
+    },
+    "/optional": {
+      "get": {
+        "operationId": "optional",
+        "security": [
+          {},
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/sibling": {
+      "post": {
+        "operationId": "sibling",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Tree",
+                "maxProperties": 3
+              }
+            }
+          }
+        }
+      }
+    },
+    "/unknown-scheme": {
+      "get": {
+        "operationId": "unknownScheme",
+        "security": [
+          {
+            "nobody": []
+          }
+        ]
+      }
+    },
+    "/untyped": {
+      "post": {
+        "operationId": "untyped",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

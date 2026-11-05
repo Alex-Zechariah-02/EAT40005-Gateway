@@ -13,6 +13,7 @@ ignore (
 require (
 	github.com/go-jose/go-jose/v4 v4.1.8
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
+	go.yaml.in/yaml/v4 v4.0.0
 	golang.org/x/crypto v0.58.0
 	golang.org/x/sys v0.49.0
 	modernc.org/sqlite v1.61.1

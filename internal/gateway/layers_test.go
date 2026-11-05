@@ -19,6 +19,7 @@ var layers = map[string][]string{
 	"forward": {"compile"},
 	"store":   {"fault", "policy"},
 	"audit":   {"fault"},
+	"openapi": {"policy", "compile"},
 	"gateway": {"fault", "policy", "compile", "forward", "store", "audit"},
 }
 
@@ -32,6 +33,10 @@ func TestPackageLayers(t *testing.T) {
 	err := filepath.WalkDir(filepath.Join(root, "internal"), func(path string, d os.DirEntry, err error) error {
 		if err != nil || !d.IsDir() || path == filepath.Join(root, "internal") {
 			return err
+		}
+		// The go tool ignores these directories, so they hold no package.
+		if name := d.Name(); name == "testdata" || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_") {
+			return filepath.SkipDir
 		}
 		rel, _ := filepath.Rel(filepath.Join(root, "internal"), path)
 		found = append(found, filepath.ToSlash(rel))
@@ -72,7 +77,7 @@ func modulePath(t *testing.T, root string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, line := range strings.Split(string(raw), "\n") {
+	for line := range strings.SplitSeq(string(raw), "\n") {
 		if rest, ok := strings.CutPrefix(line, "module "); ok {
 			return strings.TrimSpace(rest)
 		}

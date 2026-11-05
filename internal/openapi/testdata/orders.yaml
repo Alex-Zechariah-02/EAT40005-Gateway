@@ -1,0 +1,132 @@
+openapi: 3.1.0
+info:
+  title: Orders
+  version: "1.0"
+servers:
+  - url: https://orders.example.com
+tags:
+  - name: orders
+paths:
+  /health:
+    get:
+      operationId: health
+      security: []
+      responses:
+        "200":
+          description: Up.
+    trace:
+      operationId: traceHealth
+      responses:
+        "200":
+          description: Echo.
+  /orders:
+    get:
+      operationId: listOrders
+      security:
+        - oauth: ["orders:read"]
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: x-tenant
+          in: header
+          required: true
+          schema:
+            type: string
+            maxLength: 32
+      responses:
+        "200":
+          description: Orders.
+          links:
+            first:
+              operationId: getOrder
+    post:
+      operationId: createOrder
+      security:
+        - bearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewOrder"
+      responses:
+        "201":
+          description: Created.
+  /orders/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getOrder
+      security:
+        - bearer: []
+      responses:
+        "200":
+          description: One order.
+    patch:
+      operationId: updateOrder
+      security:
+        - bearer: []
+      requestBody:
+        content:
+          application/merge-patch+json:
+            schema:
+              type: object
+              properties:
+                quantity:
+                  type: integer
+                  minimum: 1
+                  maximum: 40
+      responses:
+        "200":
+          description: Updated.
+  /orders/{id}/items:
+    get:
+      operationId: listItems
+      security:
+        - bearer: []
+      responses:
+        "200":
+          description: Items.
+  /stock:
+    get:
+      operationId: listStock
+      responses:
+        "200":
+          description: Stock.
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+    oauth:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://accounts.example.com/token
+          scopes:
+            "orders:read": Read orders.
+  schemas:
+    NewOrder:
+      type: object
+      description: A new order.
+      required: [item, quantity]
+      additionalProperties: false
+      properties:
+        item:
+          type: string
+          minLength: 1
+          maxLength: 16
+          example: ITM-001
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 40
+        note:
+          type: [string, "null"]
+          maxLength: 200
