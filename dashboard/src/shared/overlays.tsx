@@ -12,10 +12,13 @@ export function TooltipLayer() {
   const drawn = useRef<HTMLDivElement>(null)
   useEffect(() => {
     let current: HTMLElement | null = null
+    // focused says the tip belongs to the control with keyboard focus, not to the pointer.
+    let focused = false
     const show = (target: EventTarget | null, keyboard: boolean) => {
       const element = target instanceof Element ? target.closest<HTMLElement>('[data-tip]') : null
       if (element === current) return
       current = element
+      focused = keyboard
       // A labelled link in the wide sidebar already shows its words.
       const labelled = !!element?.closest('.shell:not(.is-rail)') && element.matches('.nav-group a, .sidebar-toggle')
       if (!element?.dataset.tip || labelled || (keyboard && !element.matches(':focus-visible'))) {
@@ -30,19 +33,30 @@ export function TooltipLayer() {
       current = null
       setTip(null)
     }
-    const over = (event: PointerEvent) => show(event.target, false)
+    // A pointer passing over plain content, as a scroll under a resting pointer does, keeps a focused control's tip.
+    const over = (event: PointerEvent) => {
+      const tipped = event.target instanceof Element && !!event.target.closest('[data-tip]')
+      if (focused && current && !tipped) return
+      show(event.target, false)
+    }
     const focus = (event: FocusEvent) => show(event.target, true)
+    // Focus scrolls a control into view: its tip moves with it; a pointer's tip closes.
+    const scrolled = () => {
+      const element = current
+      hide()
+      if (focused && element) show(element, true)
+    }
     document.addEventListener('pointerover', over)
     document.addEventListener('focusin', focus)
     document.addEventListener('focusout', hide)
     document.addEventListener('pointerdown', hide)
-    window.addEventListener('scroll', hide, true)
+    window.addEventListener('scroll', scrolled, true)
     return () => {
       document.removeEventListener('pointerover', over)
       document.removeEventListener('focusin', focus)
       document.removeEventListener('focusout', hide)
       document.removeEventListener('pointerdown', hide)
-      window.removeEventListener('scroll', hide, true)
+      window.removeEventListener('scroll', scrolled, true)
     }
   }, [])
   // Keep the whole tip on screen near the window's edges.

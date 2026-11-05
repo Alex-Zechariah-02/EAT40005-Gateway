@@ -140,6 +140,14 @@ test.describe.serial('request drawer links', () => {
     const tip = admin.locator('.tooltip')
     await expect(tip).toHaveText(/^\d{1,2} \w{3} \d{4}, \d{2}:\d{2}:\d{2} UTC\+00:00$/)
     expect(await tip.evaluate((element) => !!element.closest('dialog[open]'))).toBe(true)
+    // Focus that scrolls the drawer under a resting pointer keeps the focused time's tip.
+    await admin.setViewportSize({ width: 1280, height: 520 })
+    const box = (await drawer(admin).boundingBox())!
+    await admin.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await drawer(admin).evaluate((element) => element.scrollTo(0, element.scrollHeight))
+    await time.focus()
+    await admin.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))))
+    await expect(tip).toHaveText(/ UTC\+00:00$/)
     await admin.keyboard.press('Escape')
     await expect(drawer(admin)).toHaveCount(0)
     await expect(link).toBeFocused()
