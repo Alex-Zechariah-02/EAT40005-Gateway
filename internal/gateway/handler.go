@@ -35,13 +35,6 @@ type Handler struct {
 // reverse proxy does.
 type forwardFunc func(w http.ResponseWriter, r *http.Request) error
 
-// Forwarding failures that decide the gateway's own answer; any other error
-// means the upstream could not be reached or failed.
-var (
-	errNoUpstream      = errors.New("no upstream for the request")
-	errUpstreamTimeout = errors.New("upstream timed out")
-)
-
 // newHandler returns the enforcement handler for the policy c publishes. A
 // maxBodyBytes of zero or less selects the default ceiling. forward is called
 // only for admitted requests.
@@ -54,12 +47,6 @@ func newHandler(c *Controller, maxBodyBytes int64, forward forwardFunc) (*Handle
 	}
 	return &Handler{controller: c, maxBodyBytes: maxBodyBytes, forward: forward}, nil
 }
-
-// binding is the trusted upstream decision carried in the request context.
-// Only this package can create it; no header or placeholder can.
-type binding struct{ dial string }
-
-type bindingKey struct{}
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	q := &request{

@@ -4,6 +4,8 @@ package gateway
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
@@ -138,4 +140,10 @@ func (s stages) MarshalJSON() ([]byte, error) {
 	}
 	buffer.WriteByte('}')
 	return buffer.Bytes(), nil
+}
+
+func newRequestID() string {
+	id := make([]byte, 16)
+	rand.Read(id)
+	return hex.EncodeToString(id)
 }

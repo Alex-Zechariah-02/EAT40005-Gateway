@@ -12,17 +12,6 @@ import (
 	"strings"
 )
 
-const (
-	maxJSONDepth        = 16
-	maxJSONValues       = 4096
-	maxNumberLength     = 32
-	maxExponentDigits   = 3
-	maxSchemaProperties = 64
-	maxEnumValues       = 64
-	maxSchemaLength     = 1 << 20
-	maxHeaderName       = 64
-)
-
 // rejection is a request refused at a body or validation stage.
 type rejection struct {
 	status int

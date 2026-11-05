@@ -1,10 +1,8 @@
-// Per-request stage state and request IDs.
+// Per-request stage state.
 
 package gateway
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"net/http"
 	"time"
 )
@@ -51,10 +49,4 @@ func (q *request) forwarded(status int, decision, code string) {
 	q.event.DurationMS = float64(time.Since(q.started)) / float64(time.Millisecond)
 	q.audit.Record(q.event)
 	q.observations.record(q.event)
-}
-
-func newRequestID() string {
-	id := make([]byte, 16)
-	rand.Read(id)
-	return hex.EncodeToString(id)
 }

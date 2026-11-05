@@ -7,12 +7,6 @@ import (
 	"strings"
 )
 
-// isGatewayHeader reports whether only the gateway may set the named header.
-func isGatewayHeader(name string) bool {
-	name = http.CanonicalHeaderKey(name)
-	return name == "X-Request-Id" || strings.HasPrefix(name, "X-Gateway-")
-}
-
 // connectionNames returns, in canonical form, the field names that the
 // Connection fields of header nominate; the reverse proxy removes each of
 // them before forwarding (RFC 9110, section 7.6.1). It reads every field line

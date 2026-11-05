@@ -1,31 +1,14 @@
+// Path checks for operator commands.
+
 package gateway
 
 import (
 	"errors"
 	"fmt"
-	"io/fs"
-	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 )
-
-// regularPath refuses devices, directories and links at a file boundary.
-// Deployment directories must be controlled by the local operator; these
-// checks do not defend against an actor who can replace their ancestors.
-func regularPath(path string) error {
-	info, err := os.Lstat(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if !info.Mode().IsRegular() {
-		return fmt.Errorf("%s must be a regular file, not a link, device or directory", path)
-	}
-	return nil
-}
 
 func pathsAlias(a, b string) bool {
 	a, _ = filepath.Abs(a)

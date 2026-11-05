@@ -4,7 +4,6 @@ package gateway
 
 import (
 	"context"
-	"net/http"
 	"os"
 	"time"
 )
@@ -12,9 +11,6 @@ import (
 func cancelPoint(context.Context, string) {}
 
 func crashPoint(string) {}
-
-// registerTestRoutes adds nothing: production binaries have no test hooks.
-func registerTestRoutes(*Controller, *http.ServeMux) {}
 
 // writeAudit appends data and syncs it to disk.
 func writeAudit(file *os.File, data []byte) error {
