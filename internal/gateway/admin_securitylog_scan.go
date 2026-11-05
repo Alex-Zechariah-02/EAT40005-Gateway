@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
@@ -215,7 +216,7 @@ func securityLogRecord(line []byte, query securityLogQuery, result *securityLogR
 		result.unreadable++
 		return requestEvent{}, false
 	}
-	view := requestView(Event{
+	view := requestView(audit.Event{
 		Time: record.Time, RequestID: record.RequestID, Stage: record.Stage, Decision: record.Decision, Status: record.Status,
 		Error: record.Error, Method: record.Method, Path: record.Path, Operation: record.Operation, API: record.API,
 		Subject: record.Subject, Roles: record.Roles, ClientAddress: record.ClientAddress, Generation: record.Generation,
@@ -232,7 +233,7 @@ func firstRecordID(path string) (string, error) {
 		return "", err
 	}
 	defer file.Close()
-	head := make([]byte, maxRecordBytes+1)
+	head := make([]byte, audit.MaxRecordBytes+1)
 	n, err := io.ReadFull(file, head)
 	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
 		return "", err

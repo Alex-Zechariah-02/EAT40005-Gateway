@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
@@ -134,7 +135,7 @@ func (c *Controller) handleLogin(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
 	})
-	c.audit.Record(Event{Kind: "admin.authenticated", Method: r.Method, Path: r.URL.Path, Actor: admin.Name, Session: s.reference})
+	c.audit.Record(audit.Event{Kind: "admin.authenticated", Method: r.Method, Path: r.URL.Path, Actor: admin.Name, Session: s.reference})
 	writeJSON(w, http.StatusCreated, sessionView(admin, s))
 }
 
@@ -153,7 +154,7 @@ func (c *Controller) handleWhoAmI(w http.ResponseWriter, r *http.Request, who ca
 
 func (c *Controller) handleLogout(w http.ResponseWriter, r *http.Request, who caller) {
 	c.sessions.revoke(who.token)
-	c.audit.Record(Event{Kind: "admin.logout", Method: r.Method, Path: r.URL.Path, Actor: who.admin.Name, Session: who.session.reference})
+	c.audit.Record(audit.Event{Kind: "admin.logout", Method: r.Method, Path: r.URL.Path, Actor: who.admin.Name, Session: who.session.reference})
 	clearSessionCookie(w)
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -1,6 +1,6 @@
 // Audit close loss records, writer failures and timeout.
 
-package gateway
+package audit
 
 import (
 	"context"
@@ -19,18 +19,18 @@ import (
 // reports no loss it did not see and hides none it did.
 func TestAuditCloseRecordsLoss(t *testing.T) {
 	a, release := heldAudit(t)
-	for i := range auditQueueSize + 10 {
+	for i := range AuditQueueSize + 10 {
 		a.Record(Event{Kind: "request.rejected", RequestID: strconv.Itoa(i)})
 	}
-	if a.lost.Load() != 10 || a.accepted.Load() != auditQueueSize {
+	if a.lost.Load() != 10 || a.accepted.Load() != AuditQueueSize {
 		t.Fatalf("lost %d, accepted %d", a.lost.Load(), a.accepted.Load())
 	}
 	release()
-	if err := a.close(context.Background()); err != nil {
+	if err := a.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	events := fileEvents(t, a.path)
-	if len(events) != auditQueueSize+1 || lossCounted(events) != 10 || lossRecords(events) != 1 {
+	if len(events) != AuditQueueSize+1 || lossCounted(events) != 10 || lossRecords(events) != 1 {
 		t.Fatalf("%d records, loss %d in %d records", len(events), lossCounted(events), lossRecords(events))
 	}
 	for i, e := range events[1:] {
@@ -40,7 +40,7 @@ func TestAuditCloseRecordsLoss(t *testing.T) {
 	}
 	// The refused events kept their sequence numbers 1025 to 1034, so the
 	// gap is visible; the loss record comes after them.
-	if loss := events[0]; loss.Kind != "audit.loss" || loss.Seq != auditQueueSize+11 {
+	if loss := events[0]; loss.Kind != "audit.loss" || loss.Seq != AuditQueueSize+11 {
 		t.Fatalf("first record %+v", loss)
 	}
 }
@@ -51,20 +51,20 @@ func TestAuditCloseRecordsLoss(t *testing.T) {
 // with the failed write that carried it.
 func TestAuditCloseReportsWriterFailure(t *testing.T) {
 	a, release := heldAudit(t)
-	for i := range auditQueueSize - 1 {
+	for i := range AuditQueueSize - 1 {
 		a.Record(Event{Kind: "request.rejected", RequestID: strconv.Itoa(i)})
 	}
 	ack := make(chan error, 1)
 	go func() { ack <- a.Commit(context.Background(), Event{Kind: "request.admitted"}) }()
-	waitFor(t, time.Now().Add(5*time.Second), "the admission queued", func() bool { return a.accepted.Load() == auditQueueSize })
+	waitFor(t, time.Now().Add(5*time.Second), "the admission queued", func() bool { return a.accepted.Load() == AuditQueueSize })
 	for range 3 {
 		a.Record(Event{Kind: "request.rejected"})
 	}
 	// The disk goes away: every write fails.
 	a.file.Close()
 	release()
-	err := a.close(context.Background())
-	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("%d accepted events and the count of 3 refused events not written", auditQueueSize)) {
+	err := a.Close(context.Background())
+	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("%d accepted events and the count of 3 refused events not written", AuditQueueSize)) {
 		t.Fatalf("close after the write failure: %v", err)
 	}
 	if !a.failed.Load() || !errors.Is(<-ack, errAuditFailed) {
@@ -90,23 +90,23 @@ func TestAuditCloseKeepsLossAfterFailedRotation(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	a := &auditLog{
+	a := &AuditLog{
 		boot:     "test",
 		path:     path,
 		maxBytes: int64(len(record)),
 		maxFiles: 2,
-		queue:    make(chan auditEntry, auditQueueSize),
+		queue:    make(chan auditEntry, AuditQueueSize),
 		done:     make(chan struct{}),
 	}
 	if _, err := a.open(); err != nil {
 		t.Fatal(err)
 	}
-	for i := range auditQueueSize + 3 {
+	for i := range AuditQueueSize + 3 {
 		a.Record(Event{Kind: "request.rejected", RequestID: strconv.Itoa(i)})
 	}
 	go a.run()
-	err := a.close(context.Background())
-	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("%d accepted events and the count of 3 refused events not written", auditQueueSize)) {
+	err := a.Close(context.Background())
+	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("%d accepted events and the count of 3 refused events not written", AuditQueueSize)) {
 		t.Fatalf("close after the failed rotation: %v", err)
 	}
 	if !a.failed.Load() {
@@ -123,7 +123,7 @@ func TestAuditCloseKeepsLossAfterFailedRotation(t *testing.T) {
 func TestAuditCloseWritesLossCountedWhileClosing(t *testing.T) {
 	a, release := heldAudit(t)
 	closed := make(chan error, 1)
-	go func() { closed <- a.close(context.Background()) }()
+	go func() { closed <- a.Close(context.Background()) }()
 	waitFor(t, time.Now().Add(5*time.Second), "the close to begin", func() bool { return isClosing(a) })
 	for range 3 {
 		a.Record(Event{Kind: "request.rejected"})
@@ -149,7 +149,7 @@ func TestAuditCloseTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 	started := time.Now()
-	err := a.close(ctx)
+	err := a.Close(ctx)
 	if elapsed := time.Since(started); elapsed < 300*time.Millisecond || elapsed > 2*time.Second {
 		t.Fatalf("close returned after %s", elapsed)
 	}
@@ -167,7 +167,7 @@ func TestAuditCloseTimeout(t *testing.T) {
 
 	release()
 	<-a.done
-	if err := a.close(context.Background()); err != nil {
+	if err := a.Close(context.Background()); err != nil {
 		t.Fatalf("close after the writer finished: %v", err)
 	}
 	if events := fileEvents(t, a.path); len(events) != 50 {

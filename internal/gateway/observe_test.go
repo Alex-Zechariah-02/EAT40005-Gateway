@@ -5,6 +5,8 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 )
 
 // fillObservations records n requests one second apart, the last at end,
@@ -15,7 +17,7 @@ func fillObservations(o *observations, n int, end time.Time) {
 		if i%3 == 0 {
 			decision = "rejected"
 		}
-		o.record(Event{RequestID: fmt.Sprintf("req-%05d", i), Time: end.Add(time.Duration(i-n+1) * time.Second),
+		o.record(audit.Event{RequestID: fmt.Sprintf("req-%05d", i), Time: end.Add(time.Duration(i-n+1) * time.Second),
 			Method: "GET", Path: "/a/x", Operation: "a.read", API: "a", Subject: fmt.Sprintf("user-%d", i%7),
 			Decision: decision, Stage: "FORWARD", Status: 200})
 	}

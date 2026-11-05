@@ -196,3 +196,42 @@ func TestOutcomeFailureStopsLaterAdmissions(t *testing.T) {
 		t.Fatalf("no operator diagnostic in\n%s", e.output)
 	}
 }
+
+// With the fixtures behind the gateway, an audit sink that cannot make a
+// record durable still stops every admission before forwarding, even for a
+// request that passed authentication and authorisation.
+func TestAuditFailureBlocksFixtureForwarding(t *testing.T) {
+	fixtures := startFixtures(t)
+	e := newEnv(t)
+	seed(t, e.database, fixturePolicy(fixtures), seedOptions{})
+	e.start(binaries.fault, "GATEWAY_FAULT=audit-sync")
+
+	c := loadCatalogue(t)
+	for _, sc := range c.Scenarios {
+		contentType := ""
+		if len(sc.Body) > 0 {
+			contentType = "application/json"
+		}
+		var header []string
+		if sc.Subject != "" {
+			header = bearer(t, sc.Subject)
+		}
+		// A step refused by validation never reaches the audit gate, so it
+		// keeps its own refusal.
+		want := http.StatusServiceUnavailable
+		if sc.GatewayStage != "" {
+			want = sc.GatewayStatus
+		}
+		if code, _ := e.request(sc.Method, sc.Path, contentType, string(sc.Body), header...); code != want {
+			t.Errorf("%s with a failed audit sink: %d, want %d", sc.Name, code, want)
+		}
+	}
+	for name, n := range receiptCounts(fixtures) {
+		if n != 0 {
+			t.Errorf("fixture %s received %d requests while the audit sink was failing", name, n)
+		}
+	}
+	if s := e.status(); !s.AuditFailed {
+		t.Fatalf("status %+v does not report the audit failure", s)
+	}
+}

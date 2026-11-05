@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"testing"
 	"time"
 )
 
@@ -82,4 +84,33 @@ func countKind(events []map[string]any, kind string) int {
 		}
 	}
 	return n
+}
+
+// auditLine is what the restart tests read of one audit record.
+type auditLine struct {
+	Kind      string `json:"kind"`
+	RequestID string `json:"request_id"`
+	Seq       uint64 `json:"seq"`
+	Lost      uint64 `json:"lost"`
+}
+
+// auditLines reads every record of an audit file.
+func auditLines(t *testing.T, path string) []auditLine {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var events []auditLine
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		if line == "" {
+			continue
+		}
+		var e auditLine
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			t.Fatalf("audit line is not one record: %q", line)
+		}
+		events = append(events, e)
+	}
+	return events
 }

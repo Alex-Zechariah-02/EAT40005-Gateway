@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
@@ -39,7 +40,7 @@ func outcomeKind(t store.TransitionRecord) string {
 	return "transition.committed"
 }
 
-func (c *Controller) commitAudit(ctx context.Context, e Event) error {
+func (c *Controller) commitAudit(ctx context.Context, e audit.Event) error {
 	ctx, cancel := context.WithTimeout(ctx, c.config.AuditTimeout)
 	defer cancel()
 	return c.audit.Commit(ctx, e)
@@ -97,7 +98,7 @@ func (c *Controller) reject(ctx context.Context, t store.TransitionRecord, reaso
 	case strings.HasPrefix(t.Kind, "tpo."):
 		kind = "tpo.rejected"
 	}
-	c.audit.Record(Event{Kind: kind, Transition: t.ID, Actor: t.Actor, Reason: reason, Candidate: t.Candidate, Override: t.Override})
+	c.audit.Record(audit.Event{Kind: kind, Transition: t.ID, Actor: t.Actor, Reason: reason, Candidate: t.Candidate, Override: t.Override})
 	return Outcome{Transition: t.ID, Outcome: "rejected", Reason: reason, Field: field, Override: t.Override}, rejectionStatus(reason)
 }
 

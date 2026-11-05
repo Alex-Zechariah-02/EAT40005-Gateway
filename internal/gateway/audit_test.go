@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
@@ -115,17 +116,17 @@ func TestEventsCoverEveryDecisionClass(t *testing.T) {
 		// Stages after the terminal one were not evaluated.
 		stages := stagesOf(ev)
 		after := false
-		for _, name := range stageNames {
+		for _, name := range audit.StageNames {
 			if name == tc.stage {
 				after = true
 				continue
 			}
-			if after && stages[name] != stageNotRun {
+			if after && stages[name] != audit.StageNotRun {
 				t.Errorf("%s: stage %s after the terminal stage reported %v", tc.name, name, stages[name])
 			}
 		}
 		for _, name := range tc.evaluated {
-			if stages[name] != stagePass {
+			if stages[name] != audit.StagePass {
 				t.Errorf("%s: stage %s %v, want PASS", tc.name, name, stages[name])
 			}
 		}

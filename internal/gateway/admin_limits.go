@@ -14,13 +14,14 @@ func (c *Controller) handleLimits(w http.ResponseWriter, r *http.Request, who ca
 	if g := c.current.Load(); g != nil {
 		active = len(g.Overrides)
 	}
+	auditBytes, auditBytesLimit, auditFiles, auditFilesLimit := c.audit.Usage()
 	limit := func(used, max int64) map[string]int64 { return map[string]int64{"used": used, "max": max} }
 	writeJSON(w, http.StatusOK, map[string]any{
 		"temporary_rules":        limit(int64(active), store.MaxActiveOverrides),
 		"live_views":             limit(int64(c.observations.viewerCount()), maxEventStreams),
 		"administrator_sessions": limit(int64(c.sessions.count()), maxSessions),
-		"audit_files":            limit(c.audit.files.Load(), int64(c.audit.maxFiles)),
-		"audit_active_bytes":     limit(c.audit.activeBytes.Load(), c.audit.maxBytes),
+		"audit_files":            limit(auditFiles, auditFilesLimit),
+		"audit_active_bytes":     limit(auditBytes, auditBytesLimit),
 		"rate_counters":          limit(int64(c.limiter.size()), int64(c.limiter.capacity)),
 		"recent_requests":        limit(int64(c.observations.retained()), recentEventLimit),
 	})

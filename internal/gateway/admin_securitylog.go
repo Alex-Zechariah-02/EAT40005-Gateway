@@ -102,12 +102,12 @@ func (c *Controller) handleSecurityLog(w http.ResponseWriter, r *http.Request, w
 			return
 		}
 	}
-	files, missing, err := securityLogFiles(c.audit.path)
+	files, missing, err := securityLogFiles(c.audit.Path())
 	if err != nil {
 		adminError(w, http.StatusServiceUnavailable, "gateway_unavailable", "")
 		return
 	}
-	result, err := searchSecurityLog(filepath.Dir(c.audit.path), files, start, query, limit, scan)
+	result, err := searchSecurityLog(filepath.Dir(c.audit.Path()), files, start, query, limit, scan)
 	if errors.Is(err, errCursorGone) {
 		adminError(w, http.StatusGone, "cursor_gone", "after")
 		return

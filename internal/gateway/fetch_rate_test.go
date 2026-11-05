@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
@@ -30,7 +31,7 @@ func TestFetchClientAddressQuota(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		r.Header.Set("X-Forwarded-For", newRequestID())
+		r.Header.Set("X-Forwarded-For", audit.NewRequestID())
 		r.Header.Set("Forwarded", "for=192.0.2.1")
 		response, err := client.Do(r)
 		if err != nil {

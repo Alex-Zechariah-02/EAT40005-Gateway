@@ -7,12 +7,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
 func TestFetchImpactPreservesRequestTarget(t *testing.T) {
-	truncated := "/a/" + strings.Repeat("x", maxLoggedPath-3)
+	truncated := "/a/" + strings.Repeat("x", audit.MaxLoggedPath-3)
 	for _, tc := range []struct {
 		name, path string
 		status     int

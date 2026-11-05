@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 	"github.com/Alex-Zechariah-02/apiward/internal/store"
@@ -53,7 +54,7 @@ func runRestore(o *operatorContext, flags map[string]string) (int, error) {
 	now := time.Now()
 	episode := randomHex(16)
 	t := store.TransitionRecord{ID: "operator:restore:" + episode, Kind: "operator.restore", Actor: "operator", Target: filepath.Base(backup), Digest: manifest.SHA256}
-	if err := o.record(Event{Kind: "transition.intent", Transition: t.ID, File: filepath.Base(backup)}); err != nil {
+	if err := o.record(audit.Event{Kind: "transition.intent", Transition: t.ID, File: filepath.Base(backup)}); err != nil {
 		return 1, err
 	}
 	if err := markRecovery(staging, t, episode, now); err != nil {
@@ -77,7 +78,7 @@ func runRestore(o *operatorContext, flags map[string]string) (int, error) {
 	}
 	fault.CrashPoint("restore-after-promote")
 
-	if err := o.record(Event{Kind: "transition.committed", Transition: t.ID, File: filepath.Base(backup)}); err != nil {
+	if err := o.record(audit.Event{Kind: "transition.committed", Transition: t.ID, File: filepath.Base(backup)}); err != nil {
 		return 1, err
 	}
 	// The restore is complete. If its audit receipt cannot be recorded here,

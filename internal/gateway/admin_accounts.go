@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
@@ -56,7 +57,7 @@ func (c *Controller) finishControl(ctx context.Context, t store.TransitionRecord
 	if err != nil {
 		return controlError("gateway_unavailable"), http.StatusServiceUnavailable
 	}
-	if err := c.commitAudit(ctx, Event{Kind: "transition.intent", Transition: t.ID, Actor: t.Actor}); err != nil {
+	if err := c.commitAudit(ctx, audit.Event{Kind: "transition.intent", Transition: t.ID, Actor: t.Actor}); err != nil {
 		return controlError("gateway_unavailable"), http.StatusServiceUnavailable
 	}
 	fault.CrashPoint("before-commit")
@@ -71,7 +72,7 @@ func (c *Controller) finishControl(ctx context.Context, t store.TransitionRecord
 		c.logger.Error("recording control publication receipt", "error", err)
 	}
 	fault.CrashPoint("after-receipt")
-	outcome, status := c.finish(ctx, Outcome{Transition: t.ID, Outcome: "committed"}, Event{Kind: t.Kind, Transition: t.ID, Actor: t.Actor, Target: t.Target})
+	outcome, status := c.finish(ctx, Outcome{Transition: t.ID, Outcome: "committed"}, audit.Event{Kind: t.Kind, Transition: t.ID, Actor: t.Actor, Target: t.Target})
 	if status != http.StatusOK {
 		// The change is committed and in force; only its outcome event is
 		// missing, which "gateway_unavailable" would deny.

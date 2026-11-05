@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
@@ -98,7 +99,7 @@ func TestRateLimitThroughGateway(t *testing.T) {
 	resp, body := e.exchange(http.MethodGet, "/a/x", "", "", bearer(t, "alice")...)
 	_, id := requestID(resp, body)
 	events := e.requestEvents(id, 1)
-	want := expectedStages([]string{"INGRESS", "CAPTURE", "CANONICAL", "ROUTE", "ACCESS", "JWT", "RBAC"}, "RATE", stageReject)
+	want := expectedStages([]string{"INGRESS", "CAPTURE", "CANONICAL", "ROUTE", "ACCESS", "JWT", "RBAC"}, "RATE", audit.StageReject)
 	if resp.StatusCode != http.StatusTooManyRequests || !strings.Contains(body, `"rate_limited"`) || len(events) != 1 ||
 		events[0]["stage"] != "RATE" || events[0]["reason"] != "quota_exceeded" || events[0]["subject"] != "alice" ||
 		events[0]["operation"] != "read-a" || !sameStages(events[0]["stages"], want) {

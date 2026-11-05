@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 	"github.com/Alex-Zechariah-02/apiward/internal/store"
@@ -76,10 +77,10 @@ func (c *Controller) ValidateOverride(ctx context.Context, actor string, expecte
 		}
 	}
 	if code != "" {
-		c.audit.Record(Event{Kind: "tpo.rejected", Actor: actor, Reason: code, Override: holder})
+		c.audit.Record(audit.Event{Kind: "tpo.rejected", Actor: actor, Reason: code, Override: holder})
 		return Outcome{Outcome: "rejected", Reason: code, Field: field, Override: holder}, rejectionStatus(code)
 	}
-	c.audit.Record(Event{Kind: "tpo.validated", Actor: actor, Target: o.Target, Revision: a.Revision, Expires: o.ExpiresAt})
+	c.audit.Record(audit.Event{Kind: "tpo.validated", Actor: actor, Target: o.Target, Revision: a.Revision, Expires: o.ExpiresAt})
 	return Outcome{Outcome: "valid", Revision: a.Revision, Target: o.Target, Expires: o.ExpiresAt}, http.StatusOK
 }
 
@@ -196,7 +197,7 @@ func (c *Controller) publishOverrides(ctx context.Context, t store.TransitionRec
 		return failed("effective policy invalid", result, code)
 	}
 
-	if err := c.commitAudit(ctx, Event{Kind: "transition.intent", Transition: t.ID, Actor: t.Actor, Override: o.ID}); err != nil {
+	if err := c.commitAudit(ctx, audit.Event{Kind: "transition.intent", Transition: t.ID, Actor: t.Actor, Override: o.ID}); err != nil {
 		result, code := auditUnavailable(t.ID)
 		return failed("audit unavailable", result, code)
 	}
@@ -233,7 +234,7 @@ func (c *Controller) publishOverrides(ctx context.Context, t store.TransitionRec
 	if status != store.OverrideActive {
 		result.Disposition = status
 	}
-	event := Event{
+	event := audit.Event{
 		Kind:       outcomeKind(t),
 		Transition: t.ID,
 		Actor:      t.Actor,

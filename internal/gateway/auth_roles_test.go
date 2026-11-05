@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	fixture "github.com/Alex-Zechariah-02/apiward/internal/services/testfixture"
 )
 
@@ -96,7 +97,7 @@ func TestRoleMatrixAgainstCatalogue(t *testing.T) {
 			}
 			ev, stages := events[0], stagesOf(events[0])
 			if ev["stage"] != "RBAC" || ev["reason"] != wantReason || ev["subject"] != s.ID || ev["generation"] != generation ||
-				stages["JWT"] != stagePass || stages["RBAC"] != stageReject || stages["BODY"] != stageNotRun {
+				stages["JWT"] != audit.StagePass || stages["RBAC"] != audit.StageReject || stages["BODY"] != audit.StageNotRun {
 				t.Errorf("%s: event %v, want RBAC rejection %s", name, ev, wantReason)
 			}
 		}
@@ -135,7 +136,7 @@ func TestObjectOwnershipStaysWithFixture(t *testing.T) {
 		}
 		events := e.requestEvents(last.RequestID, 2)
 		forwarded := findEvent(events, "request.forwarded", last.RequestID)
-		if forwarded == nil || stagesOf(forwarded)["RBAC"] != stagePass || forwarded["status"] != float64(tc.status) {
+		if forwarded == nil || stagesOf(forwarded)["RBAC"] != audit.StagePass || forwarded["status"] != float64(tc.status) {
 			t.Fatalf("%s: gateway event %v", tc.subject, forwarded)
 		}
 	}

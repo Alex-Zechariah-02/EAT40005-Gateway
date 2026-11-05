@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
@@ -47,7 +48,7 @@ func (c *Controller) StageCandidate(ctx context.Context, t store.TransitionRecor
 		return c.reject(ctx, t, code, field, now)
 	}
 
-	if err := c.commitAudit(ctx, Event{Kind: "transition.intent", Transition: t.ID, Actor: t.Actor}); err != nil {
+	if err := c.commitAudit(ctx, audit.Event{Kind: "transition.intent", Transition: t.ID, Actor: t.Actor}); err != nil {
 		return auditUnavailable(t.ID)
 	}
 	canonical, _ := json.Marshal(policy)
@@ -58,7 +59,7 @@ func (c *Controller) StageCandidate(ctx context.Context, t store.TransitionRecor
 	}
 	fault.CrashPoint("candidate-after-commit")
 	result := Outcome{Transition: t.ID, Outcome: "committed", Candidate: id}
-	return c.finish(ctx, result, Event{Kind: "transition.committed", Transition: t.ID, Actor: t.Actor})
+	return c.finish(ctx, result, audit.Event{Kind: "transition.committed", Transition: t.ID, Actor: t.Actor})
 }
 
 // WithdrawCandidate marks a validated candidate withdrawn.
@@ -82,12 +83,12 @@ func (c *Controller) WithdrawCandidate(ctx context.Context, t store.TransitionRe
 	case record.Status != "validated":
 		return c.reject(ctx, t, "CANDIDATE_UNAVAILABLE", "", now)
 	}
-	if err := c.commitAudit(ctx, Event{Kind: "transition.intent", Transition: t.ID, Actor: t.Actor}); err != nil {
+	if err := c.commitAudit(ctx, audit.Event{Kind: "transition.intent", Transition: t.ID, Actor: t.Actor}); err != nil {
 		return auditUnavailable(t.ID)
 	}
 	if err := c.store.CommitWithdrawal(ctx, t, id, now); err != nil {
 		return c.storeFailure(t.ID, err)
 	}
 	result := Outcome{Transition: t.ID, Outcome: "committed", Candidate: id}
-	return c.finish(ctx, result, Event{Kind: "transition.committed", Transition: t.ID, Actor: t.Actor})
+	return c.finish(ctx, result, audit.Event{Kind: "transition.committed", Transition: t.ID, Actor: t.Actor})
 }

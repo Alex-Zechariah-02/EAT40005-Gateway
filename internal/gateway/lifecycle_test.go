@@ -68,7 +68,7 @@ func (e *env) own(cfg Config) (*Controller, *logBuffer) {
 
 // Stack frames of the goroutines a controller starts.
 const (
-	auditWriter = "gateway.(*auditLog).run("
+	auditWriter = "audit.(*AuditLog).run("
 	adminServer = "gateway.(*Controller).startAdmin."
 )
 
@@ -112,7 +112,7 @@ func assertReleased(t *testing.T, c *Controller, cfg Config) {
 	if c.store != nil && c.store.Ping() == nil {
 		t.Fatal("the database is still open")
 	}
-	if c.audit.file != nil && !errors.Is(c.audit.file.Close(), os.ErrClosed) {
+	if c.audit.OpenErr() == nil && !c.audit.Closed() {
 		t.Fatal("the audit file is still open")
 	}
 	if _, err := os.Stat(cfg.Database); err == nil {

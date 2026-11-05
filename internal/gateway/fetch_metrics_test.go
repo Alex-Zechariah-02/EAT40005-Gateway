@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 )
 
 func TestFetchMetrics(t *testing.T) {
@@ -61,7 +63,7 @@ func TestFetchBoundedEventWindow(t *testing.T) {
 	o := newObservations()
 	viewer := o.subscribe()
 	for i := range recentEventLimit + 7 {
-		o.record(Event{RequestID: fmt.Sprint(i), Decision: "reject", Stage: "ROUTE"})
+		o.record(audit.Event{RequestID: fmt.Sprint(i), Decision: "reject", Stage: "ROUTE"})
 	}
 	events := o.snapshot()
 	if len(events) != 10000 || events[0].RequestID != "10006" || events[9999].RequestID != "7" {

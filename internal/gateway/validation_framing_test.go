@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 )
 
 // Through the real orders fixture: a valid order padded to exactly the
@@ -69,9 +71,9 @@ func TestBodyCeilingAtFixtures(t *testing.T) {
 				}
 
 				stage, _ := sizeRefusal(framing, size, c.global)
-				want := expectedStages(nil, "INGRESS", stageReject)
+				want := expectedStages(nil, "INGRESS", audit.StageReject)
 				if stage == "BODY" {
-					want = expectedStages(authenticated, "BODY", stageReject)
+					want = expectedStages(authenticated, "BODY", audit.StageReject)
 				}
 				_, id := requestID(&http.Response{StatusCode: status}, reply)
 				events := e.requestEvents(id, 1)

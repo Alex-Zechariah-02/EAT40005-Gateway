@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/forward"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
@@ -32,7 +33,7 @@ func TestNativeForwardingFailuresBeforeResponse(t *testing.T) {
 		_, id := requestID(resp, body)
 		if resp.StatusCode != http.StatusBadGateway || strings.Contains(body, port(closed)) ||
 			!failedOutcome(e.outcomeOf(id), http.StatusBadGateway, "upstream_unavailable", "not_sent") ||
-			!sameStages(e.outcomeOf(id)["stages"], publicAdmitted(stageFail)) {
+			!sameStages(e.outcomeOf(id)["stages"], publicAdmitted(audit.StageFail)) {
 			t.Fatalf("refused upstream: %d %s, outcome %v", resp.StatusCode, body, e.outcomeOf(id))
 		}
 		e.assertReceipts(0, 0, 0)
@@ -148,7 +149,7 @@ func TestNativeForwardingFailuresBeforeResponse(t *testing.T) {
 			t.Fatal("the client's cancellation did not reach the upstream")
 		}
 		ev := e.outcomeOf(e.a.receipts()[0].RequestID)
-		if !failedOutcome(ev, http.StatusBadGateway, "upstream_unavailable", "client_cancelled") || !sameStages(ev["stages"], publicAdmitted(stageFail)) {
+		if !failedOutcome(ev, http.StatusBadGateway, "upstream_unavailable", "client_cancelled") || !sameStages(ev["stages"], publicAdmitted(audit.StageFail)) {
 			t.Fatalf("outcome %v", ev)
 		}
 		e.assertReceipts(1, 0, 0)

@@ -13,6 +13,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/forward"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
@@ -109,8 +110,8 @@ func (e *env) eventOf(requestID string, want int) map[string]any {
 // without a rate rule, body or header schema.
 func admittedStages(forward string) map[string]any {
 	stages := expectedStages([]string{"INGRESS", "CAPTURE", "CANONICAL", "ROUTE", "ACCESS", "JWT", "RBAC", "BODY", "AUDIT", "BIND"}, "FORWARD", forward)
-	stages["RATE"] = stageNotApplicable
-	stages["VALIDATION"] = stageNotApplicable
+	stages["RATE"] = audit.StageNotApplicable
+	stages["VALIDATION"] = audit.StageNotApplicable
 	return stages
 }
 
@@ -184,7 +185,7 @@ func TestEnforcementHandlerAdmits(t *testing.T) {
 	ev := e.eventOf(h.header.Get("X-Request-Id"), 2)
 	if ev["kind"] != "request.forwarded" || ev["decision"] != "forwarded" || ev["status"] != float64(201) ||
 		ev["generation"] != g.ID || ev["upstream"] != "A" || ev["subject"] != "alice" ||
-		!sameStages(ev["stages"], admittedStages(stagePass)) {
+		!sameStages(ev["stages"], admittedStages(audit.StagePass)) {
 		t.Fatalf("outcome event %v", ev)
 	}
 	if audit := e.auditEvents(); strings.Contains(fmt.Sprint(audit), token[:40]) || strings.Contains(fmt.Sprint(audit), "q=1") {
@@ -203,8 +204,8 @@ func TestEnforcementAuditFailureBlocksForwarding(t *testing.T) {
 		t.Fatalf("before the failure: %d", code)
 	}
 	// The state a failed write or sync leaves the log in.
-	c.audit.fail(errors.New("injected write failure"))
-	lost := c.audit.lost.Load()
+	c.audit.Fail(errors.New("injected write failure"))
+	lost := c.audit.Lost()
 	code, body := e.get("/a/x", "Authorization", "Bearer "+issuer.tokenFor(t, "alice"))
 	var reply struct {
 		Error     string `json:"error"`
@@ -217,7 +218,7 @@ func TestEnforcementAuditFailureBlocksForwarding(t *testing.T) {
 	if n := len(f.handed()); n != 1 {
 		t.Fatalf("%d requests handed on, want 1", n)
 	}
-	if got := c.audit.lost.Load(); got != lost+1 {
+	if got := c.audit.Lost(); got != lost+1 {
 		t.Fatalf("lost events %d, want %d", got, lost+1)
 	}
 	// A refusal before the AUDIT stage needs no acknowledgement and is

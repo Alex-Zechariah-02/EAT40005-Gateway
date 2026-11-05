@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 	"github.com/Alex-Zechariah-02/apiward/internal/store"
@@ -164,7 +165,7 @@ func (c *Controller) endProvisional(ctx context.Context, t store.TransitionRecor
 		return failed("target revision invalid", result, status)
 	}
 
-	if err := c.commitAudit(ctx, Event{Kind: "transition.intent", Transition: t.ID, Actor: t.Actor}); err != nil {
+	if err := c.commitAudit(ctx, audit.Event{Kind: "transition.intent", Transition: t.ID, Actor: t.Actor}); err != nil {
 		result, status := auditUnavailable(t.ID)
 		return failed("audit unavailable", result, status)
 	}
@@ -195,7 +196,7 @@ func (c *Controller) endProvisional(ctx context.Context, t store.TransitionRecor
 		RollbackTarget: a.Confirmed,
 		Disposition:    disposition,
 	}
-	event := Event{
+	event := audit.Event{
 		Kind:           outcomeKind(t),
 		Transition:     t.ID,
 		Actor:          t.Actor,

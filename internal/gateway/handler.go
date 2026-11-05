@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 	"github.com/Alex-Zechariah-02/apiward/internal/forward"
@@ -58,7 +59,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		audit:        h.controller.audit,
 		observations: h.controller.observations,
 		started:      time.Now(),
-		event:        Event{RequestID: newRequestID(), Time: time.Now().UTC(), Method: r.Method, Path: r.URL.Path},
+		event:        audit.Event{RequestID: audit.NewRequestID(), Time: time.Now().UTC(), Method: r.Method, Path: r.URL.Path},
 		bodyPending:  r.ContentLength != 0 || len(r.TransferEncoding) > 0,
 	}
 	w.Header().Set("X-Request-Id", q.event.RequestID)
@@ -68,7 +69,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Keep credentials only for authentication; discard client identity metadata
 	// before any ingress refusal as well as before forwarding.
 	credentials := r.Header.Values("Authorization")
-	q.event.identityKnown = len(credentials) == 0
+	q.event.SetIdentityKnown(len(credentials) == 0)
 	stripUntrustedHeaders(r.Header)
 
 	// Ingress: only origin-form targets, no tunnelling, bounded declared size.
@@ -79,19 +80,19 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.Method == http.MethodConnect ||
 		r.Header.Get("Upgrade") != "" ||
 		slices.ContainsFunc(connectionNames(r.Header), compile.IsGatewayHeader) {
-		q.reject(stageIngress, http.StatusBadRequest, "bad_request")
+		q.reject(audit.StageIngress, http.StatusBadRequest, "bad_request")
 		return
 	}
 	if r.ContentLength > h.maxBodyBytes {
-		q.reject(stageIngress, http.StatusRequestEntityTooLarge, "payload_too_large")
+		q.reject(audit.StageIngress, http.StatusRequestEntityTooLarge, "payload_too_large")
 		return
 	}
-	q.pass(stageIngress)
+	q.pass(audit.StageIngress)
 
 	// Capture: the single generation used for every later decision.
 	g := h.controller.Current()
 	if g == nil {
-		q.reject(stageCapture, http.StatusServiceUnavailable, "gateway_unavailable")
+		q.reject(audit.StageCapture, http.StatusServiceUnavailable, "gateway_unavailable")
 		return
 	}
 	// A generation past its earliest deadline (a provisional base's or an
@@ -99,48 +100,48 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// controller is asked to end what expired now.
 	if g.Expired(compile.TrustedNow()) {
 		h.controller.deadlinePassed(g)
-		q.reject(stageCapture, http.StatusServiceUnavailable, "gateway_unavailable")
+		q.reject(audit.StageCapture, http.StatusServiceUnavailable, "gateway_unavailable")
 		return
 	}
 	q.event.Generation, q.event.Profile = g.ID, g.Profile
-	q.pass(stageCapture)
+	q.pass(audit.StageCapture)
 	fault.SignalCapture(r.URL.Path, g.ID)
 
 	path, ok := compile.CanonicalPath(r)
 	if !ok {
-		q.reject(stageCanonical, http.StatusBadRequest, "bad_request")
+		q.reject(audit.StageCanonical, http.StatusBadRequest, "bad_request")
 		return
 	}
-	q.pass(stageCanonical)
+	q.pass(audit.StageCanonical)
 
 	t, rule := g.Match(path, r.Method)
 	if t == nil {
-		q.reject(stageRoute, http.StatusNotFound, "not_found")
+		q.reject(audit.StageRoute, http.StatusNotFound, "not_found")
 		return
 	}
 	if rule == nil {
 		w.Header().Set("Allow", t.Allow())
-		q.reject(stageRoute, http.StatusMethodNotAllowed, "method_not_allowed")
+		q.reject(audit.StageRoute, http.StatusMethodNotAllowed, "method_not_allowed")
 		return
 	}
 	q.event.Operation, q.event.API, q.event.Upstream = rule.Operation(), rule.API(), rule.Upstream()
-	q.pass(stageRoute)
+	q.pass(audit.StageRoute)
 
 	if !rule.Permitted() {
-		q.reject(stageAccess, http.StatusForbidden, "forbidden")
+		q.reject(audit.StageAccess, http.StatusForbidden, "forbidden")
 		return
 	}
-	q.pass(stageAccess)
+	q.pass(audit.StageAccess)
 
 	// Authentication and authorisation apply to every operation not declared
 	// public. Roles come only from verified claims and are filtered through
 	// the declared roles of the one captured generation.
 	var roles []string
 	if rule.Public() {
-		q.event.Stages[stageJWT] = stageNotApplicable
-		q.event.Stages[stageRBAC] = stageNotApplicable
+		q.event.Stages[audit.StageJWT] = audit.StageNotApplicable
+		q.event.Stages[audit.StageRBAC] = audit.StageNotApplicable
 	} else {
-		q.event.identityKnown = true
+		q.event.SetIdentityKnown(true)
 		token, reason := bearerToken(credentials)
 		var verified verifiedToken
 		if reason == "" {
@@ -150,41 +151,41 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if reason != "" {
 			q.event.Reason = reason
 			w.Header().Set("WWW-Authenticate", "Bearer")
-			q.reject(stageJWT, http.StatusUnauthorized, "unauthenticated")
+			q.reject(audit.StageJWT, http.StatusUnauthorized, "unauthenticated")
 			return
 		}
-		q.pass(stageJWT)
+		q.pass(audit.StageJWT)
 		roles, q.event.IgnoredRoles, reason = g.Authorise(verified.roles, rule)
 		q.event.Roles = roles
 		blocked := h.controller.blocked.Load()
 		if blocked == nil {
-			q.reject(stageRBAC, http.StatusServiceUnavailable, "gateway_unavailable")
+			q.reject(audit.StageRBAC, http.StatusServiceUnavailable, "gateway_unavailable")
 			return
 		}
 		if _, found := (*blocked)[q.event.Subject]; found {
 			q.event.Reason = "account_blocked"
-			q.reject(stageRBAC, http.StatusForbidden, "account_blocked")
+			q.reject(audit.StageRBAC, http.StatusForbidden, "account_blocked")
 			return
 		}
 
 		if reason != "" {
 			q.event.Reason = reason
-			q.reject(stageRBAC, http.StatusForbidden, "forbidden")
+			q.reject(audit.StageRBAC, http.StatusForbidden, "forbidden")
 			return
 		}
-		q.pass(stageRBAC)
+		q.pass(audit.StageRBAC)
 	}
 
 	// Rate limiting uses either the verified subject or the direct socket
 	// peer. Client forwarding headers never choose an address counter.
 	if rule.Rate() == nil {
-		q.event.Stages[stageRate] = stageNotApplicable
+		q.event.Stages[audit.StageRate] = audit.StageNotApplicable
 	} else {
 		key := counterKey{operation: rule.Operation(), keyType: rule.RateKey(), key: q.event.Subject}
 		if rule.RateKey() == compile.RateKeyAddress {
 			if q.event.ClientAddress == "" {
 				q.event.Reason = "invalid_peer_address"
-				q.reject(stageRate, http.StatusBadRequest, "bad_request")
+				q.reject(audit.StageRate, http.StatusBadRequest, "bad_request")
 				return
 			}
 			key.key = q.event.ClientAddress
@@ -192,46 +193,46 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		switch h.controller.limiter.admit(key, rule.Rate(), h.controller.clock.now()) {
 		case rateExceeded:
 			q.event.Reason = "quota_exceeded"
-			q.reject(stageRate, http.StatusTooManyRequests, "rate_limited")
+			q.reject(audit.StageRate, http.StatusTooManyRequests, "rate_limited")
 			return
 		case rateNoCapacity:
 			q.event.Reason = "rate_capacity"
-			q.reject(stageRate, http.StatusServiceUnavailable, "gateway_unavailable")
+			q.reject(audit.StageRate, http.StatusServiceUnavailable, "gateway_unavailable")
 			return
 		}
-		q.pass(stageRate)
+		q.pass(audit.StageRate)
 	}
 
 	document, refused := readBody(r, rule.Body(), h.maxBodyBytes)
 	if refused != nil {
 		q.event.Reason = refused.reason
-		q.reject(stageBody, refused.status, refused.code)
+		q.reject(audit.StageBody, refused.status, refused.code)
 		return
 	}
 	q.bodyPending = false
-	q.pass(stageBody)
+	q.pass(audit.StageBody)
 
 	if rule.Body() == nil && rule.Headers() == nil {
-		q.event.Stages[stageValidation] = stageNotApplicable
+		q.event.Stages[audit.StageValidation] = audit.StageNotApplicable
 	} else {
 		if reason := validateRequest(r.Header, document, rule); reason != "" {
 			q.event.Reason = reason
-			q.reject(stageValidation, http.StatusBadRequest, "bad_request")
+			q.reject(audit.StageValidation, http.StatusBadRequest, "bad_request")
 			return
 		}
-		q.pass(stageValidation)
+		q.pass(audit.StageValidation)
 	}
 
 	// Admission requires a durable audit record before anything is forwarded.
-	q.event.Kind, q.event.Stage, q.event.Decision = "request.admitted", stageNames[stageAudit], "admit"
+	q.event.Kind, q.event.Stage, q.event.Decision = "request.admitted", audit.StageNames[audit.StageAudit], "admit"
 	ctx, cancel := context.WithTimeout(r.Context(), h.controller.config.AuditTimeout)
 	err := q.audit.Commit(ctx, q.event)
 	cancel()
 	if err != nil {
-		q.reject(stageAudit, http.StatusServiceUnavailable, "gateway_unavailable")
+		q.reject(audit.StageAudit, http.StatusServiceUnavailable, "gateway_unavailable")
 		return
 	}
-	q.pass(stageAudit)
+	q.pass(audit.StageAudit)
 
 	r.Header.Set("X-Request-Id", q.event.RequestID)
 	r.Header.Set("X-Gateway-Generation", g.ID)
@@ -242,7 +243,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.Header.Set("X-Gateway-Roles", strings.Join(roles, ","))
 	}
 	r = r.WithContext(forward.Bind(r.Context(), rule.Dial()))
-	q.pass(stageBind)
+	q.pass(audit.StageBind)
 
 	recorder := &statusRecorder{ResponseWriter: w}
 	finished := false

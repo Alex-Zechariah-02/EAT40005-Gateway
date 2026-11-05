@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/demoports"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
@@ -105,10 +106,10 @@ func (f nativeFile) check() (nativeConfig, error) {
 		return nativeConfig{}, errors.New("data.read_header_timeout must not exceed data.read_timeout")
 	}
 
-	if cfg.controller.AuditMaxBytes, err = numberSetting("gateway.audit_max_bytes", g.AuditMaxBytes, defaultAuditBytes, minAuditBytes, maxAuditBytes); err != nil {
+	if cfg.controller.AuditMaxBytes, err = numberSetting("gateway.audit_max_bytes", g.AuditMaxBytes, audit.DefaultAuditBytes, minAuditBytes, maxAuditBytes); err != nil {
 		return nativeConfig{}, err
 	}
-	if cfg.controller.AuditMaxFiles, err = numberSetting("gateway.audit_max_files", g.AuditMaxFiles, defaultAuditFiles, 2, maxAuditFiles); err != nil {
+	if cfg.controller.AuditMaxFiles, err = numberSetting("gateway.audit_max_files", g.AuditMaxFiles, audit.DefaultAuditFiles, 2, maxAuditFiles); err != nil {
 		return nativeConfig{}, err
 	}
 	if cfg.maxBodyBytes, err = numberSetting("data.max_body_bytes", d.MaxBodyBytes, defaultMaxBodyBytes, 1, policy.MaxBodyLimit); err != nil {

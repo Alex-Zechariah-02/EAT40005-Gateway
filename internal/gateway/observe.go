@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
@@ -78,10 +79,10 @@ func optionalString(value string) *string {
 
 // requestView is the secret-free view of a request's final audit event, shared
 // by the live views and the security log search so both show the same fields.
-func requestView(event Event) requestEvent {
+func requestView(event audit.Event) requestEvent {
 	view := requestEvent{
 		RequestID: event.RequestID, Time: event.Time, Method: event.Method,
-		Path:      strings.Clone(event.Path[:min(len(event.Path), maxLoggedPath)]),
+		Path:      strings.Clone(event.Path[:min(len(event.Path), audit.MaxLoggedPath)]),
 		Operation: optionalString(event.Operation), API: optionalString(event.API), Subject: optionalString(event.Subject),
 		Roles: slices.Clone(event.Roles), ClientAddress: event.ClientAddress, Status: event.Status,
 		Code: optionalString(event.Error), Generation: event.Generation, DurationMS: event.DurationMS,
@@ -121,10 +122,10 @@ func requestView(event Event) requestEvent {
 	return view
 }
 
-func (o *observations) record(event Event) {
+func (o *observations) record(event audit.Event) {
 	view := requestView(event)
 	var routingPath string
-	if event.Stages[stageCanonical] == stagePass {
+	if event.Stages[audit.StageCanonical] == audit.StagePass {
 		routingPath = strings.Clone(event.Path[:min(len(event.Path), policy.MaxTargetLength+1)])
 	}
 	o.mu.Lock()
@@ -133,7 +134,7 @@ func (o *observations) record(event Event) {
 	o.next++
 	asserted := append(slices.Clone(view.Roles), event.IgnoredRoles...)
 	slices.Sort(asserted)
-	request := observedRequest{requestEvent: view, sequence: o.next, assertedRoles: asserted, identityKnown: event.identityKnown, routingPath: routingPath}
+	request := observedRequest{requestEvent: view, sequence: o.next, assertedRoles: asserted, identityKnown: event.IdentityKnown(), routingPath: routingPath}
 	o.ring[(o.next-1)%recentEventLimit] = request
 	if o.count < recentEventLimit {
 		o.count++

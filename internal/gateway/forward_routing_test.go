@@ -242,7 +242,7 @@ func TestNativeForwardingRefusalsReachNoUpstream(t *testing.T) {
 	e.assertReceipts(3, 0, 0)
 
 	// An audit log that cannot record the admission admits nothing.
-	c.audit.fail(errors.New("injected write failure"))
+	c.audit.Fail(errors.New("injected write failure"))
 	if code, body := e.get("/a/x", "Authorization", "Bearer "+token); code != http.StatusServiceUnavailable || !strings.Contains(body, "gateway_unavailable") {
 		t.Fatalf("with a failed audit log: %d %s", code, body)
 	}

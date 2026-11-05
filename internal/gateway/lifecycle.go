@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
@@ -83,11 +84,11 @@ func (c *Controller) shutdown(ctx context.Context) error {
 	// and the deadline timer (no generation is published). What they queued is
 	// written before the database closes; an event arriving later anyway, from
 	// a request cut off by an incomplete listener shutdown, is counted as lost.
-	pending, _ := c.audit.unconfirmed()
+	pending, _ := c.audit.Unconfirmed()
 	c.logger.Info("draining the audit log", "pending", pending)
-	drain, cancel := context.WithTimeout(context.Background(), auditDrainWait)
+	drain, cancel := context.WithTimeout(context.Background(), audit.AuditDrainWait)
 	defer cancel()
-	errs := []error{err, c.audit.close(drain)}
+	errs := []error{err, c.audit.Close(drain)}
 	if c.store != nil {
 		errs = append(errs, c.store.Close())
 	}
@@ -120,7 +121,7 @@ func (c *Controller) admission() string {
 		return "unavailable"
 	case g.Expired(compile.TrustedNow()):
 		return "generation_expired"
-	case c.audit.failed.Load():
+	case c.audit.Failed():
 		return "audit_failed"
 	}
 	return "ready"
@@ -130,7 +131,7 @@ func (c *Controller) unavailable(reason string) {
 	c.current.Store(nil)
 	c.state = reason
 	c.logger.Error("protected admission unavailable", "reason", reason)
-	c.audit.Record(Event{Kind: "controller.unavailable", Reason: reason})
+	c.audit.Record(audit.Event{Kind: "controller.unavailable", Reason: reason})
 }
 
 // ready reports whether mutations can be processed: the database is open and

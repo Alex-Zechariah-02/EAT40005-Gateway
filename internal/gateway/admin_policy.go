@@ -18,7 +18,7 @@ func (c *Controller) handleStatus(w http.ResponseWriter, r *http.Request, who ca
 	status := map[string]any{
 		"state":          state,
 		"admission":      c.admission(),
-		"audit_failed":   c.audit.failed.Load(),
+		"audit_failed":   c.audit.Failed(),
 		"jwt_key_sha256": c.verifier.Load().fingerprint,
 	}
 	if g := c.current.Load(); g != nil {

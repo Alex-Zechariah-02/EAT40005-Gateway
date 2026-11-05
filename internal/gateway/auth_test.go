@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
@@ -179,7 +180,7 @@ func TestAuthenticationThroughGateway(t *testing.T) {
 		ev, stages := events[0], stagesOf(events[0])
 		_, hasSubject := ev["subject"]
 		if ev["stage"] != "JWT" || ev["reason"] != v.reason || ev["operation"] != "orders.list" || hasSubject ||
-			stages["JWT"] != stageReject || stages["RBAC"] != stageNotRun || stages["BODY"] != stageNotRun || stages["AUDIT"] != stageNotRun {
+			stages["JWT"] != audit.StageReject || stages["RBAC"] != audit.StageNotRun || stages["BODY"] != audit.StageNotRun || stages["AUDIT"] != audit.StageNotRun {
 			t.Errorf("%s: event %v, want JWT rejection %s", v.name, ev, v.reason)
 		}
 	}

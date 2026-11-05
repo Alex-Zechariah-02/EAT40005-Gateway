@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
@@ -116,9 +117,9 @@ func TestBodyCeilingAppliesToActualBytes(t *testing.T) {
 				}
 
 				stage, reason := sizeRefusal(framing, size, global)
-				want := expectedStages(nil, "INGRESS", stageReject)
+				want := expectedStages(nil, "INGRESS", audit.StageReject)
 				if stage == "BODY" {
-					want = public(expectedStages(routed, "BODY", stageReject))
+					want = public(expectedStages(routed, "BODY", audit.StageReject))
 				}
 				_, id := requestID(&http.Response{StatusCode: status}, reply)
 				events := e.requestEvents(id, 1)

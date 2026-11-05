@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/forward"
 )
@@ -196,8 +197,8 @@ func startNative(cfg nativeConfig, logger *slog.Logger) (*nativeGateway, error) 
 	}
 	// A log that cannot be opened refuses every admission and every change
 	// for as long as the process runs; a running gateway could only report it.
-	if c.audit.openErr != nil {
-		return release(fmt.Errorf("audit log: %w", c.audit.openErr))
+	if c.audit.OpenErr() != nil {
+		return release(fmt.Errorf("audit log: %w", c.audit.OpenErr()))
 	}
 	enforcement, err := newHandler(c, cfg.maxBodyBytes, proxy.Forward)
 	if err != nil {
@@ -299,7 +300,7 @@ func dataPlane(enforcement http.Handler, website fs.FS) http.Handler {
 			return
 		}
 		stripUntrustedHeaders(r.Header)
-		w.Header().Set("X-Request-Id", newRequestID())
+		w.Header().Set("X-Request-Id", audit.NewRequestID())
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Cache-Control", "no-store")
 		serveFrontendFile(w, r, website, name, contentType)

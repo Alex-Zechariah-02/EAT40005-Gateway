@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 )
 
 // draining returns the pending count of the gateway's drain line, or -1.
@@ -88,7 +90,7 @@ func TestNativeStopDrainsQueuedEvents(t *testing.T) {
 		lost   int
 	}{
 		{"events behind a held writer", 300, 0},
-		{"more events than the queue holds", auditQueueSize + 10, 10},
+		{"more events than the queue holds", audit.AuditQueueSize + 10, 10},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newEnv(t)
@@ -157,8 +159,8 @@ func TestNativeStopReportsIncompleteDrain(t *testing.T) {
 	if code := e.waitExit(); code != exitIncomplete {
 		t.Fatalf("exit status %d\n%s", code, e.output)
 	}
-	if elapsed := time.Since(started); elapsed < auditDrainWait-500*time.Millisecond || elapsed > auditDrainWait+5*time.Second {
-		t.Fatalf("exited %s after the drain began, want about %s", elapsed, auditDrainWait)
+	if elapsed := time.Since(started); elapsed < audit.AuditDrainWait-500*time.Millisecond || elapsed > audit.AuditDrainWait+5*time.Second {
+		t.Fatalf("exited %s after the drain began, want about %s", elapsed, audit.AuditDrainWait)
 	}
 	output := e.output.String()
 	if !strings.Contains(output, `"msg":"stop incomplete"`) || !strings.Contains(output, "51 accepted events") || strings.Contains(output, `"msg":"stopped"`) {

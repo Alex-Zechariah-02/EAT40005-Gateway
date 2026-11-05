@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 )
 
 // writeAuditFile writes request records numbered from..to (oldest first) with
@@ -26,7 +28,7 @@ func writeAuditFile(t *testing.T, path string, from, to int, tail string) {
 		if n%2 == 0 {
 			kind, decision = "request.rejected", "reject"
 		}
-		line, _ := json.Marshal(Event{
+		line, _ := json.Marshal(audit.Event{
 			ID: fmt.Sprintf("e-%d", n), Time: base.Add(time.Duration(n) * time.Second), Kind: kind, RequestID: fmt.Sprintf("%032x", n),
 			Stage: "FORWARD", Decision: decision, Status: 200, Method: "GET", Path: fmt.Sprintf("/a/%d", n), Operation: "read-a",
 			Subject: fmt.Sprintf("user-%d", n%3), Roles: []string{"READER"},

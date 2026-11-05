@@ -1,6 +1,6 @@
 // Audit file opening, recovery and rotation.
 
-package gateway
+package audit
 
 import (
 	"bytes"
@@ -16,15 +16,21 @@ import (
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 )
 
-// openAudit never fails: an unusable file yields a log in the failed state,
+// Default size of the active audit file and number of files kept.
+const (
+	DefaultAuditBytes = 64 << 20
+	DefaultAuditFiles = 8
+)
+
+// OpenAudit never fails: an unusable file yields a log in the failed state,
 // which refuses every acknowledgement and therefore every admission.
-func openAudit(path string, maxBytes int64, maxFiles int) *auditLog {
-	a := &auditLog{
-		boot:     newRequestID()[:16],
+func OpenAudit(path string, maxBytes int64, maxFiles int) *AuditLog {
+	a := &AuditLog{
+		boot:     NewRequestID()[:16],
 		path:     path,
 		maxBytes: maxBytes,
 		maxFiles: maxFiles,
-		queue:    make(chan auditEntry, auditQueueSize),
+		queue:    make(chan auditEntry, AuditQueueSize),
 		done:     make(chan struct{}),
 	}
 	incomplete, err := a.open()
@@ -34,7 +40,7 @@ func openAudit(path string, maxBytes int64, maxFiles int) *auditLog {
 			a.file = nil
 		}
 		a.openErr = err
-		a.fail(fmt.Errorf("opening audit log: %w", err))
+		a.Fail(fmt.Errorf("opening audit log: %w", err))
 		close(a.done)
 		return a
 	}
@@ -51,7 +57,7 @@ func openAudit(path string, maxBytes int64, maxFiles int) *auditLog {
 // non-empty file that does not end with a newline holds an incomplete record
 // from a crash: open terminates it with a newline, so the next record starts
 // on its own line, and returns its offset, or -1 when the file is complete.
-func (a *auditLog) open() (int64, error) {
+func (a *AuditLog) open() (int64, error) {
 	info, err := os.Lstat(a.path)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
@@ -102,7 +108,7 @@ func incompleteRecord(path string) (int64, error) {
 	if err != nil || info.Size() == 0 {
 		return -1, err
 	}
-	start := max(info.Size()-maxRecordBytes, 0)
+	start := max(info.Size()-MaxRecordBytes, 0)
 	tail := make([]byte, info.Size()-start)
 	if _, err := file.ReadAt(tail, start); err != nil && err != io.EOF {
 		return -1, err
@@ -137,7 +143,7 @@ func rotatedFiles(path string) (int, int, error) {
 // rotate closes the active file, renames it to the next rotated name and
 // opens a new active file. Every batch was synced when written, so closing
 // loses nothing.
-func (a *auditLog) rotate() (string, error) {
+func (a *AuditLog) rotate() (string, error) {
 	if a.rotated >= a.maxFiles-1 {
 		return "", fmt.Errorf("audit storage full: %d files of up to %d bytes exist; archive the rotated files and restart", a.maxFiles, a.maxBytes)
 	}
@@ -160,4 +166,32 @@ func (a *auditLog) rotate() (string, error) {
 	a.next++
 	a.publishUsage()
 	return filepath.Base(rotated), nil
+}
+
+// Usage reports the active file's size and the number of files, each with
+// its limit, as last stored by the writer.
+func (a *AuditLog) Usage() (activeBytes, activeLimit, files, filesLimit int64) {
+	return a.activeBytes.Load(), a.maxBytes, a.files.Load(), int64(a.maxFiles)
+}
+
+// Failed reports whether the log has failed and refuses new records.
+func (a *AuditLog) Failed() bool { return a.failed.Load() }
+
+// OpenErr is why the log could not open its file, or nil.
+func (a *AuditLog) OpenErr() error { return a.openErr }
+
+// Path is the active audit file's path.
+func (a *AuditLog) Path() string { return a.path }
+
+// Lost is the number of refused events not yet counted in the file.
+func (a *AuditLog) Lost() uint64 { return a.lost.Load() }
+
+// Closed reports whether the writer has ended; it closes its file first.
+func (a *AuditLog) Closed() bool {
+	select {
+	case <-a.done:
+		return true
+	default:
+		return false
+	}
 }

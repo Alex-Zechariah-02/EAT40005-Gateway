@@ -1,6 +1,6 @@
 // Audit close helpers, drain and acceptance boundary.
 
-package gateway
+package audit
 
 import (
 	"context"
@@ -25,14 +25,14 @@ import (
 // heldAudit opens an audit log in a new directory without starting its
 // writer; release starts it, once. When the test ends the writer is released
 // and the log closed, so the file is closed before its directory is removed.
-func heldAudit(t *testing.T) (*auditLog, func()) {
+func heldAudit(t *testing.T) (*AuditLog, func()) {
 	t.Helper()
-	a := &auditLog{
+	a := &AuditLog{
 		boot:     "test",
 		path:     filepath.Join(t.TempDir(), "audit.log"),
-		maxBytes: defaultAuditBytes,
-		maxFiles: defaultAuditFiles,
-		queue:    make(chan auditEntry, auditQueueSize),
+		maxBytes: DefaultAuditBytes,
+		maxFiles: DefaultAuditFiles,
+		queue:    make(chan auditEntry, AuditQueueSize),
 		done:     make(chan struct{}),
 	}
 	if _, err := a.open(); err != nil {
@@ -42,7 +42,7 @@ func heldAudit(t *testing.T) (*auditLog, func()) {
 	release := func() { once.Do(func() { go a.run() }) }
 	t.Cleanup(func() {
 		release()
-		a.close(context.Background())
+		a.Close(context.Background())
 	})
 	return a, release
 }
@@ -99,7 +99,7 @@ func lossRecords(events []fileRecord) uint64 {
 }
 
 // isClosing reports whether a's close has begun.
-func isClosing(a *auditLog) bool {
+func isClosing(a *AuditLog) bool {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return a.closing
@@ -112,7 +112,7 @@ func isClosing(a *auditLog) bool {
 // refused at once. The close does not return before the writer has written
 // everything, and then reports success.
 func TestAuditCloseDrainsAcceptedEvents(t *testing.T) {
-	for _, n := range []int{1, 5, auditBatchSize + 1, auditQueueSize} {
+	for _, n := range []int{1, 5, auditBatchSize + 1, AuditQueueSize} {
 		t.Run(strconv.Itoa(n), func(t *testing.T) {
 			a, release := heldAudit(t)
 			commits := min(2, n-1)
@@ -131,7 +131,7 @@ func TestAuditCloseDrainsAcceptedEvents(t *testing.T) {
 			}
 
 			closed := make(chan error, 1)
-			go func() { closed <- a.close(context.Background()) }()
+			go func() { closed <- a.Close(context.Background()) }()
 			waitFor(t, time.Now().Add(5*time.Second), "the close to begin", func() bool { return isClosing(a) })
 			a.Record(Event{Kind: "request.rejected", RequestID: "late"})
 			if err := a.Commit(context.Background(), Event{Kind: "request.admitted", RequestID: "late-commit"}); !errors.Is(err, errAuditFailed) || !strings.Contains(err.Error(), "closed") {
@@ -212,7 +212,7 @@ func TestAuditCloseAcceptanceBoundary(t *testing.T) {
 		}
 		waitFor(t, time.Now().Add(10*time.Second), "traffic", func() bool { return a.accepted.Load() >= 500 })
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		err := a.close(ctx)
+		err := a.Close(ctx)
 		cancel()
 		// Every producer goes on a little after the close returned.
 		after := recordings.Load()

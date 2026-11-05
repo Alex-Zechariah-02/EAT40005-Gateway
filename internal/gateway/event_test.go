@@ -1,3 +1,5 @@
+// Request event envelopes: stages reached, injection and leakage.
+
 package gateway
 
 import (
@@ -9,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
@@ -17,11 +20,11 @@ import (
 // stage was not evaluated.
 func expectedStages(passed []string, terminal, result string) map[string]any {
 	stages := map[string]any{}
-	for _, name := range stageNames {
-		stages[name] = stageNotRun
+	for _, name := range audit.StageNames {
+		stages[name] = audit.StageNotRun
 	}
 	for _, name := range passed {
-		stages[name] = stagePass
+		stages[name] = audit.StagePass
 	}
 	if terminal != "" {
 		stages[terminal] = result
@@ -32,23 +35,23 @@ func expectedStages(passed []string, terminal, result string) map[string]any {
 // public marks the authentication and rate stages of a public operation as
 // not applicable: it reads no token and cannot carry a rate rule.
 func public(stages map[string]any) map[string]any {
-	stages["JWT"] = stageNotApplicable
-	stages["RBAC"] = stageNotApplicable
-	stages["RATE"] = stageNotApplicable
+	stages["JWT"] = audit.StageNotApplicable
+	stages["RBAC"] = audit.StageNotApplicable
+	stages["RATE"] = audit.StageNotApplicable
 	return stages
 }
 
 // unrated marks rate limiting as not applicable, for an operation without a
 // rate rule.
 func unrated(stages map[string]any) map[string]any {
-	stages["RATE"] = stageNotApplicable
+	stages["RATE"] = audit.StageNotApplicable
 	return stages
 }
 
 // unvalidated marks schema validation as not applicable, for an operation
 // that declares neither a body nor a header schema.
 func unvalidated(stages map[string]any) map[string]any {
-	stages["VALIDATION"] = stageNotApplicable
+	stages["VALIDATION"] = audit.StageNotApplicable
 	return stages
 }
 
@@ -86,43 +89,43 @@ func TestEventEnvelopeReflectsStagesReached(t *testing.T) {
 			return code, e.a.receipts()[len(e.a.receipts())-1].RequestID
 		}, []expected{
 			{"request.admitted", "AUDIT", "admit", "", "read-a", 0, unvalidated(public(expectedStages(admitted, "", "")))},
-			{"request.forwarded", "FORWARD", "forwarded", "", "read-a", 200, unvalidated(public(expectedStages(forwarded, "FORWARD", stagePass)))},
+			{"request.forwarded", "FORWARD", "forwarded", "", "read-a", 200, unvalidated(public(expectedStages(forwarded, "FORWARD", audit.StagePass)))},
 		}},
 		{"validated body forwarded", func() (int, string) {
 			code, _ := e.request(http.MethodPost, "/a/item", "application/json", `{"n":1}`)
 			return code, e.a.receipts()[len(e.a.receipts())-1].RequestID
 		}, []expected{
 			{"request.admitted", "AUDIT", "admit", "", "write-a", 0, public(expectedStages(validated, "", ""))},
-			{"request.forwarded", "FORWARD", "forwarded", "", "write-a", 200, public(expectedStages(validatedForwarded, "FORWARD", stagePass))},
+			{"request.forwarded", "FORWARD", "forwarded", "", "write-a", 200, public(expectedStages(validatedForwarded, "FORWARD", audit.StagePass))},
 		}},
 		{"upstream refused", func() (int, string) { return requestID(e.exchange(http.MethodGet, "/z", "", "")) }, []expected{
 			{"request.admitted", "AUDIT", "admit", "", "read-z", 0, unvalidated(public(expectedStages(admitted, "", "")))},
-			{"request.forwarded", "FORWARD", "upstream_failure", "upstream_unavailable", "read-z", 502, unvalidated(public(expectedStages(forwarded, "FORWARD", stageFail)))},
+			{"request.forwarded", "FORWARD", "upstream_failure", "upstream_unavailable", "read-z", 502, unvalidated(public(expectedStages(forwarded, "FORWARD", audit.StageFail)))},
 		}},
 		{"protocol upgrade", func() (int, string) {
 			return requestID(e.exchange(http.MethodGet, "/a/x", "", "", "Connection", "Upgrade", "Upgrade", "websocket"))
 		}, []expected{
-			{"request.rejected", "INGRESS", "reject", "bad_request", "", 400, expectedStages(nil, "INGRESS", stageReject)},
+			{"request.rejected", "INGRESS", "reject", "bad_request", "", 400, expectedStages(nil, "INGRESS", audit.StageReject)},
 		}},
 		{"non-canonical path", func() (int, string) { return requestID(e.exchange(http.MethodGet, "/a/%2e%2e/d", "", "")) }, []expected{
-			{"request.rejected", "CANONICAL", "reject", "bad_request", "", 400, expectedStages([]string{"INGRESS", "CAPTURE"}, "CANONICAL", stageReject)},
+			{"request.rejected", "CANONICAL", "reject", "bad_request", "", 400, expectedStages([]string{"INGRESS", "CAPTURE"}, "CANONICAL", audit.StageReject)},
 		}},
 		{"unmatched", func() (int, string) { return requestID(e.exchange(http.MethodGet, "/nothing", "", "")) }, []expected{
-			{"request.rejected", "ROUTE", "reject", "not_found", "", 404, expectedStages(beforeRoute, "ROUTE", stageReject)},
+			{"request.rejected", "ROUTE", "reject", "not_found", "", 404, expectedStages(beforeRoute, "ROUTE", audit.StageReject)},
 		}},
 		{"wrong method", func() (int, string) { return requestID(e.exchange(http.MethodDelete, "/a/x", "", "")) }, []expected{
-			{"request.rejected", "ROUTE", "reject", "method_not_allowed", "", 405, expectedStages(beforeRoute, "ROUTE", stageReject)},
+			{"request.rejected", "ROUTE", "reject", "method_not_allowed", "", 405, expectedStages(beforeRoute, "ROUTE", audit.StageReject)},
 		}},
 		{"denied", func() (int, string) { return requestID(e.exchange(http.MethodGet, "/d", "", "")) }, []expected{
-			{"request.rejected", "ACCESS", "reject", "forbidden", "denied", 403, expectedStages(routed, "ACCESS", stageReject)},
+			{"request.rejected", "ACCESS", "reject", "forbidden", "denied", 403, expectedStages(routed, "ACCESS", audit.StageReject)},
 		}},
 		{"wrong media type", func() (int, string) { return requestID(e.exchange(http.MethodPost, "/a/item", "text/plain", "{}")) }, []expected{
-			{"request.rejected", "BODY", "reject", "unsupported_media_type", "write-a", 415, public(expectedStages(checked, "BODY", stageReject))},
+			{"request.rejected", "BODY", "reject", "unsupported_media_type", "write-a", 415, public(expectedStages(checked, "BODY", audit.StageReject))},
 		}},
 		{"body against its schema", func() (int, string) {
 			return requestID(e.exchange(http.MethodPost, "/a/item", "application/json", "[]"))
 		}, []expected{
-			{"request.rejected", "VALIDATION", "reject", "bad_request", "write-a", 400, public(expectedStages(admitted, "VALIDATION", stageReject))},
+			{"request.rejected", "VALIDATION", "reject", "bad_request", "write-a", 400, public(expectedStages(admitted, "VALIDATION", audit.StageReject))},
 		}},
 	}
 
@@ -153,7 +156,7 @@ func TestEventEnvelopeReflectsStagesReached(t *testing.T) {
 		for i, want := range tc.want {
 			ev := got[i]
 			id, _ := ev["event_id"].(string)
-			if ev["schema"] != float64(eventSchema) || id == "" || seenIDs[id] {
+			if ev["schema"] != float64(audit.EventSchema) || id == "" || seenIDs[id] {
 				t.Errorf("%s: envelope schema %v event_id %q (repeated %v)", tc.name, ev["schema"], id, seenIDs[id])
 			}
 			seenIDs[id] = true
@@ -249,7 +252,7 @@ func TestEventsResistInjectionAndLeakage(t *testing.T) {
 			t.Fatalf("client header copied into the event: %v", ev)
 		}
 		if path, _ := ev["path"].(string); ev["path_truncated"] == true {
-			truncated = len(path) == maxLoggedPath
+			truncated = len(path) == audit.MaxLoggedPath
 		}
 	}
 	if !truncated {
@@ -258,43 +261,4 @@ func TestEventsResistInjectionAndLeakage(t *testing.T) {
 	// The request with the token and the long path were admitted, so the
 	// checks above cover forwarded requests too.
 	e.assertReceipts(2, 0, 0)
-}
-
-// With the fixtures behind the gateway, an audit sink that cannot make a
-// record durable still stops every admission before forwarding, even for a
-// request that passed authentication and authorisation.
-func TestAuditFailureBlocksFixtureForwarding(t *testing.T) {
-	fixtures := startFixtures(t)
-	e := newEnv(t)
-	seed(t, e.database, fixturePolicy(fixtures), seedOptions{})
-	e.start(binaries.fault, "GATEWAY_FAULT=audit-sync")
-
-	c := loadCatalogue(t)
-	for _, sc := range c.Scenarios {
-		contentType := ""
-		if len(sc.Body) > 0 {
-			contentType = "application/json"
-		}
-		var header []string
-		if sc.Subject != "" {
-			header = bearer(t, sc.Subject)
-		}
-		// A step refused by validation never reaches the audit gate, so it
-		// keeps its own refusal.
-		want := http.StatusServiceUnavailable
-		if sc.GatewayStage != "" {
-			want = sc.GatewayStatus
-		}
-		if code, _ := e.request(sc.Method, sc.Path, contentType, string(sc.Body), header...); code != want {
-			t.Errorf("%s with a failed audit sink: %d, want %d", sc.Name, code, want)
-		}
-	}
-	for name, n := range receiptCounts(fixtures) {
-		if n != 0 {
-			t.Errorf("fixture %s received %d requests while the audit sink was failing", name, n)
-		}
-	}
-	if s := e.status(); !s.AuditFailed {
-		t.Fatalf("status %+v does not report the audit failure", s)
-	}
 }

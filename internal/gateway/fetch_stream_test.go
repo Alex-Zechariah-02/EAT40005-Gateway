@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 )
 
 func openEventStream(t *testing.T, e *env, admin adminSession, client *http.Client) *http.Response {
@@ -79,7 +81,7 @@ func TestFetchStalledViewerCannotBlockEnforcement(t *testing.T) {
 	}
 	start := time.Now()
 	for i := range 2000 {
-		controller.observations.record(Event{RequestID: fmt.Sprint(i), Time: time.Now().UTC(), Method: "GET", Path: "/a/" + strings.Repeat("x", 200), API: "a", Operation: "read-a", Decision: "forwarded", Stage: "FORWARD", Status: 200})
+		controller.observations.record(audit.Event{RequestID: fmt.Sprint(i), Time: time.Now().UTC(), Method: "GET", Path: "/a/" + strings.Repeat("x", 200), API: "a", Operation: "read-a", Decision: "forwarded", Stage: "FORWARD", Status: 200})
 	}
 	if code, body := e.get("/a/actual-probe"); code != 200 {
 		t.Fatalf("stalled viewer affected admission: %d %s", code, body)

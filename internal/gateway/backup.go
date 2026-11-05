@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
@@ -102,7 +103,7 @@ func runBackup(o *operatorContext, flags map[string]string) (int, error) {
 			removeFiles(manifestPath(output))
 		}
 	}()
-	if err := o.record(Event{Kind: "operator.backup", File: filepath.Base(output), Revision: a.Confirmed}); err != nil {
+	if err := o.record(audit.Event{Kind: "operator.backup", File: filepath.Base(output), Revision: a.Confirmed}); err != nil {
 		return 1, err
 	}
 	complete = true

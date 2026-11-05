@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/forward"
 )
 
@@ -57,7 +58,7 @@ func TestEnforcementResponses(t *testing.T) {
 			_, id := requestID(resp, body)
 			ev := forwardedEvent(id)
 			if resp.StatusCode != tc.status || !strings.Contains(body, `"error":"`+tc.code+`"`) || ev["decision"] != "upstream_failure" ||
-				ev["error"] != tc.code || ev["status"] != float64(tc.status) || !sameStages(ev["stages"], publicAdmitted(stageFail)) {
+				ev["error"] != tc.code || ev["status"] != float64(tc.status) || !sameStages(ev["stages"], publicAdmitted(audit.StageFail)) {
 				t.Fatalf("%d %s, event %v", resp.StatusCode, body, ev)
 			}
 			if strings.Contains(body, "connection refused") || strings.Contains(body, "source failed") {
@@ -127,8 +128,8 @@ func TestEnforcementResponses(t *testing.T) {
 // publicAdmitted is admittedStages for a public operation.
 func publicAdmitted(forward string) map[string]any {
 	stages := admittedStages(forward)
-	stages["JWT"] = stageNotApplicable
-	stages["RBAC"] = stageNotApplicable
+	stages["JWT"] = audit.StageNotApplicable
+	stages["RBAC"] = audit.StageNotApplicable
 	return stages
 }
 

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
@@ -193,7 +194,7 @@ func (c *Controller) route(mux *http.ServeMux, pattern string, required store.Pe
 			return
 		}
 		if !unsafeMethod(r.Method) {
-			c.audit.Record(Event{Kind: "admin.read", Method: r.Method, Path: r.URL.Path, Actor: who.admin.Name, Session: who.session.reference})
+			c.audit.Record(audit.Event{Kind: "admin.read", Method: r.Method, Path: r.URL.Path, Actor: who.admin.Name, Session: who.session.reference})
 		}
 		handler(w, r, who)
 	})
@@ -232,7 +233,7 @@ func (c *Controller) authenticate(w http.ResponseWriter, r *http.Request) (calle
 // refuse answers a refused admin request and records why. Only the error code
 // reaches the client.
 func (c *Controller) refuse(w http.ResponseWriter, r *http.Request, status int, code, reason string, who *caller) {
-	event := Event{Kind: "admin.rejected", Method: r.Method, Path: r.URL.Path, Status: status, Reason: reason}
+	event := audit.Event{Kind: "admin.rejected", Method: r.Method, Path: r.URL.Path, Status: status, Reason: reason}
 	if who != nil {
 		event.Kind, event.Actor, event.Session = "admin.denied", who.admin.Name, who.session.reference
 	}

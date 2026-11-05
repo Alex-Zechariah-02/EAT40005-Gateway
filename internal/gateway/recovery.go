@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
 
@@ -73,7 +74,7 @@ func (c *Controller) reconcile(now time.Time) {
 		return
 	}
 	g := c.current.Load()
-	c.audit.Record(Event{Kind: "controller.reconciled", Generation: g.ID, Revision: g.Revision})
+	c.audit.Record(audit.Event{Kind: "controller.reconciled", Generation: g.ID, Revision: g.Revision})
 }
 
 // reconcileAudit durably records the outcome event of every committed
@@ -91,7 +92,7 @@ func (c *Controller) reconcileAudit(ctx context.Context, now time.Time) error {
 		if err != nil {
 			return err
 		}
-		event := Event{Kind: outcomeKind(t), Transition: t.ID, Actor: t.Actor, Target: t.Target, Revision: t.Revision, Candidate: t.Candidate, Reason: "reconciled"}
+		event := audit.Event{Kind: outcomeKind(t), Transition: t.ID, Actor: t.Actor, Target: t.Target, Revision: t.Revision, Candidate: t.Candidate, Reason: "reconciled"}
 		if strings.HasPrefix(t.Kind, "tpo.") {
 			o, found, err := c.store.OverrideOf(ctx, t.ID)
 			if err != nil || !found {

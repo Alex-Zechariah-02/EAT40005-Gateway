@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 	"github.com/Alex-Zechariah-02/apiward/internal/store"
@@ -24,14 +25,14 @@ func (c *Controller) Enrol(ctx context.Context, e store.Enrolment, passwordHash 
 	if !c.ready() {
 		return unavailableOutcome(t.ID)
 	}
-	if err := c.commitAudit(ctx, Event{Kind: "transition.intent", Transition: t.ID, Actor: e.Name}); err != nil {
+	if err := c.commitAudit(ctx, audit.Event{Kind: "transition.intent", Transition: t.ID, Actor: e.Name}); err != nil {
 		return auditUnavailable(t.ID)
 	}
 	fault.CrashPoint("enrol-before-commit")
 	err := c.store.CommitEnrolment(ctx, t, e, passwordHash, now)
 	if errors.Is(err, store.ErrNotUpdated) {
 		// Another request consumed the secret first.
-		c.audit.Record(Event{Kind: "transition.rejected", Transition: t.ID, Actor: e.Name, Reason: "ENROLMENT_CONSUMED"})
+		c.audit.Record(audit.Event{Kind: "transition.rejected", Transition: t.ID, Actor: e.Name, Reason: "ENROLMENT_CONSUMED"})
 		return Outcome{Transition: t.ID, Outcome: "rejected", Reason: "ENROLMENT_CONSUMED"}, http.StatusUnauthorized
 	}
 	if err != nil {
@@ -39,7 +40,7 @@ func (c *Controller) Enrol(ctx context.Context, e store.Enrolment, passwordHash 
 	}
 	c.sessions.revokeAdmin(e.Name)
 	fault.CrashPoint("enrol-after-commit")
-	return c.finish(ctx, Outcome{Transition: t.ID, Outcome: "committed"}, Event{Kind: "transition.committed", Transition: t.ID, Actor: e.Name})
+	return c.finish(ctx, Outcome{Transition: t.ID, Outcome: "committed"}, audit.Event{Kind: "transition.committed", Transition: t.ID, Actor: e.Name})
 }
 
 // ChangePassword replaces an administrator's password, provided the
@@ -59,17 +60,17 @@ func (c *Controller) ChangePassword(ctx context.Context, admin store.Administrat
 	if !c.ready() {
 		return unavailableOutcome(t.ID)
 	}
-	if err := c.commitAudit(ctx, Event{Kind: "transition.intent", Transition: t.ID, Actor: admin.Name}); err != nil {
+	if err := c.commitAudit(ctx, audit.Event{Kind: "transition.intent", Transition: t.ID, Actor: admin.Name}); err != nil {
 		return auditUnavailable(t.ID)
 	}
 	err := c.store.CommitPassword(ctx, t, admin.Name, admin.Credential, passwordHash, now)
 	if errors.Is(err, store.ErrNotUpdated) {
-		c.audit.Record(Event{Kind: "transition.rejected", Transition: t.ID, Actor: admin.Name, Reason: "CREDENTIAL_CHANGED"})
+		c.audit.Record(audit.Event{Kind: "transition.rejected", Transition: t.ID, Actor: admin.Name, Reason: "CREDENTIAL_CHANGED"})
 		return Outcome{Transition: t.ID, Outcome: "rejected", Reason: "CREDENTIAL_CHANGED"}, http.StatusConflict
 	}
 	if err != nil {
 		return c.storeFailure(t.ID, err)
 	}
 	c.sessions.revokeAdmin(admin.Name)
-	return c.finish(ctx, Outcome{Transition: t.ID, Outcome: "committed"}, Event{Kind: "transition.committed", Transition: t.ID, Actor: admin.Name})
+	return c.finish(ctx, Outcome{Transition: t.ID, Outcome: "committed"}, audit.Event{Kind: "transition.committed", Transition: t.ID, Actor: admin.Name})
 }

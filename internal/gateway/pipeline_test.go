@@ -9,6 +9,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
@@ -16,8 +17,8 @@ import (
 // forwarded.
 func allStages() map[string]any {
 	stages := map[string]any{}
-	for _, name := range stageNames {
-		stages[name] = stagePass
+	for _, name := range audit.StageNames {
+		stages[name] = audit.StagePass
 	}
 	return stages
 }
@@ -53,7 +54,7 @@ func TestFiveControlsAdmitValidRequest(t *testing.T) {
 		events := e.requestEvents(receipt.RequestID, 2)
 		admitted, forwarded := findEvent(events, "request.admitted", receipt.RequestID), findEvent(events, "request.forwarded", receipt.RequestID)
 		wantAdmitted := allStages()
-		wantAdmitted["AUDIT"], wantAdmitted["BIND"], wantAdmitted["FORWARD"] = stageNotRun, stageNotRun, stageNotRun
+		wantAdmitted["AUDIT"], wantAdmitted["BIND"], wantAdmitted["FORWARD"] = audit.StageNotRun, audit.StageNotRun, audit.StageNotRun
 		if admitted == nil || forwarded == nil || !sameStages(admitted["stages"], wantAdmitted) || !sameStages(forwarded["stages"], allStages()) {
 			t.Fatalf("%s: events %v", r.path, events)
 		}
@@ -101,13 +102,13 @@ func TestEarlyRefusalsStopThePath(t *testing.T) {
 		status     int
 		want       map[string]any
 	}{
-		{"forged token", valid, []string{"Authorization", "Bearer " + newTestIssuer(2048).tokenFor(t, "cust-001")}, 401, expectedStages(routed, "JWT", stageReject)},
-		{"wrong role", valid, bearer(t, "staff-01"), 403, expectedStages(append(slices.Clone(routed), "JWT"), "RBAC", stageReject)},
-		{"wrong role with an invalid body", `{"x":`, bearer(t, "mgr-01"), 403, expectedStages(append(slices.Clone(routed), "JWT"), "RBAC", stageReject)},
+		{"forged token", valid, []string{"Authorization", "Bearer " + newTestIssuer(2048).tokenFor(t, "cust-001")}, 401, expectedStages(routed, "JWT", audit.StageReject)},
+		{"wrong role", valid, bearer(t, "staff-01"), 403, expectedStages(append(slices.Clone(routed), "JWT"), "RBAC", audit.StageReject)},
+		{"wrong role with an invalid body", `{"x":`, bearer(t, "mgr-01"), 403, expectedStages(append(slices.Clone(routed), "JWT"), "RBAC", audit.StageReject)},
 		{"first admitted", valid, bearer(t, "cust-001"), 201, nil},
 		{"second admitted", valid, bearer(t, "cust-001"), 201, nil},
-		{"first excess with a valid body", valid, bearer(t, "cust-001"), 429, expectedStages(append(slices.Clone(routed), "JWT", "RBAC"), "RATE", stageReject)},
-		{"excess with an invalid body", `{"x":`, bearer(t, "cust-001"), 429, expectedStages(append(slices.Clone(routed), "JWT", "RBAC"), "RATE", stageReject)},
+		{"first excess with a valid body", valid, bearer(t, "cust-001"), 429, expectedStages(append(slices.Clone(routed), "JWT", "RBAC"), "RATE", audit.StageReject)},
+		{"excess with an invalid body", `{"x":`, bearer(t, "cust-001"), 429, expectedStages(append(slices.Clone(routed), "JWT", "RBAC"), "RATE", audit.StageReject)},
 	}
 	for _, tc := range cases {
 		resp, body := e.exchange(http.MethodPost, "/orders", "application/json", tc.body, tc.header...)
@@ -168,7 +169,7 @@ func TestValidationRefusalDuringPublication(t *testing.T) {
 	}
 	_, id := requestID(&http.Response{}, held.body)
 	ev := e.requestEvents(id, 1)
-	if len(ev) != 1 || ev[0]["stage"] != "VALIDATION" || ev[0]["generation"] != first || stagesOf(ev[0])["RATE"] != stagePass {
+	if len(ev) != 1 || ev[0]["stage"] != "VALIDATION" || ev[0]["generation"] != first || stagesOf(ev[0])["RATE"] != audit.StagePass {
 		t.Fatalf("held request event %v, want a VALIDATION refusal under %s after RATE passed", ev, first)
 	}
 	// The refused request counted: one more admission fits, then 429.

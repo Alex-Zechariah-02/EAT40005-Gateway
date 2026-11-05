@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/store"
 )
@@ -25,8 +26,6 @@ const (
 	// persisted deadlines.
 	clockTolerance    = 5 * time.Second
 	defaultAuditWait  = 2 * time.Second
-	defaultAuditBytes = 64 << 20
-	defaultAuditFiles = 8
 	minAuditBytes     = 4 << 10
 	maxAuditBytes     = 1 << 30
 	maxAuditFiles     = 1000
@@ -101,7 +100,7 @@ type Controller struct {
 	stopping  bool   // set when the stop begins; see beginStop
 	ownership *os.File
 	store     *store.DB
-	audit     *auditLog
+	audit     *audit.AuditLog
 	timer     *time.Timer
 	admin     *http.Server
 	logger    *slog.Logger
@@ -168,7 +167,7 @@ func NewController(cfg Config, logger *slog.Logger) (*Controller, error) {
 		ownership.Close()
 		return nil, err
 	}
-	c.audit = openAudit(cfg.AuditLog, cfg.AuditMaxBytes, cfg.AuditMaxFiles)
+	c.audit = audit.OpenAudit(cfg.AuditLog, cfg.AuditMaxBytes, cfg.AuditMaxFiles)
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -205,10 +204,10 @@ func (cfg *Config) applyDefaults() error {
 		cfg.AuditTimeout = defaultAuditWait
 	}
 	if cfg.AuditMaxBytes == 0 {
-		cfg.AuditMaxBytes = defaultAuditBytes
+		cfg.AuditMaxBytes = audit.DefaultAuditBytes
 	}
 	if cfg.AuditMaxFiles == 0 {
-		cfg.AuditMaxFiles = defaultAuditFiles
+		cfg.AuditMaxFiles = audit.DefaultAuditFiles
 	}
 	if cfg.AdminIdleTimeout == 0 {
 		cfg.AdminIdleTimeout = defaultIdle

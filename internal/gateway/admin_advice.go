@@ -153,12 +153,12 @@ func (c *Controller) handleAdvice(w http.ResponseWriter, r *http.Request, who ca
 		adminError(w, http.StatusServiceUnavailable, "gateway_unavailable", "")
 		return
 	}
-	files, missing, err := securityLogFiles(c.audit.path)
+	files, missing, err := securityLogFiles(c.audit.Path())
 	if err != nil {
 		adminError(w, http.StatusServiceUnavailable, "gateway_unavailable", "")
 		return
 	}
-	use, err := permitUse(filepath.Dir(c.audit.path), files, securityLogExportScan)
+	use, err := permitUse(filepath.Dir(c.audit.Path()), files, securityLogExportScan)
 	if err != nil {
 		adminError(w, http.StatusServiceUnavailable, "gateway_unavailable", "")
 		return
@@ -214,10 +214,10 @@ func (c *Controller) handleAlerts(w http.ResponseWriter, r *http.Request, who ca
 	if spike := refusalSpike(c.observations.snapshot(), now); spike != nil {
 		items = append(items, *spike)
 	}
-	if c.audit.failed.Load() {
+	if c.audit.Failed() {
 		items = append(items, finding{"A2", "critical", "security_log", "The security log cannot be written, so the gateway refuses requests it cannot record."})
 	}
-	if c.audit.files.Load() >= int64(c.audit.maxFiles) && float64(c.audit.activeBytes.Load()) >= nearlyFull*float64(c.audit.maxBytes) {
+	if active, activeLimit, files, filesLimit := c.audit.Usage(); files >= filesLimit && float64(active) >= nearlyFull*float64(activeLimit) {
 		items = append(items, finding{"A3", "high", "security_log", "The security log is nearly full. Move earlier log files to an archive before it fills, or the gateway will stop accepting requests."})
 	}
 	if float64(c.limiter.size()) >= nearlyFull*float64(c.limiter.capacity) {

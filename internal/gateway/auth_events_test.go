@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 )
 
 // Authentication and authorisation events record what actually ran, with the
@@ -36,23 +38,23 @@ func TestAuthenticationEvents(t *testing.T) {
 		want     []expected
 	}{
 		{"no token", http.MethodGet, "/a/x", "", "", 0, []expected{
-			{"request.rejected", "JWT", "missing_credential", "", "unauthenticated", 401, expectedStages(routed, "JWT", stageReject)},
+			{"request.rejected", "JWT", "missing_credential", "", "unauthenticated", 401, expectedStages(routed, "JWT", audit.StageReject)},
 		}},
 		{"expired token", http.MethodGet, "/a/x", "", issuer.token(t, changed(validClaims("alice"), map[string]any{"exp": time.Now().Add(-time.Minute).Unix()})), 0, []expected{
-			{"request.rejected", "JWT", "expired", "", "unauthenticated", 401, expectedStages(routed, "JWT", stageReject)},
+			{"request.rejected", "JWT", "expired", "", "unauthenticated", 401, expectedStages(routed, "JWT", audit.StageReject)},
 		}},
 		{"unknown subject", http.MethodGet, "/a/x", "", issuer.tokenFor(t, "mallory"), 0, []expected{
-			{"request.rejected", "RBAC", "no_permit", "mallory", "forbidden", 403, expectedStages(append(routed, "JWT"), "RBAC", stageReject)},
+			{"request.rejected", "RBAC", "no_permit", "mallory", "forbidden", 403, expectedStages(append(routed, "JWT"), "RBAC", audit.StageReject)},
 		}},
 		{"no permit", http.MethodPost, "/a/item", `{"n":1}`, issuer.tokenFor(t, "bob"), 0, []expected{
-			{"request.rejected", "RBAC", "no_permit", "bob", "forbidden", 403, expectedStages(append(routed, "JWT"), "RBAC", stageReject)},
+			{"request.rejected", "RBAC", "no_permit", "bob", "forbidden", 403, expectedStages(append(routed, "JWT"), "RBAC", audit.StageReject)},
 		}},
 		{"permitted", http.MethodPost, "/a/item", `{"n":1}`, aliceToken, 1, []expected{
 			{"request.admitted", "AUDIT", "", "alice", "", 0, unrated(expectedStages(append(routed, "JWT", "RBAC", "BODY", "VALIDATION"), "", ""))},
-			{"request.forwarded", "FORWARD", "", "alice", "", 200, unrated(expectedStages(append(routed, "JWT", "RBAC", "BODY", "VALIDATION", "AUDIT", "BIND"), "FORWARD", stagePass))},
+			{"request.forwarded", "FORWARD", "", "alice", "", 200, unrated(expectedStages(append(routed, "JWT", "RBAC", "BODY", "VALIDATION", "AUDIT", "BIND"), "FORWARD", audit.StagePass))},
 		}},
 		{"denied public operation", http.MethodGet, "/d", "", aliceToken, 0, []expected{
-			{"request.rejected", "ACCESS", "", "", "forbidden", 403, expectedStages(routed[:4], "ACCESS", stageReject)},
+			{"request.rejected", "ACCESS", "", "", "forbidden", 403, expectedStages(routed[:4], "ACCESS", audit.StageReject)},
 		}},
 	}
 	for _, tc := range cases {
@@ -81,7 +83,7 @@ func TestAuthenticationEvents(t *testing.T) {
 			errorCode, _ := ev["error"].(string)
 			status, _ := ev["status"].(float64)
 			if ev["kind"] != want.kind || ev["stage"] != want.stage || reason != want.reason || subject != want.subject ||
-				errorCode != want.errorCode || int(status) != want.status || ev["generation"] != g || ev["schema"] != float64(eventSchema) {
+				errorCode != want.errorCode || int(status) != want.status || ev["generation"] != g || ev["schema"] != float64(audit.EventSchema) {
 				t.Errorf("%s: event %v, want %+v", tc.name, ev, want)
 			}
 			if !sameStages(ev["stages"], want.stages) {

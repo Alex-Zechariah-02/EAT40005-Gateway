@@ -183,7 +183,7 @@ func TestNativeRestartAfterGracefulStop(t *testing.T) {
 	files, _ := filepath.Glob(e.auditLog + "*")
 	records := 0
 	for _, file := range files {
-		for _, ev := range fileEvents(t, file) {
+		for _, ev := range auditLines(t, file) {
 			records++
 			if ev.Kind == "audit.recovered" {
 				t.Fatalf("incomplete record in %s", filepath.Base(file))

@@ -1,6 +1,6 @@
 // Audit event record and stage types.
 
-package gateway
+package audit
 
 import (
 	"bytes"
@@ -12,19 +12,19 @@ import (
 )
 
 const (
-	auditQueueSize = 1024
+	AuditQueueSize = 1024
 	auditBatchSize = 128
-	maxLoggedPath  = 256
-	// maxRecordBytes bounds one record, so an incomplete last record is
+	MaxLoggedPath  = 256
+	// MaxRecordBytes bounds one record, so an incomplete last record is
 	// always found within this many bytes of the end of the file.
-	maxRecordBytes = 64 << 10
-	// auditDrainWait bounds how long a graceful stop waits for the writer to
+	MaxRecordBytes = 64 << 10
+	// AuditDrainWait bounds how long a graceful stop waits for the writer to
 	// write what was queued before the log closed.
-	auditDrainWait = 5 * time.Second
+	AuditDrainWait = 5 * time.Second
 )
 
-// eventSchema is the version of the event envelope below.
-const eventSchema = 6
+// EventSchema is the version of the event envelope below.
+const EventSchema = 6
 
 var (
 	errAuditFailed = errors.New("audit log unavailable")
@@ -86,26 +86,32 @@ type Event struct {
 	identityKnown bool
 }
 
+// SetIdentityKnown records whether the request's identity is known.
+func (e *Event) SetIdentityKnown(known bool) { e.identityKnown = known }
+
+// IdentityKnown reports whether the request's identity is known.
+func (e *Event) IdentityKnown() bool { return e.identityKnown }
+
 // Request stages in evaluation order. BODY covers framing, size, media type
 // and JSON decoding; VALIDATION covers the header and body schemas.
 const (
-	stageIngress = iota
-	stageCapture
-	stageCanonical
-	stageRoute
-	stageAccess
-	stageJWT
-	stageRBAC
-	stageRate
-	stageBody
-	stageValidation
-	stageAudit
-	stageBind
-	stageForward
+	StageIngress = iota
+	StageCapture
+	StageCanonical
+	StageRoute
+	StageAccess
+	StageJWT
+	StageRBAC
+	StageRate
+	StageBody
+	StageValidation
+	StageAudit
+	StageBind
+	StageForward
 	stageCount
 )
 
-var stageNames = [stageCount]string{
+var StageNames = [stageCount]string{
 	"INGRESS", "CAPTURE", "CANONICAL", "ROUTE", "ACCESS", "JWT", "RBAC",
 	"RATE", "BODY", "VALIDATION", "AUDIT", "BIND", "FORWARD",
 }
@@ -114,11 +120,11 @@ var stageNames = [stageCount]string{
 // operation does not require, such as authentication of a public operation,
 // is not applicable.
 const (
-	stagePass          = "PASS"
-	stageReject        = "REJECT"
-	stageFail          = "FAIL"
-	stageNotRun        = "NE"
-	stageNotApplicable = "NA"
+	StagePass          = "PASS"
+	StageReject        = "REJECT"
+	StageFail          = "FAIL"
+	StageNotRun        = "NE"
+	StageNotApplicable = "NA"
 )
 
 // stages holds the result of each stage when the event was generated. It is
@@ -128,10 +134,10 @@ type stages [stageCount]string
 func (s stages) MarshalJSON() ([]byte, error) {
 	var buffer bytes.Buffer
 	buffer.WriteByte('{')
-	for i, name := range stageNames {
+	for i, name := range StageNames {
 		result := s[i]
 		if result == "" {
-			result = stageNotRun
+			result = StageNotRun
 		}
 		if i > 0 {
 			buffer.WriteByte(',')
@@ -142,7 +148,7 @@ func (s stages) MarshalJSON() ([]byte, error) {
 	return buffer.Bytes(), nil
 }
 
-func newRequestID() string {
+func NewRequestID() string {
 	id := make([]byte, 16)
 	rand.Read(id)
 	return hex.EncodeToString(id)

@@ -1,6 +1,6 @@
 // Durable audit queue and writer.
 
-package gateway
+package audit
 
 import (
 	"context"
@@ -20,7 +20,7 @@ type auditEntry struct {
 	done  chan error // nil for events that need no acknowledgement
 }
 
-// auditLog appends events to a local file. Events that gate a decision wait
+// AuditLog appends events to a local file. Events that gate a decision wait
 // until the batch containing them has been synced to disk; other events are
 // queued without blocking and counted when they cannot be queued.
 //
@@ -33,7 +33,7 @@ type auditEntry struct {
 // The active file is rotated to "<path>.<n>" before it would exceed maxBytes.
 // The writer never deletes records: once maxFiles files exist it fails, and
 // protected admission stops until an operator archives files and restarts.
-type auditLog struct {
+type AuditLog struct {
 	boot     string // distinguishes event identities across process starts
 	path     string
 	maxBytes int64
@@ -62,7 +62,7 @@ type auditLog struct {
 	fileErr error         // the result of closing the file; set by the writer before done
 }
 
-func (a *auditLog) fail(err error) {
+func (a *AuditLog) Fail(err error) {
 	if a.failed.CompareAndSwap(false, true) {
 		fmt.Fprintf(os.Stderr, "gateway: audit log failed; protected admission disabled: %v\n", err)
 	}
@@ -70,7 +70,7 @@ func (a *auditLog) fail(err error) {
 
 // Commit records an event and waits for durable acknowledgement. A failed or
 // closing log, or a full queue, refuses it at once.
-func (a *auditLog) Commit(ctx context.Context, e Event) error {
+func (a *AuditLog) Commit(ctx context.Context, e Event) error {
 	if a.failed.Load() {
 		return errAuditFailed
 	}
@@ -89,7 +89,7 @@ func (a *auditLog) Commit(ctx context.Context, e Event) error {
 // Record queues an event without waiting. An event that cannot be queued,
 // because the log has failed, its queue is full or it is closing, is counted;
 // the writer writes the count with its next batch, or as it ends.
-func (a *auditLog) Record(e Event) {
+func (a *AuditLog) Record(e Event) {
 	if a.failed.Load() || a.enqueue(e, nil) != nil {
 		a.lost.Add(1)
 	}
@@ -97,7 +97,7 @@ func (a *auditLog) Record(e Event) {
 
 // enqueue stamps and queues an event, unless the log is closing or its queue
 // is full. Queueing never waits, so the read lock is held only briefly.
-func (a *auditLog) enqueue(e Event, done chan error) error {
+func (a *AuditLog) enqueue(e Event, done chan error) error {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	if a.closing {
@@ -115,13 +115,13 @@ func (a *auditLog) enqueue(e Event, done chan error) error {
 	}
 }
 
-func (a *auditLog) stamp(e Event) Event {
-	e.Schema = eventSchema
+func (a *AuditLog) stamp(e Event) Event {
+	e.Schema = EventSchema
 	e.Time = time.Now().UTC()
 	e.Seq = a.seq.Add(1)
 	e.ID = fmt.Sprintf("%s-%d", a.boot, e.Seq)
-	if len(e.Path) > maxLoggedPath {
-		e.Path = e.Path[:maxLoggedPath]
+	if len(e.Path) > MaxLoggedPath {
+		e.Path = e.Path[:MaxLoggedPath]
 		e.Truncated = true
 	}
 	// A substring can retain the complete request target's backing storage.
@@ -133,7 +133,7 @@ func (a *auditLog) stamp(e Event) Event {
 // until the queue is closed and empty, which only close does; receiving from
 // a closed channel yields every value still buffered first. It then writes
 // the loss count still pending and closes the file.
-func (a *auditLog) run() {
+func (a *AuditLog) run() {
 	defer close(a.done)
 	batch := make([]auditEntry, 0, auditBatchSize)
 	for entry := range a.queue {
@@ -168,7 +168,7 @@ func (a *auditLog) run() {
 	}
 }
 
-func (a *auditLog) write(batch []auditEntry) error {
+func (a *AuditLog) write(batch []auditEntry) error {
 	if a.failed.Load() {
 		return errAuditFailed
 	}
@@ -185,7 +185,7 @@ func (a *auditLog) write(batch []auditEntry) error {
 		if err != nil {
 			// The count was not written, so it stays pending.
 			a.lost.Add(lost)
-			a.fail(err)
+			a.Fail(err)
 			return errAuditFailed
 		}
 		marker := appendEvent(nil, a.stamp(Event{Kind: "audit.rotated", File: rotated}))
@@ -193,7 +193,7 @@ func (a *auditLog) write(batch []auditEntry) error {
 	}
 	if err := fault.WriteAudit(a.file, buffer); err != nil {
 		a.lost.Add(lost)
-		a.fail(err)
+		a.Fail(err)
 		return errAuditFailed
 	}
 	a.size += int64(len(buffer))
@@ -202,7 +202,7 @@ func (a *auditLog) write(batch []auditEntry) error {
 }
 
 // publishUsage copies the writer's size and file count for other readers.
-func (a *auditLog) publishUsage() {
+func (a *AuditLog) publishUsage() {
 	a.activeBytes.Store(a.size)
 	a.files.Store(int64(a.rotated) + 1)
 }
@@ -212,7 +212,7 @@ func appendEvent(buffer []byte, e Event) []byte {
 	return append(append(buffer, line...), '\n')
 }
 
-// close ends the log. From the moment it begins no event can be queued:
+// Close ends the log. From the moment it begins no event can be queued:
 // Record counts it as lost and Commit refuses it. It then waits, until ctx is
 // done, for the writer to write every event queued before, then the pending
 // loss count, and to close the file. It returns nil only when all of that was
@@ -220,7 +220,7 @@ func appendEvent(buffer []byte, e Event) []byte {
 // writer blocked in the file system cannot be interrupted: when ctx ends
 // first, the writer keeps the file and may still finish. Each later call
 // reports the state it then finds.
-func (a *auditLog) close(ctx context.Context) error {
+func (a *AuditLog) Close(ctx context.Context) error {
 	a.mu.Lock()
 	if !a.closing {
 		a.closing = true
@@ -233,18 +233,18 @@ func (a *auditLog) close(ctx context.Context) error {
 		select {
 		case <-a.done:
 		default:
-			events, lost := a.unconfirmed()
+			events, lost := a.Unconfirmed()
 			return fmt.Errorf("audit log not drained within the stop bound: %d accepted events and the count of %d refused events not confirmed written", events, lost)
 		}
 	}
-	if events, lost := a.unconfirmed(); events > 0 || lost > 0 {
+	if events, lost := a.Unconfirmed(); events > 0 || lost > 0 {
 		return fmt.Errorf("audit log incomplete: %d accepted events and the count of %d refused events not written", events, lost)
 	}
 	return a.fileErr
 }
 
-// unconfirmed returns the number of accepted events not yet written and
+// Unconfirmed returns the number of accepted events not yet written and
 // synced, and the count of refused events not yet in the file.
-func (a *auditLog) unconfirmed() (events, lost uint64) {
+func (a *AuditLog) Unconfirmed() (events, lost uint64) {
 	return a.accepted.Load() - a.written.Load(), a.lost.Load()
 }

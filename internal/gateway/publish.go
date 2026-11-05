@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
@@ -75,7 +76,7 @@ func (c *Controller) publish(ctx context.Context, t store.TransitionRecord, poli
 		return c.reject(ctx, t, code, field, now)
 	}
 
-	if err := c.commitAudit(ctx, Event{Kind: "transition.intent", Transition: t.ID, Actor: t.Actor}); err != nil {
+	if err := c.commitAudit(ctx, audit.Event{Kind: "transition.intent", Transition: t.ID, Actor: t.Actor}); err != nil {
 		return auditUnavailable(t.ID)
 	}
 	fault.CrashPoint("before-commit")
@@ -104,7 +105,7 @@ func (c *Controller) publish(ctx context.Context, t store.TransitionRecord, poli
 
 	t.Revision = revision
 	result := Outcome{Transition: t.ID, Outcome: "committed", Revision: revision, Generation: g.ID, Candidate: change.Candidate}
-	event := Event{Kind: outcomeKind(t), Transition: t.ID, Actor: t.Actor, Revision: revision, Generation: g.ID, Candidate: change.Candidate}
+	event := audit.Event{Kind: outcomeKind(t), Transition: t.ID, Actor: t.Actor, Revision: revision, Generation: g.ID, Candidate: change.Candidate}
 	if !change.Deadline.IsZero() {
 		result.Provisional, result.RollbackTarget, result.Deadline = revision, change.Parent, change.Deadline.UTC()
 		event.Provisional, event.RollbackTarget, event.Deadline = revision, change.Parent, change.Deadline.UTC()
@@ -117,11 +118,11 @@ func (c *Controller) publish(ctx context.Context, t store.TransitionRecord, poli
 // stays committed and is reported as such, with the outcome event pending;
 // the audit log is marked failed, so protected admission stops until a
 // restart, whose reconciliation records the missing outcome event.
-func (c *Controller) finish(ctx context.Context, result Outcome, event Event) (Outcome, int) {
+func (c *Controller) finish(ctx context.Context, result Outcome, event audit.Event) (Outcome, int) {
 	fault.CancelPoint(ctx, "cancel-before-outcome")
 	if err := c.commitAudit(ctx, event); err != nil {
 		c.logger.Error("outcome event not recorded", "transition", result.Transition, "error", err)
-		c.audit.fail(err)
+		c.audit.Fail(err)
 		result.Reason = "OUTCOME_AUDIT_PENDING"
 		return result, http.StatusServiceUnavailable
 	}
