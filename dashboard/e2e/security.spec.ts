@@ -162,7 +162,11 @@ test.describe.serial('dashboard', () => {
     await expect(notice).toContainText('The change is active. The gateway stops accepting requests until it restarts and records it.')
     await expect(moreDetail(notice, 'HTTP status')).toHaveText('503')
     await expect(moreDetail(notice, 'Error code')).toHaveText('outcome_audit_pending')
-    await expect(admin.locator('.notice.tone-refused')).toHaveCount(0)
+    // The next status read truthfully announces that protected requests are
+    // now refused; wait for it, so the check below never races it.
+    const outage = 'The security log cannot be written, so every protected request is refused.'
+    await expect(admin.locator('.notice.tone-refused').filter({ hasText: outage }).first()).toBeVisible()
+    await expect(admin.locator('.notice.tone-refused').filter({ hasNotText: outage })).toHaveCount(0)
     const blocked = await adminCall('GET', '/admin/blocked-accounts')
     expect((blocked.body.items as { subject: string }[]).map((b) => b.subject)).toContain(subject)
     await shot(admin, '44-applied-audit-pending')
