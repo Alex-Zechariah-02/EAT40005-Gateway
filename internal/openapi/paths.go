@@ -25,6 +25,8 @@ type candidate struct {
 	notEnforced []NotEnforced
 	annotations []Removed
 	scopes      []string
+	roles       []string // permitted roles from x-apiward-roles; nil when not read
+	maxBytes    int64    // body limit from x-apiward-max-bytes; 0 when absent
 }
 
 // mapper walks one description.
@@ -116,6 +118,9 @@ func (m *mapper) operation(method, path string, item map[string]any, itemPointer
 	c.entry = Mapped{Method: upper, Path: clip(path), Operation: id, Target: target}
 	if widened {
 		c.entry.Note = "matches " + strings.TrimSuffix(target, "*") + "<anything>, including deeper paths"
+	}
+	if refused := m.extensions(object, c); refused != nil {
+		return nil, refused
 	}
 	if refused := m.security(object, c); refused != nil {
 		return nil, refused

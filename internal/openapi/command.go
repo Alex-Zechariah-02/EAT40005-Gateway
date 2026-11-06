@@ -1,4 +1,4 @@
-// The policy import-openapi command: flags, bounded file reads, and output that never overwrites.
+// The policy import-openapi and export-openapi commands: flags, bounded file reads, and output that never overwrites.
 
 package openapi
 
@@ -15,38 +15,58 @@ import (
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
-// usage is the command's synopsis.
-const usage = `gateway policy import-openapi --spec <file.json|.yaml|.yml> --api <id> --upstream <id>
-  --base <policy.json> [--max-body-bytes <n>] --out <new file> --report <new file>`
+// Synopses of the two commands.
+const (
+	importUsage = `gateway policy import-openapi --spec <file.json|.yaml|.yml> --api <id> --upstream <id>
+  --base <policy.json> [--max-body-bytes <n>] [--with-permits] --out <new file> --report <new file>`
+	exportUsage = `gateway policy export-openapi --policy <policy.json> --api <id>
+  --out <new file.json|.yaml|.yml> --report <new file> [--with-upstream]`
+)
+
+// command is one subcommand: its flags and what it runs once they parse.
+type command struct {
+	usage    string
+	required []string
+	optional map[string]string // flag → default
+	switches []string
+	run      func(values map[string]string, stderr io.Writer) (int, error)
+}
+
+var commands = map[string]command{
+	"import-openapi": {importUsage, []string{"spec", "api", "upstream", "base", "out", "report"},
+		map[string]string{"max-body-bytes": strconv.Itoa(DefaultBodyBytes)}, []string{"with-permits"}, runImport},
+	"export-openapi": {exportUsage, []string{"policy", "api", "out", "report"}, nil, []string{"with-upstream"}, runExport},
+}
 
 // Command runs "policy <subcommand>" and returns the exit status. It reads
-// only the spec and base files and creates only the out and report files.
+// only the files named by flags and creates only the out and report files.
 func Command(args []string, stderr io.Writer) int {
-	if len(args) == 0 || args[0] != "import-openapi" {
-		fmt.Fprintln(stderr, "usage: "+usage)
+	var c command
+	known := len(args) > 0
+	if known {
+		c, known = commands[args[0]]
+	}
+	if !known {
+		fmt.Fprintln(stderr, "usage: "+importUsage+"\n       "+exportUsage)
 		return ExitFailed
 	}
-	values, err := parseFlags(args[1:])
+	values, err := c.parse(args[1:])
 	if err != nil {
 		fmt.Fprintln(stderr, "gateway:", err)
 		if errors.Is(err, errUsage) {
-			fmt.Fprintln(stderr, "usage: "+usage)
+			fmt.Fprintln(stderr, "usage: "+c.usage)
 		}
 		return ExitFailed
 	}
-	report, err := run(values)
+	code, err := c.run(values, stderr)
 	if err != nil {
 		fmt.Fprintln(stderr, "gateway:", err)
 		return ExitFailed
 	}
-	fmt.Fprintf(stderr, "imported %d of %d operations (%d widened, %d refused); see %s\n",
-		len(report.Mapped)+len(report.Widened), report.OperationsInSpec, len(report.Widened), len(report.Refused), values["report"])
-	return report.Exit()
+	return code
 }
 
 var errUsage = errors.New("invalid command line")
-
-var required = []string{"spec", "api", "upstream", "base", "out", "report"}
 
 // single is a flag value that may be given only once.
 type single struct {
@@ -64,13 +84,24 @@ func (f *single) Set(value string) error {
 	return nil
 }
 
-func parseFlags(args []string) (map[string]string, error) {
-	set := flag.NewFlagSet("import-openapi", flag.ContinueOnError)
+// toggle is a switch that may be given only once.
+type toggle struct{ single }
+
+func (f *toggle) IsBoolFlag() bool { return true }
+
+func (c command) parse(args []string) (map[string]string, error) {
+	set := flag.NewFlagSet("policy", flag.ContinueOnError)
 	set.SetOutput(io.Discard)
-	parsed := map[string]*single{}
-	for _, name := range append(required, "max-body-bytes") {
-		parsed[name] = new(single)
-		set.Var(parsed[name], name, name)
+	values := map[string]string{}
+	for _, name := range c.required {
+		set.Var(new(single), name, name)
+	}
+	for name, value := range c.optional {
+		values[name] = value
+		set.Var(new(single), name, name)
+	}
+	for _, name := range c.switches {
+		set.Var(new(toggle), name, name)
 	}
 	if err := set.Parse(args); err != nil {
 		return nil, fmt.Errorf("%w: %v", errUsage, err)
@@ -78,13 +109,8 @@ func parseFlags(args []string) (map[string]string, error) {
 	if set.NArg() != 0 {
 		return nil, errUsage
 	}
-	values := map[string]string{"max-body-bytes": strconv.Itoa(DefaultBodyBytes)}
-	for name, value := range parsed {
-		if value.set {
-			values[name] = value.value
-		}
-	}
-	for _, name := range required {
+	set.Visit(func(f *flag.Flag) { values[f.Name] = f.Value.String() })
+	for _, name := range c.required {
 		if values[name] == "" {
 			return nil, fmt.Errorf("--%s is required", name)
 		}
@@ -92,41 +118,90 @@ func parseFlags(args []string) (map[string]string, error) {
 	return values, nil
 }
 
-// run imports and writes both files, or writes neither.
-func run(values map[string]string) (*Report, error) {
+func runImport(values map[string]string, stderr io.Writer) (int, error) {
 	format, err := FormatOf(values["spec"])
 	if err != nil {
-		return nil, err
+		return ExitFailed, err
 	}
 	maxBody, err := strconv.ParseInt(values["max-body-bytes"], 10, 64)
 	if err != nil {
-		return nil, fmt.Errorf("max-body-bytes must be 1 to %d", policy.MaxBodyLimit)
+		return ExitFailed, fmt.Errorf("max-body-bytes must be 1 to %d", policy.MaxBodyLimit)
 	}
 	spec, err := readLimited(values["spec"], MaxSpecBytes, "spec")
 	if err != nil {
-		return nil, err
+		return ExitFailed, err
 	}
-	baseDocument, err := readLimited(values["base"], policy.MaxPolicyBytes, "base")
+	base, err := readPolicy(values["base"], "base")
 	if err != nil {
-		return nil, err
+		return ExitFailed, err
 	}
-	base, err := policy.DecodePolicy(baseDocument)
+	result, report, err := Import(spec, format, Options{API: values["api"], Upstream: values["upstream"], Base: base,
+		MaxBodyBytes: maxBody, WithPermits: values["with-permits"] == "true"})
 	if err != nil {
-		return nil, fmt.Errorf("base policy refused: %w", err)
+		return ExitFailed, err
 	}
-	result, report, err := Import(spec, format, Options{API: values["api"], Upstream: values["upstream"], Base: base, MaxBodyBytes: maxBody})
+	if err := write(values, result, report); err != nil {
+		return ExitFailed, err
+	}
+	fmt.Fprintf(stderr, "imported %d of %d operations (%d widened, %d refused); see %s\n",
+		len(report.Mapped)+len(report.Widened), report.OperationsInSpec, len(report.Widened), len(report.Refused), values["report"])
+	return report.Exit(), nil
+}
+
+func runExport(values map[string]string, stderr io.Writer) (int, error) {
+	format, err := FormatOf(values["out"])
 	if err != nil {
-		return nil, err
+		return ExitFailed, err
 	}
-	document, err := json.MarshalIndent(result, "", "  ")
+	source, err := readPolicy(values["policy"], "policy")
 	if err != nil {
-		return nil, err
+		return ExitFailed, err
 	}
-	record, err := json.MarshalIndent(report, "", "  ")
+	document, report, err := Export(source, ExportOptions{API: values["api"], WithUpstream: values["with-upstream"] == "true"})
 	if err != nil {
-		return nil, err
+		return ExitFailed, err
 	}
-	return report, writeNew(map[string][]byte{values["out"]: append(document, '\n'), values["report"]: append(record, '\n')})
+	data, err := encodeDocument(document, format)
+	if err != nil {
+		return ExitFailed, err
+	}
+	if err := write(values, json.RawMessage(data), report); err != nil {
+		return ExitFailed, err
+	}
+	fmt.Fprintf(stderr, "exported %d of %d operations (%d changed); see %s\n",
+		len(report.Exported), report.Operations, len(report.Changed), values["report"])
+	return report.Exit(), nil
+}
+
+// readPolicy reads and strictly decodes a policy file.
+func readPolicy(path, name string) (policy.Policy, error) {
+	document, err := readLimited(path, policy.MaxPolicyBytes, name)
+	if err != nil {
+		return policy.Policy{}, err
+	}
+	p, err := policy.DecodePolicy(document)
+	if err != nil {
+		return policy.Policy{}, fmt.Errorf("%s policy refused: %w", name, err)
+	}
+	return p, nil
+}
+
+// write encodes the output and the report as 2-space JSON and writes both
+// new files, or neither. Raw output is written as given.
+func write(values map[string]string, output, report any) error {
+	files := map[string][]byte{}
+	for name, value := range map[string]any{"out": output, "report": report} {
+		if raw, ok := value.(json.RawMessage); ok {
+			files[values[name]] = raw
+			continue
+		}
+		data, err := json.MarshalIndent(value, "", "  ")
+		if err != nil {
+			return err
+		}
+		files[values[name]] = append(data, '\n')
+	}
+	return writeNew(files)
 }
 
 // readLimited reads at most limit bytes and refuses a longer file.

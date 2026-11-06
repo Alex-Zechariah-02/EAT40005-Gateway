@@ -29,7 +29,7 @@ A policy can pass all checks and still cause problems when it is in use. Adminis
 
 ```
 gateway policy import-openapi --spec <file.json|.yaml|.yml> --api <id> --upstream <id>
-  --base <policy.json> [--max-body-bytes <n>] --out <new file> --report <new file>
+  --base <policy.json> [--max-body-bytes <n>] [--with-permits] --out <new file> --report <new file>
 ```
 
 | Flag | Meaning |
@@ -38,12 +38,13 @@ gateway policy import-openapi --spec <file.json|.yaml|.yml> --api <id> --upstrea
 | `--api` | The API to create, or to replace with its operations and the permits that name them |
 | `--upstream` | An upstream already in `--base` that serves the API |
 | `--base` | The policy to build on, for example the output of `demo policy export` |
-| `--max-body-bytes` | Body limit for imported request bodies: 1 to 1,048,576, default 16,384 |
+| `--max-body-bytes` | Body limit for imported request bodies without `x-apiward-max-bytes`: 1 to 1,048,576, default 16,384 |
+| `--with-permits` | Read `x-apiward-roles` into permits, adding missing roles; without it no permit is created |
 | `--out`, `--report` | New files; the command never overwrites a file and writes both or neither |
 
 Exit status: `0` every operation mapped; `2` both files written, but some operations were refused or widened (read the report); `1` nothing written (bad flags, unreadable or refused description, an output file exists, or the result does not compile).
 
-**How it maps.** Each path and method becomes one operation `<api>.<operationId>`, allowed, with sign-in required unless the description says `security: []`. No permits are created; grant roles afterwards. A path whose last segment is a parameter (`/orders/{id}`) becomes the prefix `/orders/*`, which also matches deeper paths. Header parameters become the header schema; query, path and cookie parameters are listed as not enforced. A JSON request body becomes a body rule. Schema `$ref`s inside the file are inlined, descriptive keywords (`description`, `example`, `x-…`) are removed, and an object without `additionalProperties` allows extra fields, as OpenAPI does. Every operation is checked by the gateway's own compiler, and the whole result is compiled before anything is written.
+**How it maps.** Each path and method becomes one operation `<api>.<operationId>`, allowed, with sign-in required unless the description says `security: []`. No permits are created unless `--with-permits` reads `x-apiward-roles`; grant roles afterwards. A path whose last segment is a parameter (`/orders/{id}`) becomes the prefix `/orders/*`, which also matches deeper paths. Header parameters become the header schema; query, path and cookie parameters are listed as not enforced. A JSON request body becomes a body rule. Schema `$ref`s inside the file are inlined, descriptive keywords (`description`, `example`, `x-…`) are removed, and an object without `additionalProperties` allows extra fields, as OpenAPI does. Every operation is checked by the gateway's own compiler, and the whole result is compiled before anything is written.
 
 **What is refused.** An operation is left out, with a code in the report, when it cannot be expressed exactly: `TRACE` (`METHOD_REFUSED`); a missing or invalid `operationId` (`OPERATION_ID_INVALID`, with a suggestion) or one used twice (`OPERATION_ID_DUPLICATE`); a parameter in the middle of a path (`PATH_TEMPLATE_UNSUPPORTED`); two operations on the same method and target (`TARGET_COLLISION`); API keys, Basic, mutual TLS or optional sign-in (`SECURITY_SCHEME_UNSUPPORTED`); non-JSON bodies (`MEDIA_TYPE_UNSUPPORTED`); a schema keyword the gateway cannot enforce, such as `format`, `pattern` or `oneOf` (`SCHEMA_KEYWORD_UNSUPPORTED`; dropping it would accept more than described); a `$ref` to another file (`EXTERNAL_REF`), a missing one (`REF_INVALID`) or a circular one (`SCHEMA_CYCLE`); a schema deeper than 16 levels or larger than 4,096 values once inlined (`SCHEMA_LIMIT_EXCEEDED`); and anything else the compiler rejects (`COMPILER_REFUSED`, with its code and field). YAML anchors, aliases, merge keys, tags, several documents in one file, duplicate or non-string keys and `.nan`/`.inf` refuse the whole file, naming the line.
 
@@ -66,6 +67,29 @@ Exit status: `0` every operation mapped; `2` both files written, but some operat
 ```
 
 `mapped` and `widened` list the imported operations (`note` explains a default they rely on); `assumed` lists values the import chose; `changed` lists behaviour the gateway enforces differently from the description; `refused` entries may add `field` (a JSON Pointer into the description, or the compiler's field) and `suggestion`; `needs_permissions` lists the signed-in operations no role can call yet; `removed_operations` and `removed_permits` are what replacing `--api` took out of the base; `ignored` names description members with no effect on the policy (`servers`, `responses`, `callbacks`, `webhooks`, `links`, `tags`).
+
+**Gateway extensions.** An operation may carry the members the export writes; each is checked, and any other `x-apiward-…` member refuses the operation (`EXTENSION_INVALID`):
+
+| Member | Value | Effect |
+|---|---|---|
+| `x-apiward-target` | the prefix target the path stands for, such as `/orders/*` for `/orders/{rest}` | the operation is mapped, not widened: the description states that deeper paths match |
+| `x-apiward-access` | `allow` or `deny` | the operation's access; absent means `allow` |
+| `x-apiward-rate` | `{"algorithm": "sliding-window", "count", "window_seconds", "key"}` | the operation's rate rule, as in a policy |
+| `x-apiward-max-bytes` | 1 to 1,048,576 | the body limit; needs a request body |
+| `x-apiward-roles` | list of role identifiers | the roles permitted, read only with `--with-permits` |
+
+## Export a policy as OpenAPI
+
+`gateway policy export-openapi` writes one API of a policy as an OpenAPI 3.1 description (JSON, or YAML by the `--out` extension), for review or for tools that read OpenAPI. Importing that file onto the same policy with `--with-permits` gives the same policy back.
+
+```
+gateway policy export-openapi --policy <policy.json> --api <id>
+  --out <new file.json|.yaml|.yml> --report <new file> [--with-upstream]
+```
+
+Each operation becomes the path and method of its target, with `operationId` = the operation identifier without the `<api>.` prefix. A prefix target `/orders/*` becomes `/orders/{rest}` with `x-apiward-target: /orders/*`. Sign-in required becomes the bearer scheme `apiward`; public becomes `security: []`. A body rule becomes a required `application/json` request body with its schema and `x-apiward-max-bytes`; a header schema becomes header parameters (its root `additionalProperties` is not written, since the gateway checks declared headers only). Access, rate rule and permitted roles go into `x-apiward-access`, `x-apiward-rate` and `x-apiward-roles`. The upstream address is written as a server only with `--with-upstream`.
+
+Exit status: `0` the description means exactly what the policy does; `2` both files written, but something differs (read `changed`): a prefix target, which OpenAPI reads as one segment while the gateway also matches deeper paths; an identifier without the `<api>.` prefix, which comes back with it; a target containing `{` or `}`, which is not exported; `1` nothing written. The report lists `exported` (`operation`, `method`, `path`), `changed` (`operation`, `field`, `note`) and `omitted` (what a flag would add).
 
 ## How it is built
 
@@ -96,7 +120,7 @@ Each package under `internal/` imports only the packages listed before it; a tes
 
 You need Go 1.26 or newer. `go.mod` selects the Go 1.27.3 toolchain; with `GOTOOLCHAIN=auto`, Go uses or downloads that toolchain when needed. Programs live in `cmd/`, with shared code in `internal/gateway` and `internal/services`. The preserved controlled APIs for gateway regression tests live in `internal/services/testfixture`. The two web applications are in `dashboard/` and `client/`.
 
-- `cmd/gateway` runs the gateway from one strict JSON configuration file. It has the commands `run`, `install`, `enrol`, `backup`, `restore` and `migrate`, each with `--config <file>`, and the offline `policy import-openapi` (see above). The local commands `install`, `enrol`, `backup`, `restore` and `migrate` run while the gateway is stopped.
+- `cmd/gateway` runs the gateway from one strict JSON configuration file. It has the commands `run`, `install`, `enrol`, `backup`, `restore` and `migrate`, each with `--config <file>`, and the offline `policy import-openapi` and `policy export-openapi` (see above). The local commands `install`, `enrol`, `backup`, `restore` and `migrate` run while the gateway is stopped.
 - `cmd/services -service inventory|orders|reports|support -secret-file <service.secret>` runs a Fetch business API, with independent authenticated receipts, state and reset. Defaults honor `EAT_PORT_OFFSET`; `-listen` and `-control` select explicit loopback addresses. Orders uses `-inventory <http-origin>` and Reports uses `-orders <http-origin>` for authenticated internal calls.
 - `cmd/accounts -secret-file <service.secret> -signing-settings <accounts.json>` runs Fetch Accounts. Signing settings contain `kid` and an absolute `private_key_file`. Only Accounts signs application tokens, which last 15 minutes. Account and signing secrets stay in the private demonstration state.
 - `cmd/testfixture` preserves the three earlier controlled APIs for gateway regression tests. The Fetch demonstration does not build or run it.

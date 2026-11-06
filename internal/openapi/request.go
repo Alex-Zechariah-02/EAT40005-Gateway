@@ -149,6 +149,9 @@ func (m *mapper) parameters(item, object map[string]any, itemPointer, pointer st
 func (m *mapper) body(object map[string]any, pointer string, c *candidate, s *schemas) *refusal {
 	raw, present := object["requestBody"]
 	if !present {
+		if c.maxBytes > 0 {
+			return refuse(CodeExtension, "x-apiward-max-bytes", "x-apiward-max-bytes needs a request body.")
+		}
 		return nil
 	}
 	at := located(raw, pointer+"/requestBody")
@@ -178,8 +181,11 @@ func (m *mapper) body(object map[string]any, pointer string, c *candidate, s *sc
 		}
 	}
 
-	c.assumed = append(c.assumed, Assumed{Operation: c.op.ID, Field: "body.max_bytes", Value: m.options.MaxBodyBytes})
-	c.op.Body = &policy.BodyRule{MaxBytes: m.options.MaxBodyBytes} // without a schema the compiler refuses it
+	if c.maxBytes == 0 {
+		c.maxBytes = m.options.MaxBodyBytes
+		c.assumed = append(c.assumed, Assumed{Operation: c.op.ID, Field: "body.max_bytes", Value: c.maxBytes})
+	}
+	c.op.Body = &policy.BodyRule{MaxBytes: c.maxBytes} // without a schema the compiler refuses it
 	if schema, present := first["schema"]; present {
 		converted, refused := s.convert(schema, at+"/content/"+escape(types[0])+"/schema", "body.schema", 1, nil)
 		if refused != nil {

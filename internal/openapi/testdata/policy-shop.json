@@ -1,0 +1,42 @@
+{
+  "schema_version": 4,
+  "profile": "core",
+  "upstreams": [
+    {"id": "shop-svc", "dial": "127.0.0.1:9201"},
+    {"id": "audit-svc", "dial": "127.0.0.1:9202"}
+  ],
+  "apis": [
+    {"id": "shop", "upstream": "shop-svc"},
+    {"id": "audit", "upstream": "audit-svc"}
+  ],
+  "operations": [
+    {"id": "shop.list", "api": "shop", "method": "GET", "target": "/items", "access": "allow", "auth": "none",
+     "rate": {"algorithm": "sliding-window", "count": 120, "window_seconds": 60, "key": "client_address"}},
+    {"id": "shop.item", "api": "shop", "method": "GET", "target": "/items/*", "access": "allow", "auth": "required",
+     "rate": {"algorithm": "sliding-window", "count": 60, "window_seconds": 60, "key": "subject"}},
+    {"id": "shop.item.update", "api": "shop", "method": "PATCH", "target": "/items/*", "access": "allow", "auth": "required",
+     "body": {"max_bytes": 512, "schema": {"type": "object", "additionalProperties": false, "required": ["price", "name"],
+       "properties": {"name": {"type": "string", "minLength": 1, "maxLength": 80}, "price": {"type": "integer", "minimum": 1, "maximum": 1e6}}}},
+     "headers": {"type": "object", "additionalProperties": true, "required": ["X-Tenant"],
+       "properties": {"X-Tenant": {"type": "string", "maxLength": 32}, "X-Locale": {"type": "string", "enum": ["en", "ms"]}}}},
+    {"id": "shop.create", "api": "shop", "method": "POST", "target": "/items", "access": "allow", "auth": "required",
+     "body": {"max_bytes": 4096, "schema": {"type": "object", "additionalProperties": false, "required": ["lines"],
+       "properties": {"lines": {"type": "array", "minItems": 1, "maxItems": 20,
+         "items": {"type": "object", "additionalProperties": false, "required": ["sku"], "properties": {"sku": {"type": "string"}}}}}}},
+     "rate": {"algorithm": "sliding-window", "count": 10, "window_seconds": 3600, "key": "subject"}},
+    {"id": "shop.remove", "api": "shop", "method": "DELETE", "target": "/items/*", "access": "deny", "auth": "required"},
+    {"id": "shop.health", "api": "shop", "method": "HEAD", "target": "/health/", "access": "allow", "auth": "none"},
+    {"id": "shop.closed", "api": "shop", "method": "OPTIONS", "target": "/items", "access": "deny", "auth": "none"},
+    {"id": "shop.private", "api": "shop", "method": "PUT", "target": "/private", "access": "allow", "auth": "required"},
+    {"id": "audit.read", "api": "audit", "method": "GET", "target": "/*", "access": "allow", "auth": "required"}
+  ],
+  "roles": [{"id": "writer"}, {"id": "reader"}, {"id": "auditor"}, {"id": "unused"}],
+  "permits": [
+    {"role": "writer", "operation": "shop.item.update"},
+    {"role": "reader", "operation": "shop.item"},
+    {"role": "writer", "operation": "shop.item"},
+    {"role": "writer", "operation": "shop.create"},
+    {"role": "writer", "operation": "shop.remove"},
+    {"role": "auditor", "operation": "audit.read"}
+  ]
+}

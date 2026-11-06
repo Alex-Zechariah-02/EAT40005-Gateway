@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -157,6 +158,94 @@ func TestImportCommand(t *testing.T) {
 		}
 		if exists(run.out) || exists(run.report) {
 			t.Fatal("a file was written")
+		}
+	})
+}
+
+func TestExportCommand(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "policy.json")
+	if err := os.WriteFile(source, fixture(t, "policy-shop.json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	args := func(out, report string, extra ...string) []string {
+		return append([]string{"export-openapi", "--policy", source, "--api", "shop", "--out", out, "--report", report}, extra...)
+	}
+	t.Run("writes both files and round trips", func(t *testing.T) {
+		out, report := filepath.Join(dir, "shop.yaml"), filepath.Join(dir, "shop.report.json")
+		var stderr bytes.Buffer
+		if code := Command(args(out, report), &stderr); code != ExitPartial || !strings.Contains(stderr.String(), "exported 8 of 8 operations (3 changed)") {
+			t.Fatalf("exit %d: %s", code, stderr.String())
+		}
+		raw, _ := os.ReadFile(report)
+		var written ExportReport
+		if err := json.Unmarshal(raw, &written); err != nil || len(written.Changed) != 3 {
+			t.Fatalf("report %v %s", err, raw)
+		}
+		imported, importReport := filepath.Join(dir, "back.json"), filepath.Join(dir, "back.report.json")
+		code := Command([]string{"import-openapi", "--spec", out, "--api", "shop", "--upstream", "shop-svc", "--base", source,
+			"--with-permits", "--out", imported, "--report", importReport}, &stderr)
+		back, _ := os.ReadFile(imported)
+		decoded, err := policy.DecodePolicy(back)
+		if code != ExitComplete || err != nil {
+			t.Fatalf("import exit %d, %v: %s", code, err, stderr.String())
+		}
+		got, _ := policy.Encode(decoded)
+		want, _ := policy.Encode(policyFixture(t, "policy-shop.json"))
+		if !bytes.Equal(got, want) {
+			t.Fatalf("command round trip differs:\n%s", got)
+		}
+	})
+	t.Run("everything exact exits 0", func(t *testing.T) {
+		exact := policyFixture(t, "policy-public.json")
+		exact.Operations = slices.DeleteFunc(exact.Operations, func(op policy.Operation) bool { return op.ID == "site.pages" })
+		data, _ := json.Marshal(exact)
+		path := filepath.Join(dir, "exact.json")
+		os.WriteFile(path, data, 0o600)
+		code := Command([]string{"export-openapi", "--policy", path, "--api", "site", "--out", filepath.Join(dir, "site.json"),
+			"--report", filepath.Join(dir, "site.report.json"), "--with-upstream"}, new(bytes.Buffer))
+		if code != ExitComplete {
+			t.Fatalf("exit %d", code)
+		}
+	})
+	t.Run("nothing written", func(t *testing.T) {
+		os.WriteFile(filepath.Join(dir, "taken.json"), []byte("keep"), 0o600)
+		cases := []struct {
+			name string
+			args []string
+			want string
+		}{
+			{"unknown api", []string{"export-openapi", "--policy", source, "--api", "nope"}, "not in the policy"},
+			{"trust flag", []string{"--with-trust"}, "usage"},
+			{"blocked flag", []string{"--with-blocked"}, "usage"},
+			{"repeated switch", []string{"--with-upstream", "--with-upstream"}, "more than once"},
+			{"file type", []string{"out.txt"}, "unsupported file type"},
+			{"existing out", []string{"taken"}, "already exists"},
+			{"missing policy", []string{"export-openapi", "--api", "shop"}, "--policy is required"},
+		}
+		for _, c := range cases {
+			out, report := filepath.Join(dir, c.name+".json"), filepath.Join(dir, c.name+".report.json")
+			full := args(out, report, c.args...)
+			switch c.args[0] {
+			case "export-openapi":
+				full = append(c.args, "--out", out, "--report", report)
+			case "out.txt":
+				out = filepath.Join(dir, "out.txt")
+				full = args(out, report)
+			case "taken":
+				out = filepath.Join(dir, "taken.json")
+				full = args(out, report)
+			}
+			var stderr bytes.Buffer
+			if code := Command(full, &stderr); code != ExitFailed || !strings.Contains(stderr.String(), c.want) {
+				t.Errorf("%s: exit %d, %q, want %q", c.name, code, stderr.String(), c.want)
+			}
+			if exists(report) || (c.args[0] != "taken" && exists(out)) {
+				t.Errorf("%s: a file was written", c.name)
+			}
+		}
+		if kept, _ := os.ReadFile(filepath.Join(dir, "taken.json")); string(kept) != "keep" {
+			t.Fatal("existing file changed")
 		}
 	})
 }

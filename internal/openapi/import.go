@@ -25,7 +25,8 @@ type Options struct {
 	API          string        // the API to create or replace
 	Upstream     string        // an upstream of Base that serves the API
 	Base         policy.Policy // the policy the result is built on
-	MaxBodyBytes int64         // body limit of every imported body rule
+	MaxBodyBytes int64         // body limit of body rules without x-apiward-max-bytes
+	WithPermits  bool          // read x-apiward-roles into permits
 }
 
 func (o Options) check() error {
@@ -153,8 +154,14 @@ func accept(c *candidate, result *policy.Policy, report *Report) {
 	} else {
 		report.Mapped = append(report.Mapped, c.entry)
 	}
-	if c.op.Auth == "required" {
+	if c.op.Auth == "required" && c.roles == nil {
 		report.NeedsPermissions = append(report.NeedsPermissions, c.op.ID)
+	}
+	for _, role := range c.roles {
+		result.Permits = append(result.Permits, policy.Permit{Role: role, Operation: c.op.ID})
+		if !slices.ContainsFunc(result.Roles, func(r policy.Role) bool { return r.ID == role }) {
+			result.Roles = append(result.Roles, policy.Role{ID: role})
+		}
 	}
 	report.Assumed = append(report.Assumed, c.assumed...)
 	report.Changed = append(report.Changed, c.changed...)

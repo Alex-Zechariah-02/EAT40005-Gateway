@@ -1,0 +1,17 @@
+{
+  "schema_version": 4,
+  "profile": "core",
+  "upstreams": [{"id": "site-svc", "dial": "127.0.0.1:9301"}],
+  "apis": [{"id": "site", "upstream": "site-svc"}],
+  "operations": [
+    {"id": "site.home", "api": "site", "method": "GET", "target": "/", "access": "allow", "auth": "none"},
+    {"id": "site.pages", "api": "site", "method": "GET", "target": "/pages/*", "access": "allow", "auth": "none",
+     "rate": {"algorithm": "sliding-window", "count": 1, "window_seconds": 86400, "key": "client_address"}},
+    {"id": "site.contact", "api": "site", "method": "POST", "target": "/contact", "access": "allow", "auth": "none",
+     "body": {"max_bytes": 1048576, "schema": {"type": "array", "maxItems": 3, "items": {"type": ["string", "null"], "maxLength": 200}}},
+     "rate": {"algorithm": "sliding-window", "count": 1000000, "window_seconds": 1, "key": "client_address"}},
+    {"id": "site.search", "api": "site", "method": "GET", "target": "/search", "access": "allow", "auth": "none"}
+  ],
+  "roles": [{"id": "visitor"}],
+  "permits": []
+}

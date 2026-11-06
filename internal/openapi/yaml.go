@@ -183,3 +183,40 @@ func integer(digits string, base int) (any, error) {
 	}
 	return json.Number(number.String()), nil
 }
+
+// encodeDocument writes a description as 2-space JSON, or as block YAML
+// made from that JSON text, so both formats hold the same values and the
+// import reads either back alike.
+func encodeDocument(document map[string]any, format Format) ([]byte, error) {
+	data, err := json.MarshalIndent(document, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	if format == JSON {
+		return append(data, '\n'), nil
+	}
+	var node yaml.Node
+	if err := yaml.Unmarshal(data, &node); err != nil {
+		return nil, err
+	}
+	plain(&node)
+	var out bytes.Buffer
+	encoder := yaml.NewEncoder(&out)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(&node); err != nil {
+		return nil, err
+	}
+	if err := encoder.Close(); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
+}
+
+// plain drops the JSON flow and quoting styles; the encoder still quotes
+// every string that would otherwise read as another type.
+func plain(node *yaml.Node) {
+	node.Style = 0
+	for _, child := range node.Content {
+		plain(child)
+	}
+}
