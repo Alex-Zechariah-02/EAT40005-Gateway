@@ -199,7 +199,9 @@ func TestBodiesAndHeaderValuesNeverRecorded(t *testing.T) {
 	} {
 		e.rawExchange(request, false)
 	}
-	events := e.eventsWhen(func(events []map[string]any) bool { return countKind(events, "request.rejected") == 5 })
+	events := e.eventsWhen(func(events []map[string]any) bool {
+		return countKind(events, "request.rejected") == 5 && countKind(events, "request.forwarded") == 1
+	})
 	if countKind(events, "request.rejected") != 5 || countKind(events, "request.forwarded") != 1 {
 		t.Fatalf("events %v", events)
 	}

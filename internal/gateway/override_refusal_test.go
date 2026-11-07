@@ -173,7 +173,9 @@ func TestOverrideRefusals(t *testing.T) {
 		t.Fatal("enforcement changed")
 	}
 	e.assertReceipts(0, 1, 0)
-	events := e.eventsWhen(func(events []map[string]any) bool { return countKind(events, "tpo.rejected") >= len(refusals)+1 })
+	events := e.eventsWhen(func(events []map[string]any) bool {
+		return countKind(events, "tpo.rejected") >= len(refusals)+1 && hasKinds(events, "tpo.validated", "tpo.created")
+	})
 	if n := countKind(events, "tpo.rejected"); n < len(refusals)+1 {
 		t.Fatalf("%d refusal events", n)
 	}

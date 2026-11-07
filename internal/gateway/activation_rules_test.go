@@ -93,7 +93,7 @@ func TestLifecycleNeedsAuthorisedAdministrator(t *testing.T) {
 		t.Fatalf("status %+v", s)
 	}
 	e.expectEnforced(true, "")
-	events := e.eventsWhen(func(events []map[string]any) bool { return countKind(events, "admin.denied") > 0 })
+	events := e.eventsWhen(func(events []map[string]any) bool { return hasKinds(events, "admin.denied", "admin.rejected") })
 	if countKind(events, "admin.denied") == 0 || countKind(events, "admin.rejected") == 0 {
 		t.Fatal("refused administration calls were not recorded")
 	}

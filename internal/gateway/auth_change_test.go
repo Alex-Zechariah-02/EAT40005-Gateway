@@ -73,7 +73,9 @@ func TestRoleChangeAppliesToNewRequestsOnly(t *testing.T) {
 		t.Fatalf("bob's write under %s, want %s", g, outcome.Generation)
 	}
 
-	events := e.eventsWhen(func(events []map[string]any) bool { return countKind(events, "request.forwarded") == 2 })
+	events := e.eventsWhen(func(events []map[string]any) bool {
+		return countKind(events, "request.forwarded") == 2 && findEvent(events, "request.rejected", refusedID) != nil
+	})
 	if ev := findEvent(events, "request.forwarded", held.RequestID); ev == nil || ev["generation"] != first || ev["subject"] != "alice" {
 		t.Fatalf("in-flight event %v", ev)
 	}

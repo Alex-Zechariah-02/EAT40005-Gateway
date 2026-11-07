@@ -237,7 +237,8 @@ func TestAdminEventsAreSecretSafe(t *testing.T) {
 	root = e.mustLogin("root", changed)
 	e.as(root, http.MethodDelete, "/admin/session", "")
 
-	events := e.eventsWhen(func(events []map[string]any) bool { return countKind(events, "admin.logout") == 1 })
+	recorded := []string{"admin.authenticated", "admin.rejected", "admin.logout", "transition.intent", "transition.committed"}
+	events := e.eventsWhen(func(events []map[string]any) bool { return hasKinds(events, recorded...) })
 	for _, ev := range events {
 		kind := ev["kind"].(string)
 		if (strings.HasPrefix(kind, "admin.") && kind != "admin.rejected") || strings.HasPrefix(kind, "transition.") {
@@ -246,7 +247,7 @@ func TestAdminEventsAreSecretSafe(t *testing.T) {
 			}
 		}
 	}
-	for _, kind := range []string{"admin.authenticated", "admin.rejected", "admin.logout", "transition.intent", "transition.committed"} {
+	for _, kind := range recorded {
 		if countKind(events, kind) == 0 {
 			t.Errorf("no %s event", kind)
 		}

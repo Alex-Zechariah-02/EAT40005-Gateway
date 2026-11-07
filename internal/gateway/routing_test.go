@@ -38,7 +38,9 @@ func TestAdmittedRequestReachesOnlyBoundUpstream(t *testing.T) {
 	}
 	e.assertReceipts(1, 0, 0)
 
-	events := e.eventsWhen(func(events []map[string]any) bool { return countKind(events, "request.rejected") >= 2 })
+	events := e.eventsWhen(func(events []map[string]any) bool {
+		return countKind(events, "request.rejected") >= 2 && countKind(events, "request.admitted") >= 1
+	})
 	admitted, rejected := countKind(events, "request.admitted"), countKind(events, "request.rejected")
 	if admitted != 1 || rejected != 2 {
 		t.Fatalf("audit admitted=%d rejected=%d, want 1 and 2", admitted, rejected)

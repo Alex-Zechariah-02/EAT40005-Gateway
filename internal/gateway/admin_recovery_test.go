@@ -4,6 +4,7 @@ package gateway
 
 import (
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -46,20 +47,12 @@ func TestInterruptedBootstrap(t *testing.T) {
 					t.Fatalf("consumed secret accepted after restart: %d", code)
 				}
 				// The outcome event lost in the crash is recorded at startup.
-				events := e.eventsWhen(func(events []map[string]any) bool {
-					for _, ev := range events {
-						if ev["kind"] == "transition.committed" && ev["reason"] == "reconciled" {
-							return true
-						}
-					}
-					return false
-				})
-				found := false
-				for _, ev := range events {
+				enrolment := func(ev map[string]any) bool {
 					id, _ := ev["transition"].(string)
-					found = found || (ev["kind"] == "transition.committed" && ev["reason"] == "reconciled" && strings.HasPrefix(id, "enrol:"))
+					return ev["kind"] == "transition.committed" && ev["reason"] == "reconciled" && strings.HasPrefix(id, "enrol:")
 				}
-				if !found {
+				events := e.eventsWhen(func(events []map[string]any) bool { return slices.ContainsFunc(events, enrolment) })
+				if !slices.ContainsFunc(events, enrolment) {
 					t.Fatal("no reconciled outcome event for the enrolment")
 				}
 				return

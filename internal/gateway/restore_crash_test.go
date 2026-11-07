@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -139,12 +140,14 @@ func TestRestoreSurvivesCrash(t *testing.T) {
 			}
 			if tc.point == "restore-after-promote" {
 				// The lost outcome event is recorded from the database.
-				reconciled := false
-				for _, ev := range e.eventsWhen(func(events []map[string]any) bool { return countKind(events, "controller.unavailable") > 0 }) {
+				restore := func(ev map[string]any) bool {
 					id, _ := ev["transition"].(string)
-					reconciled = reconciled || (ev["kind"] == "transition.committed" && ev["reason"] == "reconciled" && strings.HasPrefix(id, "operator:restore:"))
+					return ev["kind"] == "transition.committed" && ev["reason"] == "reconciled" && strings.HasPrefix(id, "operator:restore:")
 				}
-				if !reconciled {
+				events := e.eventsWhen(func(events []map[string]any) bool {
+					return countKind(events, "controller.unavailable") > 0 && slices.ContainsFunc(events, restore)
+				})
+				if !slices.ContainsFunc(events, restore) {
 					t.Fatal("no reconciled outcome event for the promoted restore")
 				}
 				e.stop()

@@ -86,6 +86,16 @@ func countKind(events []map[string]any, kind string) int {
 	return n
 }
 
+// hasKinds reports whether events holds at least one event of every kind.
+func hasKinds(events []map[string]any, kinds ...string) bool {
+	for _, kind := range kinds {
+		if countKind(events, kind) == 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // auditLine is what the restart tests read of one audit record.
 type auditLine struct {
 	Kind      string `json:"kind"`

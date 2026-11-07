@@ -47,7 +47,9 @@ func TestAuditGateAndSecretSafety(t *testing.T) {
 		e.assertReceipts(1, 0, 0)
 
 		// auditEvents fails the test if any line is not exactly one JSON record.
-		events := e.eventsWhen(func(events []map[string]any) bool { return countKind(events, "request.rejected") >= 2 })
+		events := e.eventsWhen(func(events []map[string]any) bool {
+			return countKind(events, "request.rejected") >= 2 && hasKinds(events, "request.admitted", "request.forwarded")
+		})
 		raw, _ := os.ReadFile(e.auditLog)
 		for _, secret := range []string{"SECRET-TOKEN", "SECRET-QUERY-VALUE", "Bearer"} {
 			if strings.Contains(string(raw), secret) {

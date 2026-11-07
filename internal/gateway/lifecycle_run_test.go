@@ -42,8 +42,9 @@ func TestOwnedControllerRunsPolicyLifecycles(t *testing.T) {
 	created := e.mustOverride(harness, operationContainment("read-a", 1), policyETag(kept.Provisional), "owned-override-create")
 	waitFor(t, created.Expires.Add(5*time.Second), "the override expiry", func() bool { return len(e.status().Overrides) == 0 })
 
-	events := e.eventsWhen(func(events []map[string]any) bool { return countKind(events, "tpo.expired") == 1 })
-	for _, kind := range []string{"cpa.activated", "cpa.timed_out", "cpa.confirmed", "tpo.created", "tpo.expired"} {
+	recorded := []string{"cpa.activated", "cpa.timed_out", "cpa.confirmed", "tpo.created", "tpo.expired"}
+	events := e.eventsWhen(func(events []map[string]any) bool { return hasKinds(events, recorded...) })
+	for _, kind := range recorded {
 		if countKind(events, kind) == 0 {
 			t.Errorf("no %s event", kind)
 		}

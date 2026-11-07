@@ -73,20 +73,20 @@ func TestLoginThrottling(t *testing.T) {
 	if _, code := e.login("second", secondPassword); code != http.StatusTooManyRequests {
 		t.Fatalf("login after %d failures in the window: %d", maxWindowFailures, code)
 	}
-	events := e.eventsWhen(func(events []map[string]any) bool {
-		throttled := false
+	recorded := func(events []map[string]any) map[string]bool {
+		reasons := map[string]bool{}
 		for _, ev := range events {
-			throttled = throttled || ev["reason"] == "throttled"
+			if ev["kind"] == "admin.rejected" {
+				reasons[ev["reason"].(string)] = true
+			}
 		}
-		return throttled
-	})
-	reasons := map[string]bool{}
-	for _, ev := range events {
-		if ev["kind"] == "admin.rejected" {
-			reasons[ev["reason"].(string)] = true
-		}
+		return reasons
 	}
-	if !reasons["locked"] || !reasons["throttled"] || !reasons["bad_credentials"] {
+	complete := func(reasons map[string]bool) bool {
+		return reasons["locked"] && reasons["throttled"] && reasons["bad_credentials"]
+	}
+	reasons := recorded(e.eventsWhen(func(events []map[string]any) bool { return complete(recorded(events)) }))
+	if !complete(reasons) {
 		t.Fatalf("refusal reasons recorded: %v", reasons)
 	}
 	assertAbsent(t, e, "wrong-password-guess", secondPassword)

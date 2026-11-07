@@ -179,7 +179,9 @@ func TestOverrideLifecycle(t *testing.T) {
 	if code, body, _ := e.as(harness, http.MethodGet, "/admin/overrides/2", ""); code != http.StatusOK || !strings.Contains(body, `"target":"permit:WRITER:read-a"`) {
 		t.Fatalf("one override: %d %s", code, body)
 	}
-	events := e.eventsWhen(func(events []map[string]any) bool { return countKind(events, "tpo.revoked") >= 3 })
+	events := e.eventsWhen(func(events []map[string]any) bool {
+		return countKind(events, "tpo.created") >= 3 && countKind(events, "tpo.revoked") >= 3
+	})
 	if countKind(events, "tpo.created") != 3 || countKind(events, "tpo.revoked") != 3 {
 		t.Fatalf("lifecycle events: %d created, %d revoked", countKind(events, "tpo.created"), countKind(events, "tpo.revoked"))
 	}

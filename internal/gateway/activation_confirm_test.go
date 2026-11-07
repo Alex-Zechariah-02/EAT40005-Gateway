@@ -167,7 +167,7 @@ func TestActivationAndConfirmation(t *testing.T) {
 
 	// The audit trail has one intent and one outcome per transition, with the
 	// lifecycle fields and no credential.
-	events := e.eventsWhen(func(events []map[string]any) bool { return countKind(events, "cpa.confirmed") > 0 })
+	events := e.eventsWhen(func(events []map[string]any) bool { return hasKinds(events, "cpa.activated", "cpa.confirmed") })
 	activatedEvent := findTransition(events, "cpa.activated", activated.Transition)
 	confirmedEvent := findTransition(events, "cpa.confirmed", confirmed.Transition)
 	if activatedEvent == nil || confirmedEvent == nil || countKind(events, "cpa.activated") != 1 || countKind(events, "cpa.confirmed") != 1 {
