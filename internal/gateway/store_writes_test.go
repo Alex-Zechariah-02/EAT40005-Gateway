@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -151,15 +152,20 @@ func TestRejectedMutationsAreRecorded(t *testing.T) {
 	if fmt.Sprint(reasons) != fmt.Sprint(want) {
 		t.Fatalf("recorded refusals %v, want %v", reasons, want)
 	}
-	events := e.eventsWhen(func(events []map[string]any) bool { return countKind(events, "transition.rejected") >= 2 })
-	denied := false
+	// The denial is queued for the log after the answer is sent, so wait for
+	// it as well as for the earlier rejections.
+	readerDenied := func(ev map[string]any) bool {
+		return ev["kind"] == "admin.denied" && ev["actor"] == "reader" && ev["reason"] == "permission"
+	}
+	events := e.eventsWhen(func(events []map[string]any) bool {
+		return countKind(events, "transition.rejected") >= 2 && slices.ContainsFunc(events, readerDenied)
+	})
 	for _, ev := range events {
 		if ev["kind"] == "transition.rejected" && ev["actor"] != harnessAdmin {
 			t.Errorf("rejection event %v", ev)
 		}
-		denied = denied || (ev["kind"] == "admin.denied" && ev["actor"] == "reader" && ev["reason"] == "permission")
 	}
-	if !denied {
+	if !slices.ContainsFunc(events, readerDenied) {
 		t.Error("the reader's refused change was not recorded as a denial")
 	}
 	if s := e.status(); s.Revision != 1 {
