@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/exchange"
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 	"github.com/Alex-Zechariah-02/apiward/internal/semantics"
 )
 
@@ -60,6 +61,15 @@ func (c *controls) bodyDistance(method string) semantics.Distance {
 func (r *reader) document() map[string]any {
 	document := map[string]any{"openapi": "3.1.0", "info": map[string]any{"title": "Kong configuration", "version": "1"},
 		"paths": r.paths, "x-kong-route-defaults": map[string]any{"strip_path": false}}
+	if r.forward != (policy.Forward{}) {
+		forward := map[string]any{}
+		for name, prefix := range map[string]string{"strip_prefix": r.forward.StripPrefix, "add_prefix": r.forward.AddPrefix} {
+			if prefix != "" {
+				forward[name] = prefix
+			}
+		}
+		document[policy.ForwardExtension] = forward
+	}
 	if r.signedIn {
 		document["components"] = map[string]any{"securitySchemes": map[string]any{
 			"apiward": map[string]any{"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}}}

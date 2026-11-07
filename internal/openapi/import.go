@@ -100,12 +100,16 @@ func assemble(root map[string]any, format Format, options Options) (policy.Polic
 	if !supportedVersion.MatchString(version) {
 		return policy.Policy{}, nil, fmt.Errorf("unsupported openapi version %q: 3.0.x or 3.1.x is required", policy.Clip(version))
 	}
+	forward, err := forwardOf(root)
+	if err != nil {
+		return policy.Policy{}, nil, err
+	}
 	report := newReport(format, options.API)
 	report.SpecVersion = version
 	m := &mapper{root: root, options: options, report: report, ignored: map[string]bool{}}
 	found := m.operations()
 
-	result := replaceAPI(options, report)
+	result := replaceAPI(options, forward, report)
 	for _, c := range m.crossCheck(found, result.Operations) {
 		accept(c, &result, report)
 	}
@@ -119,8 +123,9 @@ func assemble(root map[string]any, format Format, options Options) (policy.Polic
 }
 
 // replaceAPI copies the base without the API being imported, its
-// operations, and the permits that name them; each removal is reported.
-func replaceAPI(options Options, report *Report) policy.Policy {
+// operations, and the permits that name them; each removal is reported. The
+// API is added again with the description's forward rule, or none.
+func replaceAPI(options Options, forward *policy.Forward, report *Report) policy.Policy {
 	base := options.Base
 	result := base
 	result.Upstreams = slices.Clone(base.Upstreams)
@@ -131,7 +136,7 @@ func replaceAPI(options Options, report *Report) policy.Policy {
 			result.APIs = append(result.APIs, api)
 		}
 	}
-	result.APIs = append(result.APIs, policy.API{ID: options.API, Upstream: options.Upstream})
+	result.APIs = append(result.APIs, policy.API{ID: options.API, Upstream: options.Upstream, Forward: forward})
 	removed := map[string]bool{}
 	result.Operations = nil
 	for _, op := range base.Operations {

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/exchange"
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 	"github.com/Alex-Zechariah-02/apiward/internal/semantics"
 )
 
@@ -96,7 +97,12 @@ func (r *reader) readRoute(svc *service, route map[string]any, pointer string) {
 	for _, key := range []string{text(route["name"]), text(route["id"])} {
 		plugins = append(plugins, r.scoped["route:"+key]...)
 	}
-	if refusal := routeRefusal(svc, route); refusal != "" {
+	refusal := routeRefusal(svc, route)
+	forward, transform := routeForward(svc, route)
+	if refusal == "" && transform == "" && r.forwardSet && forward != r.forward {
+		transform = CodeTransform + ": another route of the file forwards with a different rule; one API has one forward rule."
+	}
+	if refusal = cmp.Or(refusal, transform); refusal != "" {
 		r.add("route:"+name, "route", pointer, "", semantics.Distance{Class: exchange.NotExpressible, Note: refusal})
 		return
 	}
@@ -108,7 +114,16 @@ func (r *reader) readRoute(svc *service, route map[string]any, pointer string) {
 	}
 	before := r.count
 	r.operations(name, pointer, route, c)
-	svc.serves = svc.serves || r.count > before
+	if r.count == before {
+		return
+	}
+	svc.serves = true
+	// The first route that yields operations fixes the API's forward rule.
+	r.forward, r.forwardSet = forward, true
+	if forward != (policy.Forward{}) {
+		r.add("route:"+name+":forward", "transform", pointer, "#/"+policy.ForwardExtension,
+			semantics.Distance{Class: exchange.Equivalent, Note: forwardNote(forward)})
+	}
 }
 
 // routeRefusal returns why a route cannot be expressed, or "".
@@ -128,13 +143,8 @@ func routeRefusal(svc *service, route map[string]any) string {
 		return CodeMatch + ": only routes for both http and https can be expressed (the listener decides TLS)."
 	}
 	for _, path := range texts(route["paths"]) {
-		_, _, anchored := anchoredTarget(path)
-		if strings.HasPrefix(path, "~") && !anchored {
+		if _, _, anchored := anchoredTarget(path); strings.HasPrefix(path, "~") && !anchored {
 			return CodeMatch + ": regular-expression paths cannot be expressed."
-		}
-		strip := route["strip_path"] != false // Kong's default is true
-		if (strip && path != "/" && !anchored) || (svc.path != "" && svc.path != "/") {
-			return CodeTransform + ": Kong forwards " + path + " under a different path; the gateway forwards the path unchanged."
 		}
 	}
 	return ""

@@ -178,3 +178,48 @@ func TestExportCommand(t *testing.T) {
 		t.Fatalf("exit %d: %s", code, stderr)
 	}
 }
+
+// A Kong service path and a route's strip_path become the API's forward
+// rule: a route with another rule is refused, the policy carries the rule,
+// and the export to Kong restores the route as read.
+func TestKongForward(t *testing.T) {
+	dir := t.TempDir()
+	deck := filepath.Join(dir, "deck.json")
+	text := `{"_format_version": "3.0", "services": [{"name": "shop", "url": "http://shop:8080/v2", "routes": [
+		{"name": "api", "paths": ["/api"], "methods": ["GET"]},
+		{"name": "plain", "paths": ["/plain"], "methods": ["GET"], "strip_path": false}]}]}`
+	if err := os.WriteFile(deck, []byte(text), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	exchangePath, report := filepath.Join(dir, "x.json"), filepath.Join(dir, "r.json")
+	if code, stderr := run("import", "--from", "kong-deck", "--in", deck, "--out", exchangePath, "--report", report); code != openapi.ExitPartial {
+		t.Fatalf("import exit %d: %s", code, stderr)
+	}
+	document, ledger := ledgerOf(t, exchangePath)
+	classes := map[string]string{}
+	for _, item := range ledger.Items {
+		classes[item.ID] = string(item.Class)
+	}
+	if forward, _ := json.Marshal(document["x-apiward-forward"]); string(forward) != `{"add_prefix":"/v2","strip_prefix":"/api"}` ||
+		classes["kong-deck:route:api:forward"] != "equivalent" || classes["kong-deck:route:plain"] != "not_expressible" {
+		t.Fatalf("forward %s, items %v", forward, classes)
+	}
+
+	code, stderr, out, _ := migrated(t, exchangePath, base())
+	data, _ := os.ReadFile(out)
+	if code != openapi.ExitPartial || !strings.Contains(string(data), `"strip_prefix": "/api"`) {
+		t.Fatalf("policy exit %d: %s\n%s", code, stderr, data)
+	}
+
+	exported, exportReport := filepath.Join(dir, "deck-out.json"), filepath.Join(dir, "export.json")
+	if code, stderr := run("export", "--to", "kong-deck", "--exchange", exchangePath, "--out", exported, "--report", exportReport); code == openapi.ExitFailed {
+		t.Fatalf("export exit %d: %s", code, stderr)
+	}
+	var written struct {
+		Restored []string `json:"restored"`
+	}
+	data, _ = os.ReadFile(exportReport)
+	if json.Unmarshal(data, &written) != nil || !slices.Contains(written.Restored, "api") {
+		t.Fatalf("export report %s", data)
+	}
+}

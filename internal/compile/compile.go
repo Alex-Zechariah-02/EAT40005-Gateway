@@ -50,6 +50,7 @@ type Rule struct {
 	api       string
 	upstream  string
 	dial      string
+	forward   *rewrite // nil: the inbound path is forwarded unchanged
 	permitted bool
 	public    bool            // auth "none": no token is read
 	roles     map[string]bool // roles holding a permit for this operation
@@ -98,7 +99,7 @@ func Compile(p policy.Policy, revision int64, notAfter time.Time) (*Generation, 
 		usedDials[u.Dial] = true
 	}
 
-	apiUpstream := map[string]string{}
+	apiUpstream, apiForward := map[string]string{}, map[string]*rewrite{}
 	for i, a := range p.APIs {
 		if err := policy.CheckID(a.ID, "apis[%d].id", i); err != nil {
 			return nil, err
@@ -109,7 +110,11 @@ func Compile(p policy.Policy, revision int64, notAfter time.Time) (*Generation, 
 		if _, ok := dials[a.Upstream]; !ok {
 			return nil, policy.Invalid("UNKNOWN_REFERENCE", "apis[%d].upstream", i)
 		}
-		apiUpstream[a.ID] = a.Upstream
+		forward, err := compileForward(a.Forward, i)
+		if err != nil {
+			return nil, err
+		}
+		apiUpstream[a.ID], apiForward[a.ID] = a.Upstream, forward
 	}
 
 	g := &Generation{Revision: revision, Profile: p.Profile, exact: map[string]*target{}}
@@ -136,6 +141,9 @@ func Compile(p policy.Policy, revision int64, notAfter time.Time) (*Generation, 
 		if !ok {
 			return nil, policy.Invalid("INVALID_TARGET", "operations[%d].target", i)
 		}
+		if !apiForward[op.API].under(op.Target) {
+			return nil, policy.Invalid("REWRITE_INVALID", "operations[%d].target", i)
+		}
 		if op.Access != "allow" && op.Access != "deny" {
 			return nil, policy.Invalid("INVALID_VALUE", "operations[%d].access", i)
 		}
@@ -156,6 +164,7 @@ func Compile(p policy.Policy, revision int64, notAfter time.Time) (*Generation, 
 			api:       op.API,
 			upstream:  upstream,
 			dial:      dials[upstream],
+			forward:   apiForward[op.API],
 			permitted: op.Access == "allow",
 			public:    op.Auth == "none",
 			roles:     map[string]bool{},

@@ -27,20 +27,30 @@ func (w *writer) unclaimed() []any {
 			t := "#/paths/" + escape(path) + "/" + lower
 			if op := object(object(paths[path])[lower]); op != nil && !w.claimed[t] {
 				w.claimed[t] = true
-				out = append(out, w.generate(t, op, nil))
+				if generated := w.generate(t, op, nil); generated != nil {
+					out = append(out, generated)
+				}
 			}
 		}
 	}
 	return out
 }
 
-// generate writes one route for one operation. original is the Kong route
-// the operation came from, whose plugins the gateway does not enforce are
-// kept; nil for an operation from another source.
+// generate writes one route for one operation, or nil when Kong cannot
+// forward it as the gateway does. original is the Kong route the operation
+// came from, whose plugins the gateway does not enforce are kept; nil for an
+// operation from another source.
 func (w *writer) generate(pointer string, op map[string]any, original map[string]any) map[string]any {
 	path, method, _ := strings.Cut(strings.TrimPrefix(pointer, "#/paths/"), "/")
 	path = strings.NewReplacer("~1", "/", "~0", "~").Replace(path)
 	name := strings.ReplaceAll(text(op["operationId"]), ".", "-")
+	if strip := w.forward.StripPrefix; strip != "" {
+		// Kong strips the whole match of a regular-expression path, and a
+		// plain path also matches longer paths, so neither can be written.
+		w.report.NotCarried = append(w.report.NotCarried, Change{Route: name, Field: "forward", Note: "Not written: Kong cannot remove " +
+			strip + " from an exactly matched route. Add the route by hand (paths [" + strip + "], strip_path true) if its wider match is acceptable."})
+		return nil
+	}
 	pattern, priority := pathPattern(path, text(op["x-apiward-target"]))
 	route := map[string]any{"name": name, "paths": []any{pattern}, "methods": []any{strings.ToUpper(method)},
 		"strip_path": false, "regex_priority": priority}

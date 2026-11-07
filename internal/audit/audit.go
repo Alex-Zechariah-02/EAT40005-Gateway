@@ -51,7 +51,8 @@ type Event struct {
 	Error         string    `json:"error,omitempty"`
 	Method        string    `json:"method,omitempty"`
 	Path          string    `json:"path,omitempty"`
-	Truncated     bool      `json:"path_truncated,omitempty"`
+	Truncated     bool      `json:"path_truncated,omitempty"` // Path or ForwardedPath was cut to MaxLoggedPath
+	ForwardedPath string    `json:"forwarded_path,omitempty"` // set only when the forward rule changed the path
 	Operation     string    `json:"operation,omitempty"`
 	API           string    `json:"api,omitempty"`
 	Subject       string    `json:"subject,omitempty"`

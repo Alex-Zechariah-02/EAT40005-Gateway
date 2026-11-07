@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/exchange"
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // Options choose what an export may write beyond the API configuration.
@@ -59,6 +60,7 @@ type writer struct {
 	claimed  map[string]bool // operation pointers written
 	dropped  map[string]bool // names and ids of routes written from their operations
 	root     map[string]any  // the decK file read at import
+	forward  policy.Forward  // the API's forward rule
 }
 
 // Write turns an exchange document and its ledger into a decK file.
@@ -76,6 +78,15 @@ func Write(document map[string]any, ledger *exchange.Ledger, options Options) (m
 	if err != nil {
 		return nil, nil, fmt.Errorf("the carried Kong settings cannot be read: %w", err)
 	}
+	if w.forward, err = forwardIn(document); err != nil {
+		return nil, nil, err
+	}
+	// The carried services and routes hold Kong's own rewrite; a different
+	// rule would send their requests to other upstream paths.
+	if read, _ := forwardIn(view.Document); ledger.Source.Format == Format && read != w.forward {
+		return nil, nil, fmt.Errorf("%s differs from the rule read from the Kong file; change the service path and strip_path in Kong instead",
+			policy.ForwardExtension)
+	}
 	for _, name := range sortedKeys(original) {
 		if !slices.Contains([]string{"_format_version", "services", "routes", "plugins", "consumers"}, name) {
 			out[name] = original[name]
@@ -89,7 +100,11 @@ func Write(document map[string]any, ledger *exchange.Ledger, options Options) (m
 	}
 	topRoutes := w.routes(list(original["routes"]), "#/routes/", view)
 	if extra := w.unclaimed(); len(extra) > 0 {
-		services = append(services, map[string]any{"name": "apiward", "host": placeholder, "routes": extra})
+		service := map[string]any{"name": "apiward", "host": placeholder, "routes": extra}
+		if w.forward.AddPrefix != "" {
+			service["path"] = w.forward.AddPrefix
+		}
+		services = append(services, service)
 		w.report.ManualSteps = append(w.report.ManualSteps, "Set the address of the service apiward, which serves operations that came from no Kong route.")
 	}
 	out["services"] = services
@@ -193,7 +208,9 @@ func (w *writer) routes(routes []any, prefix string, view *Result) []any {
 		for _, t := range targets {
 			if op := at(w.document, t); op != nil && !w.claimed[t] {
 				w.claimed[t] = true
-				out = append(out, w.generate(t, op, route))
+				if generated := w.generate(t, op, route); generated != nil {
+					out = append(out, generated)
+				}
 			}
 		}
 	}

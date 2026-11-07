@@ -223,6 +223,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		q.pass(audit.StageValidation)
 	}
 
+	// The API's forward rule rewrites the path only now, after every decision
+	// was made on the inbound path; a rewritten path that is not canonical
+	// is never forwarded.
+	destination, ok := rule.Destination(path)
+	if !ok {
+		q.reject(audit.StageBind, http.StatusBadRequest, "path_not_canonical")
+		return
+	}
+	if destination.Path() != path {
+		q.event.ForwardedPath = destination.Path()
+	}
+
 	// Admission requires a durable audit record before anything is forwarded.
 	q.event.Kind, q.event.Stage, q.event.Decision = "request.admitted", audit.StageNames[audit.StageAudit], "admit"
 	ctx, cancel := context.WithTimeout(r.Context(), h.controller.config.AuditTimeout)
@@ -242,7 +254,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.Header.Set("X-Gateway-Subject", q.event.Subject)
 		r.Header.Set("X-Gateway-Roles", strings.Join(roles, ","))
 	}
-	r = r.WithContext(forward.Bind(r.Context(), rule.Dial()))
+	r = r.WithContext(forward.Bind(r.Context(), destination))
 	q.pass(audit.StageBind)
 
 	recorder := &statusRecorder{ResponseWriter: w}

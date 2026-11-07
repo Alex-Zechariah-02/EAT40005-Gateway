@@ -4,6 +4,7 @@ package openapi
 
 import (
 	"encoding/json"
+	"errors"
 	"slices"
 	"strings"
 
@@ -58,6 +59,25 @@ func (m *mapper) extensions(object map[string]any, c *candidate) *refusal {
 		return rolesOf(value, c)
 	}
 	return nil
+}
+
+// forwardOf reads the root member x-apiward-forward with exactly the
+// policy's members, or nil when it is absent; the compiler checks its values.
+func forwardOf(root map[string]any) (*policy.Forward, error) {
+	value, present := root[policy.ForwardExtension]
+	if !present {
+		return nil, nil
+	}
+	refused := errors.New(policy.ForwardExtension + " must be {strip_prefix, add_prefix} as in a policy")
+	if _, isObject := value.(map[string]any); !isObject {
+		return nil, refused
+	}
+	data, err := json.Marshal(value)
+	var forward policy.Forward
+	if err != nil || policy.CheckMembers(data, 1) != nil || policy.DecodeStrict(data, &forward) != nil {
+		return nil, refused
+	}
+	return &forward, nil
 }
 
 // rateOf reads a rate rule with exactly the policy's members; the

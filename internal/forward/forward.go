@@ -97,8 +97,8 @@ func NewUpstreamProxy(timeouts UpstreamTimeouts, logger *slog.Logger) (*upstream
 // proxy with http.ErrAbortHandler, which it panics with only under a net/http
 // server, so the handler must be served by one.
 func (p *upstreamProxy) Forward(w http.ResponseWriter, r *http.Request) error {
-	dial, bound := BoundDial(r.Context())
-	if !bound || !compile.IsLoopbackDial(dial) {
+	dial, path, bound := Bound(r.Context())
+	if !bound || !compile.IsLoopbackDial(dial) || !compile.IsCanonical(path) {
 		return fmt.Errorf("%w: %w", ErrNoUpstream, errNotSent)
 	}
 
@@ -113,7 +113,7 @@ func (p *upstreamProxy) Forward(w http.ResponseWriter, r *http.Request) error {
 
 	var failure error
 	proxy := &httputil.ReverseProxy{
-		Rewrite:   func(pr *httputil.ProxyRequest) { rewriteToUpstream(pr, dial) },
+		Rewrite:   func(pr *httputil.ProxyRequest) { rewriteToUpstream(pr, dial, path) },
 		Transport: p.transport,
 		ErrorLog:  p.errorLog,
 		ModifyResponse: func(res *http.Response) error {
@@ -157,23 +157,28 @@ func ExchangeFailure(err error, connected, clientGone bool) error {
 	return fmt.Errorf("%w: %w", errMaybeSent, err)
 }
 
-// rewriteToUpstream addresses the outbound request to dial and sets the
-// gateway's forwarding metadata. The reverse proxy calls it after removing
-// the hop-by-hop fields, including every field the client named in
-// Connection, and the client's Forwarded and X-Forwarded-* fields, so the
-// client can neither remove nor supply anything set here.
-func rewriteToUpstream(pr *httputil.ProxyRequest, dial string) {
+// rewriteToUpstream addresses the outbound request to dial with the bound
+// path and sets the gateway's forwarding metadata. The reverse proxy calls it
+// after removing the hop-by-hop fields, including every field the client
+// named in Connection, and the client's Forwarded and X-Forwarded-* fields,
+// so the client can neither remove nor supply anything set here.
+func rewriteToUpstream(pr *httputil.ProxyRequest, dial, path string) {
 	in := pr.In.URL
-	// The client's target as admitted: the path in its received encoding and
-	// the query unparsed, unparsable parameters included. The gateway does not
-	// interpret the query, so it cannot read it differently from the upstream.
-	// Only the address changes: the outbound request keeps the inbound Host,
-	// which reaches the upstream but never chooses it.
+	// The client's target as admitted: the query unparsed, unparsable
+	// parameters included, and the path in its received encoding unless the
+	// API's forward rule rewrote it. The gateway does not interpret the
+	// query, so it cannot read it differently from the upstream. The outbound
+	// request keeps the inbound Host, which reaches the upstream but never
+	// chooses it.
+	rawPath := in.RawPath
+	if path != in.Path {
+		rawPath = "" // the rewritten path is canonical, so its encoding is unambiguous
+	}
 	pr.Out.URL = &url.URL{
 		Scheme:     "http",
 		Host:       dial,
-		Path:       in.Path,
-		RawPath:    in.RawPath,
+		Path:       path,
+		RawPath:    rawPath,
 		RawQuery:   in.RawQuery,
 		ForceQuery: in.ForceQuery,
 	}

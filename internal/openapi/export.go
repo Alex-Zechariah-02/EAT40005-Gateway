@@ -91,6 +91,9 @@ func Export(p policy.Policy, options ExportOptions) (map[string]any, *ExportRepo
 		document["components"] = map[string]any{"securitySchemes": map[string]any{
 			scheme: map[string]any{"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}}}
 	}
+	if forward := p.APIs[index].Forward; forward != nil {
+		document[policy.ForwardExtension] = forward
+	}
 	upstream := p.APIs[index].Upstream
 	if options.WithUpstream {
 		for _, u := range p.Upstreams {

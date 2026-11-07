@@ -72,13 +72,28 @@ export interface Operation {
   rate?: RateRule
 }
 
+// Forward is an API's path rewrite: the service receives the request path
+// without strip_prefix, after add_prefix. Decisions use the request path.
+export interface Forward {
+  strip_prefix?: string
+  add_prefix?: string
+}
+
+// forwardRule describes a forward rule in words, or null when the path is
+// forwarded unchanged. The gateway alone applies the rule.
+export function forwardRule(forward: Forward | undefined): string | null {
+  const parts = [forward?.strip_prefix ? `removes ${forward.strip_prefix}` : '', forward?.add_prefix ? `adds ${forward.add_prefix} in front` : '']
+  const text = parts.filter(Boolean).join(', then ')
+  return text ? text[0].toUpperCase() + text.slice(1) : null
+}
+
 // Policy is a schema version 4 document. It names no accounts: roles come
 // from the trusted issuer's tokens and blocking is a separate list.
 export interface Policy {
   schema_version: number
   profile: string
   upstreams: { id: string; dial: string }[]
-  apis: { id: string; upstream: string }[]
+  apis: { id: string; upstream: string; forward?: Forward }[]
   operations: Operation[]
   roles: { id: string }[]
   permits: { role: string; operation: string }[]

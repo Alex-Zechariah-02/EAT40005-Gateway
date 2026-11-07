@@ -11,9 +11,10 @@ import type { ViewProps } from '../app/views'
 interface AccessAnswer {
   decision: 'allowed' | 'refused'
   code: string | null
-  check: 'route' | 'access' | 'blocked' | 'role' | null
+  check: 'route' | 'access' | 'blocked' | 'role' | 'forward' | null
   operation: string | null
   public: boolean
+  forwarded_path: string | null
   roles: string[]
   ignored_roles: string[]
   generation: string
@@ -26,6 +27,7 @@ const checkWords: Record<string, string> = {
   access: 'The endpoint is switched off for everyone (access deny).',
   blocked: 'The account is on the blocked list.',
   role: 'None of these roles has permission for the endpoint.',
+  forward: "The API's forward rule makes this path invalid, so it is never forwarded.",
 }
 
 const uncheckedWords: Record<string, string> = {
@@ -129,6 +131,11 @@ function AccessResult({ answer }: { answer: AccessAnswer }) {
         {answer.candidate ? `Checked against draft change ${answer.candidate}, with the temporary rules in force.` : 'Checked against the policy in force, including temporary rules.'}{' '}
         {answer.ignored_roles.length ? `Roles the policy does not define are ignored: ${answer.ignored_roles.join(', ')}.` : ''}
       </p>
+      {answer.forwarded_path ? (
+        <p className="hint">
+          Forwarded As: the service receives <code>{answer.forwarded_path}</code>.
+        </p>
+      ) : null}
       {answer.not_checked.length ? (
         <p className="hint">
           A real request must also pass {answer.not_checked.length === 1 ? 'one check' : `${answer.not_checked.length} checks`} not made here:{' '}

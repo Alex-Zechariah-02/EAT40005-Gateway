@@ -1,5 +1,5 @@
 import { useContext, useState } from 'react'
-import type { Policy, Revision } from '../shared/api'
+import { forwardRule, type Policy, type Revision } from '../shared/api'
 import { useGatewayState, liveMs, usePoll, useResource, ViewMemory } from '../shared/hooks'
 import { RequestRules } from './request-rules'
 import { Badge, Empty, ListToolbar, matches, MoreDetails, TableScroll } from '../shared/ui'
@@ -130,6 +130,11 @@ export function ApisView({ admin, can, open }: ViewProps) {
                           {all.length} endpoints · service address <code>{upstream?.dial ?? api.upstream}</code> · limits count per client
                           address for public endpoints, per account otherwise
                         </p>
+                        {forwardRule(api.forward) ? (
+                          <p className="hint">
+                            Forwarded As: {forwardRule(api.forward)}. Checks use the path the client sent.
+                          </p>
+                        ) : null}
                       </div>
                       {h ? (
                         <dl className="api-figures">

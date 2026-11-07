@@ -82,7 +82,7 @@ export function shapeIssue(value: unknown): Issue | null {
   const policy = value as unknown as Policy
   const definitions: Record<string, [Record<string, string>, Record<string, string>?]> = {
     upstreams: [{ id: 'string', dial: 'string' }],
-    apis: [{ id: 'string', upstream: 'string' }],
+    apis: [{ id: 'string', upstream: 'string' }, { forward: 'object' }],
     operations: [
       { id: 'string', api: 'string', method: 'string', target: 'string', access: 'string', auth: 'string' },
       { body: 'object', headers: 'object', rate: 'object' },
@@ -106,6 +106,10 @@ export function shapeIssue(value: unknown): Issue | null {
             error = members(item.body, { max_bytes: 'number', schema: 'object' })
             if (error) field += '.body'
           }
+        }
+        if (section === 'apis' && item.forward !== undefined) {
+          error = members(item.forward, {}, { strip_prefix: 'string', add_prefix: 'string' })
+          if (error) field += '.forward'
         }
       }
       if (error) return { id: 'shape', field, message: error }

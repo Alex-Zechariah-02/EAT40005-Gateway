@@ -12,6 +12,7 @@ import (
 	"strconv"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/exchange"
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 	"github.com/Alex-Zechariah-02/apiward/internal/semantics"
 )
 
@@ -35,6 +36,10 @@ type reader struct {
 	signedIn  bool
 	count     int        // operations written
 	ordered   []*service // services in file order
+	// forward is the API's forward rule, fixed by the first route that
+	// yields operations (forwardSet); routes with another rule are refused.
+	forward    policy.Forward
+	forwardSet bool
 }
 
 // consumer is what the reader needs from a consumer: never a credential.

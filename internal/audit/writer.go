@@ -124,8 +124,12 @@ func (a *AuditLog) stamp(e Event) Event {
 		e.Path = e.Path[:MaxLoggedPath]
 		e.Truncated = true
 	}
+	if len(e.ForwardedPath) > MaxLoggedPath {
+		e.ForwardedPath = e.ForwardedPath[:MaxLoggedPath]
+		e.Truncated = true
+	}
 	// A substring can retain the complete request target's backing storage.
-	e.Path = strings.Clone(e.Path)
+	e.Path, e.ForwardedPath = strings.Clone(e.Path), strings.Clone(e.ForwardedPath)
 	return e
 }
 

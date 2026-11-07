@@ -38,6 +38,10 @@ export const messages: Record<string, Message> = {
   precondition_required: { title: 'The current version is needed', action: 'Reload the page, so the change is based on the active version, then try again.' },
   unsupported_media_type: { title: 'The request must be JSON', action: 'Send the document as JSON.' },
   payload_too_large: { title: 'The request is too large', action: 'Make the document smaller, then try again.' },
+  path_not_canonical: {
+    title: 'The forwarded path is not valid',
+    action: "The API's forward rule turns this path into one the gateway never forwards. Check the API's Remove Prefix and Add Prefix.",
+  },
   too_many_attempts: { title: 'Too many failed sign-in attempts', action: 'Sign-in is locked for a while. Wait, then try again.' },
   unavailable: { title: 'The gateway cannot do this now', action: 'Try again shortly. If it goes on, open the Overview to see why.' },
   busy: { title: 'The gateway is busy', action: 'It is checking other passwords. Try again in a moment.' },

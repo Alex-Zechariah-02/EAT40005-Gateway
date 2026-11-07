@@ -58,9 +58,24 @@ type Upstream struct {
 
 // API registers one managed API and the single upstream that serves it.
 type API struct {
-	ID       string `json:"id"`
-	Upstream string `json:"upstream"`
+	ID       string   `json:"id"`
+	Upstream string   `json:"upstream"`
+	Forward  *Forward `json:"forward,omitempty"`
 }
+
+// Forward rewrites the path an admitted request is forwarded with: the
+// inbound path without StripPrefix, after AddPrefix. Every decision is made
+// on the inbound path; the rewrite applies only to the outbound request.
+//
+// In an OpenAPI description or exchange file the rule is the root member
+// named ForwardExtension.
+type Forward struct {
+	StripPrefix string `json:"strip_prefix,omitempty"`
+	AddPrefix   string `json:"add_prefix,omitempty"`
+}
+
+// ForwardExtension is the OpenAPI root member that carries an API's Forward.
+const ForwardExtension = "x-apiward-forward"
 
 // Operation binds a method and target of an API to an access decision and
 // the controls that apply to it.

@@ -26,6 +26,7 @@ func TestAdminAccessCheck(t *testing.T) {
 		IgnoredRoles []string `json:"ignored_roles"`
 		Candidate    *int64   `json:"candidate"`
 		NotChecked   []string `json:"not_checked"`
+		Forwarded    *string  `json:"forwarded_path"`
 	}
 	ask := func(body string) answer {
 		t.Helper()
@@ -79,6 +80,16 @@ func TestAdminAccessCheck(t *testing.T) {
 	draft := fmt.Sprintf(`{"method":"POST","path":"/a/item","roles":["READER"],"candidate":%d}`, staged.Candidate.ID)
 	if got := ask(draft); got.Decision != "allowed" || got.Candidate == nil || *got.Candidate != staged.Candidate.ID {
 		t.Errorf("draft grants READER write-a: %+v", got)
+	}
+
+	// The answer names the path the upstream would receive.
+	rewritten := e.protectedPolicy()
+	rewritten.APIs[0].Forward = &policy.Forward{StripPrefix: "/a", AddPrefix: "/v1"}
+	if code, staged, body = e.stage(admin, rewritten, `"r1"`, "access-check-stage-2"); code != 201 {
+		t.Fatalf("stage: %d %s", code, body)
+	}
+	if got := ask(fmt.Sprintf(`{"method":"POST","path":"/a/item","roles":["WRITER"],"candidate":%d}`, staged.Candidate.ID)); text(got.Forwarded) != "/v1/item" {
+		t.Errorf("forwarded path of a draft with a forward rule: %+v", got)
 	}
 	if got := ask(`{"method":"POST","path":"/a/item","roles":["READER"]}`); got.Decision != "refused" {
 		t.Errorf("the policy in force still refuses: %+v", got)

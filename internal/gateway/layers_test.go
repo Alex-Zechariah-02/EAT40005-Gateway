@@ -24,7 +24,7 @@ var layers = map[string][]string{
 	"exchange":     {"policy"},
 	"semantics":    {"exchange"},
 	"overlay":      {"exchange"},
-	"convert/kong": {"exchange", "semantics", "openapi"},
+	"convert/kong": {"policy", "exchange", "semantics", "openapi"},
 	"migrate":      {"policy", "compile", "openapi", "exchange", "semantics", "overlay", "convert/kong"},
 	"gateway":      {"fault", "policy", "compile", "forward", "store", "audit"},
 }

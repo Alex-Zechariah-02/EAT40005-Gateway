@@ -28,6 +28,7 @@ import (
 type handedRequest struct {
 	bound  bool // the request carried a trusted binding
 	dial   string
+	path   string // the bound path the request is forwarded with
 	method string
 	target string
 	host   string
@@ -44,12 +45,13 @@ type memoryForwarder struct {
 }
 
 func (f *memoryForwarder) forward(w http.ResponseWriter, r *http.Request) error {
-	dial, bound := forward.BoundDial(r.Context())
+	dial, path, bound := forward.Bound(r.Context())
 	body, _ := io.ReadAll(r.Body)
 	f.mu.Lock()
 	f.got = append(f.got, handedRequest{
 		bound:  bound,
 		dial:   dial,
+		path:   path,
 		method: r.Method,
 		target: r.RequestURI,
 		host:   r.Host,

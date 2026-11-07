@@ -22,17 +22,20 @@ type accessCheck struct {
 }
 
 type accessAnswer struct {
-	Decision     string   `json:"decision"`
-	Code         *string  `json:"code"`
-	Check        *string  `json:"check"`
-	Operation    *string  `json:"operation"`
-	API          *string  `json:"api"`
-	Public       bool     `json:"public"`
-	Roles        []string `json:"roles"`
-	IgnoredRoles []string `json:"ignored_roles"`
-	Generation   string   `json:"generation"`
-	Candidate    *int64   `json:"candidate"`
-	NotChecked   []string `json:"not_checked"`
+	Decision  string  `json:"decision"`
+	Code      *string `json:"code"`
+	Check     *string `json:"check"`
+	Operation *string `json:"operation"`
+	API       *string `json:"api"`
+	Public    bool    `json:"public"`
+	// ForwardedPath is the path an allowed request reaches its upstream
+	// with; null when the request is refused.
+	ForwardedPath *string  `json:"forwarded_path"`
+	Roles         []string `json:"roles"`
+	IgnoredRoles  []string `json:"ignored_roles"`
+	Generation    string   `json:"generation"`
+	Candidate     *int64   `json:"candidate"`
+	NotChecked    []string `json:"not_checked"`
 }
 
 // handleAccessCheck answers with the generation in force, or with a stored
@@ -115,7 +118,13 @@ func (c *Controller) handleAccessCheck(w http.ResponseWriter, r *http.Request, w
 			return
 		}
 	}
-	answer.Decision = "allowed"
+	destination, ok := rule.Destination(path)
+	if !ok {
+		refuse("forward", "path_not_canonical")
+		return
+	}
+	forwarded := destination.Path()
+	answer.Decision, answer.ForwardedPath = "allowed", &forwarded
 	writeJSON(w, http.StatusOK, answer)
 }
 
