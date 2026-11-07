@@ -2,10 +2,18 @@
 
 package exchange
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
+)
 
 // Member is the root member that holds the ledger.
 const Member = "x-apiward-migration"
+
+// Settings are the other x-apiward-* root members an exchange file may hold:
+// the settings of its one API.
+var Settings = []string{policy.ForwardExtension, policy.CORSExtension, policy.ResponseHeadersExtension, policy.AddressesExtension}
 
 // Version is the only ledger version this package reads and writes.
 const Version = 1

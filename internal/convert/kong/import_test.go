@@ -42,7 +42,7 @@ func TestKongImport(t *testing.T) {
 		{"operation:catalog:GET /catalog:jwt", exchange.Approximated, exchange.Looser, "per-account rate limits become per-address"},
 		{"operation:staff:GET /staff:jwt", exchange.Approximated, exchange.Stricter, "refused by the acl"},
 		{"operation:burst:GET /burst:rate-limiting", exchange.Approximated, exchange.Looser, "minute are not enforced"},
-		{"plugin:route.orders:cors", exchange.NotExpressible, "", "Carried"},
+		{"plugin:route.orders:cors", exchange.NotExpressible, "", "routes differ in browser access"},
 		{"plugin:global:prometheus", exchange.NotExpressible, "", "Carried"},
 		{"plugin:route.session:session", exchange.NotExpressible, "", "Carried"},
 		{"plugin:consumer.guest:rate-limiting", exchange.NotExpressible, "", CodeConsumer},

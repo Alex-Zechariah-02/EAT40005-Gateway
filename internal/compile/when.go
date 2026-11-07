@@ -162,7 +162,8 @@ func (c *condition) overlaps(o *condition) bool {
 // checkVariants refuses, per target and method, two conditioned operations
 // of equal rank that one request could meet (TARGET_COLLISION), and a
 // conditioned operation weaker than the unconditioned one (CONDITION_WEAKER).
-// It sorts each variant list most conditions first.
+// It sorts each variant list most conditions first and points each variant
+// with an unconditioned sibling at that sibling's rate counter.
 func checkVariants(targets map[string]*target, ops []policy.Operation) error {
 	for _, t := range targets {
 		for method, variants := range t.variants {
@@ -174,9 +175,15 @@ func checkVariants(targets map[string]*target, ops []policy.Operation) error {
 					}
 				}
 				base := t.methods[method]
-				if base != nil && weaker(v, base, ops[v.index], ops[base.index]) {
+				if base == nil {
+					continue
+				}
+				if weaker(v, base, ops[v.index], ops[base.index]) {
 					return policy.Invalid("CONDITION_WEAKER", "operations[%d].when", v.index)
 				}
+				// Alternating conditions must not multiply the plain
+				// operation's quota: the variant counts on its counter.
+				v.counter = base.operation
 			}
 		}
 	}

@@ -125,3 +125,22 @@ func TestWhenNeverGrants(t *testing.T) {
 	}
 	e.assertReceipts(2, 0, 0)
 }
+
+// A conditioned operation counts on its unconditioned sibling's counter, so
+// alternating a header cannot exceed the plain operation's quota.
+func TestWhenSharesCounter(t *testing.T) {
+	e := newEnv(t)
+	p := e.policy(e.a, false)
+	p.Operations[0].Rate = &policy.RateRule{Algorithm: "sliding-window", Count: 2, WindowSeconds: 60, Key: "client_address"}
+	variant(&p, 0, "read-a-v2", policy.When{Headers: []policy.HeaderCondition{{Name: "X-Version", Value: "2"}}})
+	e.serveNative(p, forwardTimeouts)
+	for i, want := range []int{http.StatusOK, http.StatusOK, http.StatusTooManyRequests, http.StatusTooManyRequests} {
+		header := []string{}
+		if i%2 == 1 {
+			header = []string{"X-Version", "2"}
+		}
+		if status, _ := e.get("/a/x", header...); status != want {
+			t.Fatalf("request %d: %d, want %d", i+1, status, want)
+		}
+	}
+}

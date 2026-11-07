@@ -25,11 +25,11 @@ var (
 // Split returns the document without its ledger, and the ledger, which has
 // passed Check. The input is not changed. It refuses a document without a
 // ledger, with an x-apiward-* root member other than the ledger and the
-// API's forward rule, or with a ledger that has unknown members or breaks a
+// API's settings, or with a ledger that has unknown members or breaks a
 // rule.
 func Split(root map[string]any) (map[string]any, *Ledger, error) {
 	for name := range root {
-		if strings.HasPrefix(name, "x-apiward-") && name != Member && name != policy.ForwardExtension {
+		if strings.HasPrefix(name, "x-apiward-") && name != Member && !slices.Contains(Settings, name) {
 			return nil, nil, fmt.Errorf("unknown root member %s", policy.Clip(name))
 		}
 	}

@@ -82,7 +82,7 @@ export function shapeIssue(value: unknown): Issue | null {
   const policy = value as unknown as Policy
   const definitions: Record<string, [Record<string, string>, Record<string, string>?]> = {
     upstreams: [{ id: 'string', dial: 'string' }],
-    apis: [{ id: 'string', upstream: 'string' }, { forward: 'object' }],
+    apis: [{ id: 'string', upstream: 'string' }, { forward: 'object', cors: 'object', response_headers: 'object', allow_addresses: 'array' }],
     operations: [
       { id: 'string', api: 'string', method: 'string', target: 'string', access: 'string', auth: 'string' },
       { body: 'object', headers: 'object', rate: 'object', when: 'object' },
@@ -114,6 +114,14 @@ export function shapeIssue(value: unknown): Issue | null {
         if (section === 'apis' && item.forward !== undefined) {
           error = members(item.forward, {}, { strip_prefix: 'string', add_prefix: 'string' })
           if (error) field += '.forward'
+        }
+        if (section === 'apis' && !error && item.cors !== undefined) {
+          error = members(item.cors, { origins: 'array', methods: 'array' }, { headers: 'array', expose: 'array', credentials: 'boolean', max_age_seconds: 'number' })
+          if (error) field += '.cors'
+        }
+        if (section === 'apis' && !error && item.response_headers !== undefined) {
+          error = members(item.response_headers, {}, { hsts: 'boolean', nosniff: 'boolean', frame: 'string', referrer: 'string', remove: 'array' })
+          if (error) field += '.response_headers'
         }
       }
       if (error) return { id: 'shape', field, message: error }

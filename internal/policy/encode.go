@@ -18,12 +18,17 @@ var methodOrder = []string{"GET", "PUT", "POST", "DELETE", "OPTIONS", "HEAD", "P
 // struct order and a trailing newline; upstreams, APIs and roles sorted by
 // id; operations by API, target and method; permits by role and operation.
 // Schemas have their members sorted and each "required" list sorted;
-// condition hosts are sorted, header conditions sorted by canonical name. The
+// condition hosts are sorted, header conditions sorted by canonical name;
+// an API's origins, methods and address ranges are sorted and its header
+// names sorted in canonical form. The
 // input is not changed. It fails only on a schema that is not valid JSON.
 func Encode(p Policy) ([]byte, error) {
 	out := p
 	out.Upstreams = sorted(p.Upstreams, func(a, b Upstream) int { return strings.Compare(a.ID, b.ID) })
 	out.APIs = sorted(p.APIs, func(a, b API) int { return strings.Compare(a.ID, b.ID) })
+	for i, api := range out.APIs {
+		out.APIs[i] = canonicalAPI(api)
+	}
 	out.Roles = sorted(p.Roles, func(a, b Role) int { return strings.Compare(a.ID, b.ID) })
 	out.Permits = sorted(p.Permits, func(a, b Permit) int {
 		return cmp.Or(strings.Compare(a.Role, b.Role), strings.Compare(a.Operation, b.Operation))
@@ -53,6 +58,40 @@ func Encode(p Policy) ([]byte, error) {
 		return nil, err
 	}
 	return append(document, '\n'), nil
+}
+
+// canonicalAPI returns a copy whose lists are sorted and header names
+// canonical; neither order nor header name case carries meaning.
+func canonicalAPI(api API) API {
+	if api.CORS != nil {
+		c := *api.CORS
+		c.Origins, c.Methods = sorted(c.Origins, strings.Compare), sorted(c.Methods, strings.Compare)
+		c.Headers, c.Expose = headerNames(c.Headers), headerNames(c.Expose)
+		api.CORS = &c
+	}
+	if api.ResponseHeaders != nil {
+		h := *api.ResponseHeaders
+		h.Remove = headerNames(h.Remove)
+		api.ResponseHeaders = &h
+	}
+	if api.AllowAddresses != nil {
+		api.AllowAddresses = sorted(api.AllowAddresses, strings.Compare)
+	}
+	return api
+}
+
+// headerNames returns the names in canonical form, sorted; nil stays nil so
+// an absent list stays absent.
+func headerNames(names []string) []string {
+	if names == nil {
+		return nil
+	}
+	out := make([]string, len(names))
+	for i, name := range names {
+		out[i] = http.CanonicalHeaderKey(name)
+	}
+	slices.Sort(out)
+	return out
 }
 
 // canonicalWhen returns a copy with sorted hosts and header conditions whose

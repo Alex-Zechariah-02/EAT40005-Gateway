@@ -40,7 +40,7 @@ test.describe.serial('Connect an API: entry points, keyboard and accessibility',
   test('the Policy toolbar and the empty canvas open the flow, and closing it untouched asks nothing', async () => {
     await toolbar().click()
     await expect(flow()).toBeVisible()
-    await expect(heading()).toHaveText('Step 1 of 7: Service Address')
+    await expect(heading()).toHaveText('Step 1 of 8: Service Address')
     await expect(heading()).toBeFocused()
     await expect(flow().getByRole('list').first().getByRole('listitem')).toHaveText([
       '1 Service Address',
@@ -48,8 +48,9 @@ test.describe.serial('Connect an API: entry points, keyboard and accessibility',
       '3 Endpoints',
       '4 Roles',
       '5 Rate',
-      '6 Validate Request Bodies',
-      '7 Review',
+      '6 Browser Access',
+      '7 Validate Request Bodies',
+      '8 Review',
     ])
     await flow().getByRole('button', { name: 'Close', exact: true }).click()
     await expect(flow()).toHaveCount(0)
@@ -63,7 +64,7 @@ test.describe.serial('Connect an API: entry points, keyboard and accessibility',
     await expect(canvas.getByText('This draft has no APIs yet.')).toBeVisible()
     await shot(page, 'connect-empty-canvas')
     await canvas.getByRole('button', { name: 'Connect an API', exact: true }).click()
-    await expect(heading()).toHaveText('Step 1 of 7: Service Address')
+    await expect(heading()).toHaveText('Step 1 of 8: Service Address')
     await page.keyboard.press('Escape')
     await expect(flow()).toHaveCount(0)
     await discard()
@@ -73,7 +74,7 @@ test.describe.serial('Connect an API: entry points, keyboard and accessibility',
     await go(page, 'APIs')
     await page.getByRole('button', { name: 'Connect an API', exact: true }).click()
     await expect(page).toHaveURL(/#\/policy$/)
-    await expect(heading()).toHaveText('Step 1 of 7: Service Address')
+    await expect(heading()).toHaveText('Step 1 of 8: Service Address')
     await flow().getByRole('button', { name: 'Close', exact: true }).click()
     await expect(flow()).toHaveCount(0)
 
@@ -86,7 +87,7 @@ test.describe.serial('Connect an API: entry points, keyboard and accessibility',
     await guide.locator('summary').click()
     await guide.getByRole('button', { name: 'Connect an API', exact: true }).click()
     await expect(page).toHaveURL(/#\/policy$/)
-    await expect(heading()).toHaveText('Step 1 of 7: Service Address')
+    await expect(heading()).toHaveText('Step 1 of 8: Service Address')
     await flow().getByRole('button', { name: 'Close', exact: true }).click()
     // The request is used once: the Policy page opened again shows no flow.
     await go(page, 'Overview')
@@ -117,29 +118,32 @@ test.describe.serial('Connect an API: entry points, keyboard and accessibility',
     await fill('Address (Host and Port)', '127.0.0.1:9691')
     await tabTo(next)
     await page.keyboard.press('Enter')
-    await expect(heading()).toHaveText('Step 2 of 7: API')
+    await expect(heading()).toHaveText('Step 2 of 8: API')
     await expect(heading()).toBeFocused()
     await fill('API ID', 'keyboard')
     await tabTo(next)
     await page.keyboard.press('Enter')
-    await expect(heading()).toHaveText('Step 3 of 7: Endpoints')
+    await expect(heading()).toHaveText('Step 3 of 8: Endpoints')
     await fill('Path', '/keyboard/items')
     await tabTo(next)
     await page.keyboard.press('Enter')
-    await expect(heading()).toHaveText('Step 4 of 7: Roles')
+    await expect(heading()).toHaveText('Step 4 of 8: Roles')
     await tabTo(flow().getByLabel('OPERATIONS', { exact: true }))
     await page.keyboard.press('Space')
     await expect(flow().getByLabel('OPERATIONS', { exact: true })).toBeChecked()
     await tabTo(next)
     await page.keyboard.press('Enter')
-    await expect(heading()).toHaveText('Step 5 of 7: Rate')
+    await expect(heading()).toHaveText('Step 5 of 8: Rate')
     await tabTo(next)
     await page.keyboard.press('Enter')
-    await expect(heading()).toHaveText('Step 6 of 7: Validate Request Bodies')
+    await expect(heading()).toHaveText('Step 6 of 8: Browser Access')
+    await tabTo(next)
+    await page.keyboard.press('Enter')
+    await expect(heading()).toHaveText('Step 7 of 8: Validate Request Bodies')
     await expect(flow().getByText('None of these endpoints takes a request body (POST, PUT or PATCH), so there is nothing to check.')).toBeVisible()
     await tabTo(next)
     await page.keyboard.press('Enter')
-    await expect(heading()).toHaveText('Step 7 of 7: Review')
+    await expect(heading()).toHaveText('Step 8 of 8: Review')
     await expect(flow().locator('.change-set li')).toHaveText([
       'Service address kb-svc added',
       'API keyboard added',
@@ -153,7 +157,7 @@ test.describe.serial('Connect an API: entry points, keyboard and accessibility',
     await expect(ask.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused()
     await page.keyboard.press('Enter')
     await expect(ask).toHaveCount(0)
-    await expect(heading()).toHaveText('Step 7 of 7: Review')
+    await expect(heading()).toHaveText('Step 8 of 8: Review')
     await page.keyboard.press('Escape')
     await tabTo(ask.getByRole('button', { name: 'Discard Input', exact: true }))
     await page.keyboard.press('Enter')
@@ -193,6 +197,8 @@ test.describe.serial('Connect an API: entry points, keyboard and accessibility',
     await scan('endpoints')
     await next.click()
     await next.click()
+    await next.click()
+    await scan('browser access')
     await next.click()
     await flow().getByLabel("Check This Endpoint's Request Body", { exact: true }).check()
     await scan('bodies')

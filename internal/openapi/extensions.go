@@ -68,23 +68,36 @@ func (m *mapper) extensions(object map[string]any, c *candidate) *refusal {
 	return nil
 }
 
-// forwardOf reads the root member x-apiward-forward with exactly the
-// policy's members, or nil when it is absent; the compiler checks its values.
-func forwardOf(root map[string]any) (*policy.Forward, error) {
-	value, present := root[policy.ForwardExtension]
-	if !present {
-		return nil, nil
+// settingsOf reads the root members that carry an API's settings
+// (x-apiward-forward, -cors, -response-headers, -addresses) into an API
+// without ID or upstream, each with exactly the policy's members; the
+// compiler checks the values.
+func settingsOf(root map[string]any) (policy.API, error) {
+	var api policy.API
+	for _, member := range []struct {
+		name   string
+		object bool
+		into   any
+	}{
+		{policy.ForwardExtension, true, &api.Forward},
+		{policy.CORSExtension, true, &api.CORS},
+		{policy.ResponseHeadersExtension, true, &api.ResponseHeaders},
+		{policy.AddressesExtension, false, &api.AllowAddresses},
+	} {
+		value, present := root[member.name]
+		if !present {
+			continue
+		}
+		refused := errors.New(member.name + " must have the form of the API's member in a policy")
+		if _, isObject := value.(map[string]any); isObject != member.object {
+			return policy.API{}, refused
+		}
+		data, err := json.Marshal(value)
+		if err != nil || policy.CheckMembers(data, 3) != nil || policy.DecodeStrict(data, member.into) != nil {
+			return policy.API{}, refused
+		}
 	}
-	refused := errors.New(policy.ForwardExtension + " must be {strip_prefix, add_prefix} as in a policy")
-	if _, isObject := value.(map[string]any); !isObject {
-		return nil, refused
-	}
-	data, err := json.Marshal(value)
-	var forward policy.Forward
-	if err != nil || policy.CheckMembers(data, 1) != nil || policy.DecodeStrict(data, &forward) != nil {
-		return nil, refused
-	}
-	return &forward, nil
+	return api, nil
 }
 
 // rateOf reads a rate rule with exactly the policy's members; the

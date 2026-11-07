@@ -73,6 +73,7 @@ func (r *reader) document() map[string]any {
 		}
 		document[policy.ForwardExtension] = forward
 	}
+	r.apiSettings(document)
 	if r.signedIn {
 		document["components"] = map[string]any{"securitySchemes": map[string]any{
 			"apiward": map[string]any{"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}}}

@@ -101,8 +101,8 @@ func Export(p policy.Policy, options ExportOptions) (map[string]any, *ExportRepo
 		document["components"] = map[string]any{"securitySchemes": map[string]any{
 			scheme: map[string]any{"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}}}
 	}
-	if forward := p.APIs[index].Forward; forward != nil {
-		document[policy.ForwardExtension] = forward
+	for name, value := range apiSettings(p.APIs[index]) {
+		document[name] = value
 	}
 	upstream := p.APIs[index].Upstream
 	if options.WithUpstream {
@@ -206,4 +206,23 @@ func readable(document map[string]any) error {
 		return errors.New("the description would not be accepted by the import: " + reason)
 	}
 	return nil
+}
+
+// apiSettings returns the exchange root members of an API's settings that
+// are present.
+func apiSettings(api policy.API) map[string]any {
+	members := map[string]any{}
+	if api.Forward != nil {
+		members[policy.ForwardExtension] = api.Forward
+	}
+	if api.CORS != nil {
+		members[policy.CORSExtension] = api.CORS
+	}
+	if api.ResponseHeaders != nil {
+		members[policy.ResponseHeadersExtension] = api.ResponseHeaders
+	}
+	if api.AllowAddresses != nil {
+		members[policy.AddressesExtension] = api.AllowAddresses
+	}
+	return members
 }

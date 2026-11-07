@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { adminURL, raw, siteURL } from './env'
-import { activate, dialogButton, go, record, resolve, shot, signIn } from './pages'
+import { activate, confirmTrial, dialogButton, go, record, resolve, shot, signIn, stage } from './pages'
 import { admin, adminCall, adminContext, adjust, demo, enrolled, establish, finish, listAll, open, password, propose, signedInPage, status } from './setup'
 
 // Blocking and unblocking accounts, request checks and unknown outcomes.
@@ -220,5 +220,44 @@ test.describe.serial('dashboard', () => {
       await admin.unroute('**/admin/history/admin*')
     }
     expect((await adminCall('DELETE', `/admin/blocked-accounts/${subject}`, undefined, { 'Idempotency-Key': crypto.randomUUID() })).status).toBe(200)
+  })
+
+  test('an address blocked from a request is refused before any service until unblocked, and conditions show on the APIs page', async () => {
+    expect((await adjust('ops-01', 1)).status).toBe(200)
+    const [seen] = (await adminCall('GET', '/admin/events?subject=ops-01&limit=1')).body.items
+    await go(admin, 'Accounts')
+    await admin.evaluate((ref) => (window.location.hash = `#/accounts?ref=${ref}`), seen.request_id)
+    await admin.getByRole('dialog').getByRole('button', { name: 'Block This Address…' }).click()
+    const dialog = admin.getByRole('dialog', { name: 'Block an Address' })
+    await expect(dialog.getByLabel('Address or Range')).toHaveValue(seen.client_address)
+    await dialog.getByLabel('Reason').fill('Scanning the shop')
+    await dialog.getByLabel('Expires').selectOption('1h')
+    await dialog.getByRole('button', { name: 'Block Now' }).click()
+    const range = seen.client_address.includes(':') ? `${seen.client_address}/128` : `${seen.client_address}/32`
+    await expect(admin.getByText(`${range} is blocked: its requests are refused at every endpoint from now on`)).toBeVisible()
+    const listed = admin.getByRole('region', { name: 'Blocked Address List' }).getByRole('row').filter({ hasText: range })
+    await expect(listed).toContainText('Scanning the shop')
+    await expect(listed).not.toContainText('Never')
+    await shot(admin, '22-address-blocked')
+
+    const refused = await adjust('ops-01', 1)
+    expect(refused.status).toBe(403)
+    expect(refused.receipts).toHaveLength(0)
+    expect((await adminCall('GET', '/admin/events?limit=1')).body.items[0]).toMatchObject({ code: 'address_blocked', client_address: seen.client_address })
+    await listed.getByRole('button', { name: `Unblock ${range}` }).click()
+    await dialogButton(admin, 'Unblock').click()
+    await expect(admin.getByText(`${range} is unblocked; its requests are checked as usual again`)).toBeVisible()
+    expect((await adjust('ops-01', -2)).status).toBe(200)
+
+    // An endpoint with conditions, once in force, shows them on the APIs page.
+    const document = (await adminCall('GET', '/admin/policy')).body.document
+    const plain = document.operations.find((operation: { id: string }) => operation.id === 'inventory.categories')
+    document.operations.push({ ...plain, id: 'inventory.categories-v2', access: 'deny', when: { hosts: ['*.example.com'], headers: [{ name: 'X-Version', value: '2' }] } })
+    await stage(admin, { text: JSON.stringify(document) })
+    await activate(admin, 600)
+    await confirmTrial(admin)
+    await go(admin, 'APIs')
+    await expect(admin.getByRole('main').getByText('Only for host *.example.com and header X-Version: 2')).toBeVisible()
+    record('address-block', { range, refused: refused.status })
   })
 })

@@ -1,5 +1,6 @@
 import { useContext, useState } from 'react'
-import { forwardRule, whenRule, type Policy, type Revision } from '../shared/api'
+import type { Policy, Revision } from '../shared/api'
+import { addressRule, corsRule, forwardRule, whenRule } from '../shared/rules'
 import { useGatewayState, liveMs, usePoll, useResource, ViewMemory } from '../shared/hooks'
 import { RequestRules } from './request-rules'
 import { Badge, Empty, ListToolbar, matches, MoreDetails, TableScroll } from '../shared/ui'
@@ -135,6 +136,8 @@ export function ApisView({ admin, can, open }: ViewProps) {
                             Forwarded As: {forwardRule(api.forward)}. Checks use the path the client sent.
                           </p>
                         ) : null}
+                        {corsRule(api.cors) ? <p className="hint">Browser Access: {corsRule(api.cors)}.</p> : null}
+                        {addressRule(api.allow_addresses) ? <p className="hint">Client Addresses: {addressRule(api.allow_addresses)}.</p> : null}
                       </div>
                       {h ? (
                         <dl className="api-figures">

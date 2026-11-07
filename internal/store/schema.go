@@ -207,6 +207,14 @@ CREATE TABLE control_result (
 	transition TEXT PRIMARY KEY REFERENCES transition (id),
 	body BLOB NOT NULL CHECK (length(body) BETWEEN 1 AND 65536)
 ) STRICT;
+`, `
+CREATE TABLE blocked_address (
+	cidr TEXT PRIMARY KEY CHECK (length(cidr) BETWEEN 9 AND 43),
+	reason TEXT NOT NULL CHECK (length(CAST(reason AS BLOB)) BETWEEN 1 AND 800),
+	blocked_by TEXT NOT NULL REFERENCES administrator (name),
+	blocked_at INTEGER NOT NULL,
+	expires_at INTEGER CHECK (expires_at IS NULL OR expires_at > blocked_at)
+) STRICT;
 `}
 
 // DatabaseVersion is the schema version this build reads and writes.

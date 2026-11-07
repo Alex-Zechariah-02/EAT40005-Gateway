@@ -242,7 +242,7 @@ func (s *DB) MarkPublished(ctx context.Context, id string, how string, now time.
 // publication receipt.
 func (s *DB) Unpublished(ctx context.Context) ([]string, error) {
 	return s.ids(ctx, `SELECT id FROM transition
-		WHERE outcome = 'committed' AND (result_revision IS NOT NULL OR kind LIKE 'tpo.%' OR kind IN ('account.block','account.unblock','keys.reload')) AND published_at IS NULL ORDER BY rowid`)
+		WHERE outcome = 'committed' AND (result_revision IS NOT NULL OR kind LIKE 'tpo.%' OR kind IN ('account.block','account.unblock','address.block','address.unblock','keys.reload')) AND published_at IS NULL ORDER BY rowid`)
 }
 
 // MarkAudited records that the transition's outcome event was durably written.

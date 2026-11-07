@@ -52,3 +52,17 @@ func (q *request) forwarded(status int, decision, code string) {
 	q.audit.Record(q.event)
 	q.observations.record(q.event)
 }
+
+// answerPreflight records and answers a CORS preflight: 204, with whatever
+// CORS headers the caller set. It is never forwarded.
+func (q *request) answerPreflight(allowed bool) {
+	q.event.Kind, q.event.Stage, q.event.Status = "request.preflight", audit.StageNames[audit.StageRoute], http.StatusNoContent
+	q.event.Decision, q.event.Error, q.event.Stages[audit.StageRoute] = "allowed", "cors_preflight", audit.StagePass
+	if !allowed {
+		q.event.Decision, q.event.Error, q.event.Stages[audit.StageRoute] = "refused", "cors_refused", audit.StageReject
+	}
+	q.event.DurationMS = float64(time.Since(q.started)) / float64(time.Millisecond)
+	q.audit.Record(q.event)
+	q.observations.record(q.event)
+	q.w.WriteHeader(http.StatusNoContent)
+}

@@ -37,7 +37,7 @@ test.describe.serial('request drawer links', () => {
   test('the endpoint opens the Policy page, the version opens Versions, the account opens the Security Log, and the client address is text', async () => {
     const version = /^r(\d+)/.exec(refused.generation)![1]
     await openAt(admin, 'overview', refused.request_id)
-    await expect(drawerFact(admin, 'Client Address')).toHaveText(refused.client_address)
+    await expect(drawerFact(admin, 'Client Address').locator('code')).toHaveText(refused.client_address)
     await expect(drawerFact(admin, 'Client Address').getByRole('link')).toHaveCount(0)
 
     await drawerFact(admin, 'Method and Path').getByRole('link').click()

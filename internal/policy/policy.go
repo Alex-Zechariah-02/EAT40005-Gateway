@@ -56,27 +56,6 @@ type Upstream struct {
 	Dial string `json:"dial"`
 }
 
-// API registers one managed API and the single upstream that serves it.
-type API struct {
-	ID       string   `json:"id"`
-	Upstream string   `json:"upstream"`
-	Forward  *Forward `json:"forward,omitempty"`
-}
-
-// Forward rewrites the path an admitted request is forwarded with: the
-// inbound path without StripPrefix, after AddPrefix. Every decision is made
-// on the inbound path; the rewrite applies only to the outbound request.
-//
-// In an OpenAPI description or exchange file the rule is the root member
-// named ForwardExtension.
-type Forward struct {
-	StripPrefix string `json:"strip_prefix,omitempty"`
-	AddPrefix   string `json:"add_prefix,omitempty"`
-}
-
-// ForwardExtension is the OpenAPI root member that carries an API's Forward.
-const ForwardExtension = "x-apiward-forward"
-
 // Operation binds a method and target of an API to an access decision and
 // the controls that apply to it.
 type Operation struct {
@@ -200,8 +179,9 @@ func DecodeStrict(data []byte, value any) error {
 //
 // Values of members named "schema" or "headers" are JSON Schemas, whose
 // keywords and property names are case-sensitive and not limited to
-// [a-z0-9_]; the "headers" list of a "when" object is not one. They are decoded as raw JSON, never into Go structs, so only the
-// repeated-name and depth rules apply inside them.
+// [a-z0-9_]; the "headers" lists of "when" and "cors" objects are not. They
+// are decoded as raw JSON, never into Go structs, so only the repeated-name
+// and depth rules apply inside them.
 func CheckMembers(data []byte, maxDepth int) error {
 	// encoding/json replaces malformed Unicode. Policy, operator and Admin
 	// inputs must retain the same unambiguous UTF-8 representation as bodies.
@@ -260,7 +240,7 @@ func CheckMembers(data []byte, maxDepth int) error {
 				return Invalid("LIMIT_EXCEEDED", "")
 			}
 			inSchema := parent != nil &&
-				(parent.schema || (parent.object && (parent.lastName == "schema" || parent.lastName == "headers" && parent.name != "when")))
+				(parent.schema || (parent.object && (parent.lastName == "schema" || parent.lastName == "headers" && parent.name != "when" && parent.name != "cors")))
 			name := ""
 			if parent != nil && parent.object {
 				name = parent.lastName

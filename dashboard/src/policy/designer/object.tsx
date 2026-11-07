@@ -1,9 +1,10 @@
 import { useEffect, useId, useState } from 'react'
-import type { Forward, Operation, Policy } from '../../shared/api'
+import type { Operation, Policy } from '../../shared/api'
 import { capital, copy, deleteReason, kindNames, rename, sections, splitKey, type BoxKey } from './model'
 import { Confirm } from '../../shared/dialogs'
 import { Field, describedBy } from '../../shared/ui'
 import { checks, OperationFields } from './fields'
+import { ApiFields } from './api-fields'
 
 // The editor for one box of the draft: its ID, its fields, its permissions and its deletion.
 
@@ -61,26 +62,6 @@ export function ObjectForm({ selection, inPanel = false, ...props }: FormProps &
     const next = copy(policy)
     Object.assign(next[sections[kind]].find((entry) => entry.id === id)!, update)
     onChange(next)
-  }
-  // An API's forward rule: an emptied prefix is removed, and a rule with
-  // neither prefix is removed, so the draft never holds empty members.
-  function forwardFields(forward: Forward | undefined) {
-    const update = (name: keyof Forward, value: string) => {
-      const rule: Forward = { ...forward }
-      if (value) rule[name] = value
-      else delete rule[name]
-      const next = copy(policy)
-      const api = next.apis.find((entry) => entry.id === id)!
-      if (Object.keys(rule).length) api.forward = rule
-      else delete api.forward
-      onChange(next)
-    }
-    return [
-      input('strip_prefix', 'Remove Prefix', forward?.strip_prefix ?? '', (value) => update('strip_prefix', value),
-        'Removed from the request path before forwarding, for example /api. Checks still use the path the client sent.'),
-      input('add_prefix', 'Add Prefix', forward?.add_prefix ?? '', (value) => update('add_prefix', value),
-        'Added in front of the forwarded path, for example /v2.'),
-    ]
   }
   function togglePermit(role: string, operationId: string, checked: boolean) {
     const next = copy(policy)
@@ -185,7 +166,7 @@ export function ObjectForm({ selection, inPanel = false, ...props }: FormProps &
               (upstream) => patch({ upstream }),
             )
           : null}
-        {kind === 'api' ? forwardFields((item as Policy['apis'][number]).forward) : null}
+        {kind === 'api' ? <ApiFields api={item as Policy['apis'][number]} policy={policy} editable={editable} onChange={onChange} /> : null}
         {operation ? (
           <OperationFields
             operation={operation}

@@ -18,7 +18,7 @@ import (
 
 // compilerVersion is part of every generation identity so that a change in
 // compilation rules is visible even when the policy revision is unchanged.
-const compilerVersion = "5"
+const compilerVersion = "6"
 
 // Generation is an immutable compiled effective policy. Requests capture one
 // generation and never observe another.
@@ -48,15 +48,18 @@ type target struct {
 	// first; a method's unconditioned rule, if any, is in methods.
 	variants map[string][]*Rule
 	allow    string // value for the Allow header
+	cors     bool   // an operation on the target belongs to an API with CORS
 }
 
 type Rule struct {
 	operation string
-	index     int // position in the policy's operations
+	counter   string // the operation whose rate counter it uses
+	index     int    // position in the policy's operations
 	api       string
 	upstream  string
 	dial      string
 	forward   *rewrite // nil: the inbound path is forwarded unchanged
+	settings  *apiRule
 	permitted bool
 	public    bool            // auth "none": no token is read
 	roles     map[string]bool // roles holding a permit for this operation
@@ -106,22 +109,9 @@ func Compile(p policy.Policy, revision int64, notAfter time.Time) (*Generation, 
 		usedDials[u.Dial] = true
 	}
 
-	apiUpstream, apiForward := map[string]string{}, map[string]*rewrite{}
-	for i, a := range p.APIs {
-		if err := policy.CheckID(a.ID, "apis[%d].id", i); err != nil {
-			return nil, err
-		}
-		if _, exists := apiUpstream[a.ID]; exists {
-			return nil, policy.Invalid("DUPLICATE_ID", "apis[%d].id", i)
-		}
-		if _, ok := dials[a.Upstream]; !ok {
-			return nil, policy.Invalid("UNKNOWN_REFERENCE", "apis[%d].upstream", i)
-		}
-		forward, err := compileForward(a.Forward, i)
-		if err != nil {
-			return nil, err
-		}
-		apiUpstream[a.ID], apiForward[a.ID] = a.Upstream, forward
+	apis, err := compileAPIs(p, dials)
+	if err != nil {
+		return nil, err
 	}
 
 	g := &Generation{Revision: revision, Profile: p.Profile, exact: map[string]*target{}}
@@ -137,7 +127,7 @@ func Compile(p policy.Policy, revision int64, notAfter time.Time) (*Generation, 
 		if _, exists := rules[op.ID]; exists {
 			return nil, policy.Invalid("DUPLICATE_ID", "operations[%d].id", i)
 		}
-		upstream, ok := apiUpstream[op.API]
+		api, ok := apis[op.API]
 		if !ok {
 			return nil, policy.Invalid("UNKNOWN_REFERENCE", "operations[%d].api", i)
 		}
@@ -148,7 +138,7 @@ func Compile(p policy.Policy, revision int64, notAfter time.Time) (*Generation, 
 		if !ok {
 			return nil, policy.Invalid("INVALID_TARGET", "operations[%d].target", i)
 		}
-		if !apiForward[op.API].under(op.Target) {
+		if !api.forward.under(op.Target) {
 			return nil, policy.Invalid("REWRITE_INVALID", "operations[%d].target", i)
 		}
 		if op.Access != "allow" && op.Access != "deny" {
@@ -170,9 +160,11 @@ func Compile(p policy.Policy, revision int64, notAfter time.Time) (*Generation, 
 			operation: op.ID,
 			index:     i,
 			api:       op.API,
-			upstream:  upstream,
-			dial:      dials[upstream],
-			forward:   apiForward[op.API],
+			counter:   op.ID,
+			upstream:  api.upstream,
+			dial:      dials[api.upstream],
+			forward:   api.forward,
+			settings:  api,
 			permitted: op.Access == "allow",
 			public:    op.Auth == "none",
 			roles:     map[string]bool{},
@@ -188,6 +180,9 @@ func Compile(p policy.Policy, revision int64, notAfter time.Time) (*Generation, 
 		rules[op.ID] = r
 	}
 
+	if err := checkAPIs(p, apis, rules); err != nil {
+		return nil, err
+	}
 	roles, err := checkPermits(p, rules)
 	if err != nil {
 		return nil, err
@@ -205,6 +200,9 @@ func Compile(p policy.Policy, revision int64, notAfter time.Time) (*Generation, 
 			}
 		}
 		sort.Strings(methods)
+		for _, m := range methods {
+			t.cors = t.cors || hasCORS(t.methods[m]) || slices.ContainsFunc(t.variants[m], hasCORS)
+		}
 		t.allow = strings.Join(methods, ", ")
 		if t.prefix == "" {
 			g.exact[t.pattern] = t

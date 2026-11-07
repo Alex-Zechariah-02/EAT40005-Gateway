@@ -4,7 +4,10 @@ package gateway
 
 import "net/http"
 
+// writeError answers a data-plane refusal; its JSON body is never sniffed
+// as another type.
 func writeError(w http.ResponseWriter, status int, code, requestID string) {
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	writeJSON(w, status, map[string]string{"error": code, "request_id": requestID})
 }
 

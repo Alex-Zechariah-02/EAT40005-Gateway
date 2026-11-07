@@ -23,6 +23,7 @@ const (
 	CodeCollision   = "TARGET_COLLISION"
 	CodeOutOfScope  = "NOT_API_CONFIGURATION"
 	CodeNotImported = "ROUTE_NOT_IMPORTED"
+	CodeSetting     = "API_SETTING_DIFFERS"
 )
 
 // Members of the decK root, services, routes, plugins and consumers, from
@@ -76,6 +77,9 @@ var mapped = map[string][]string{
 		"redis_ssl", "redis_ssl_verify", "redis_server_name", "redis_timeout", "redis_database", "error_code",
 		"error_message", "sync_rate"},
 	"request-size-limiting": {"allowed_payload_size", "size_unit", "require_content_length"},
+	"cors": {"origins", "headers", "exposed_headers", "methods", "max_age", "credentials", "private_network",
+		"preflight_continue", "allow_origin_absent"},
+	"ip-restriction": {"allow", "deny", "status", "message"},
 }
 
 // unsupportedAuth are sign-in plugins the gateway cannot express; a route

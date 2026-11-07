@@ -81,3 +81,7 @@ details[open] > summary::before {
     transform: none;
   }
 }
+/* The Accounts page's choice between blocked accounts and addresses. */
+.page-switch {
+  margin-block-end: 16px;
+}

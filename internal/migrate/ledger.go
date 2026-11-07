@@ -70,10 +70,16 @@ func openapiLedger(root map[string]any, report *openapi.Report, data []byte) *ex
 		add("member:servers", "upstream", source, "", semantics.Distance{Class: exchange.NotExpressible,
 			Note: "Server addresses are not read; migrate policy binds the API to --upstream."})
 	}
-	if _, present := root[policy.ForwardExtension]; present {
-		at := "#/" + policy.ForwardExtension
-		add("member:"+policy.ForwardExtension, "transform", at, at, semantics.Distance{Class: exchange.Exact,
-			Note: "The API's forward rule: the path the upstream receives."})
+	for _, member := range []struct{ name, facet, note string }{
+		{policy.ForwardExtension, "transform", "The API's forward rule: the path the upstream receives."},
+		{policy.CORSExtension, "other", "The API's browser access (CORS), answered by the gateway."},
+		{policy.ResponseHeadersExtension, "other", "Security headers added to, and headers removed from, the API's responses."},
+		{policy.AddressesExtension, "access", "The only client address ranges whose requests reach the API."},
+	} {
+		if _, present := root[member.name]; present {
+			at := "#/" + member.name
+			add("member:"+member.name, member.facet, at, at, semantics.Distance{Class: exchange.Exact, Note: member.note})
+		}
 	}
 	slices.SortFunc(ledger.Items, func(a, b exchange.Item) int { return cmp.Compare(a.ID, b.ID) })
 	return ledger

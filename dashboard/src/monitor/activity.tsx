@@ -133,6 +133,8 @@ const timelineKinds: Record<string, { name: string; word: string; tone: Tone }> 
   'tpo.expire': { name: 'Temporary rule', word: 'Ended', tone: 'neutral' },
   'account.block': { name: 'account', word: 'Blocked', tone: 'refused' },
   'account.unblock': { name: 'account', word: 'Unblocked', tone: 'ok' },
+  'address.block': { name: 'account', word: 'Blocked', tone: 'refused' },
+  'address.unblock': { name: 'account', word: 'Unblocked', tone: 'ok' },
   'keys.reload': { name: 'Signing keys', word: 'Reloaded', tone: 'neutral' },
 }
 

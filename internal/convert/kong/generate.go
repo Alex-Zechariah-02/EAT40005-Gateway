@@ -57,7 +57,7 @@ func (w *writer) generate(pointer string, op map[string]any, original map[string
 	route := map[string]any{"name": name, "paths": []any{pattern}, "methods": []any{strings.ToUpper(method)},
 		"strip_path": false, "regex_priority": priority}
 	putWhen(route, object(op[policy.WhenExtension]))
-	plugins := append(w.rules(name, op), w.kept(op, original)...)
+	plugins := slices.Concat(w.rules(name, op), w.browserPlugins(name), w.kept(op, original))
 	if len(plugins) > 0 {
 		route["plugins"] = plugins
 	}

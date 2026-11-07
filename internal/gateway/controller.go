@@ -81,6 +81,8 @@ type Controller struct {
 	// Trust and account containment are published independently of policy.
 	verifier atomic.Pointer[verifier]
 	blocked  atomic.Pointer[store.BlockedAccounts]
+	// addresses is the blocked address list; nil until read from the store.
+	addresses atomic.Pointer[store.BlockedAddresses]
 
 	// limiter holds the rate counters. They belong to the process, not to a
 	// generation, so publication never resets them; a restart does.
@@ -182,6 +184,12 @@ func NewController(cfg Config, logger *slog.Logger) (*Controller, error) {
 		return c, nil
 	}
 	c.blocked.Store(&blocked)
+	addresses, err := st.BlockedAddresses(context.Background())
+	if err != nil {
+		c.unavailable("reading blocked addresses: " + err.Error())
+		return c, nil
+	}
+	c.addresses.Store(&addresses)
 	c.reconcile(compile.TrustedNow())
 	return c, nil
 }

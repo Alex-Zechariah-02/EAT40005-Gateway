@@ -10,6 +10,7 @@ import { Problem } from '../shared/replies'
 import { keepTabInside } from '../shared/dialogs'
 import { refAddress } from '../app/views'
 import { blockHandoff } from '../access/blocking'
+import { addressHandoff } from '../access/addresses'
 import { CheckList, decisionTone, outcomeOf, reasonOf, type RequestEvent } from './requests'
 
 // The request drawer: one request's facts and checks over the page it was
@@ -58,6 +59,11 @@ export function RequestDrawer({ admin }: { admin: Admin }) {
   const valid = ref !== null && fullRef.test(ref)
   const history = can('read_history')
   const manage = can('manage_subjects')
+  // handOff opens the Accounts page with a block dialog for value.
+  const handOff = (key: string, value: string) => () => {
+    memory?.set(key, value)
+    navigate?.('accounts')
+  }
   const found = useResource<Found | null>((signal) => (valid ? findRequest(admin, ref, history, signal) : Promise.resolve(nothing)), [ref, history])
   const blocked = useResource<{ items: { subject: string }[] } | null>(
     (signal) => (valid && manage ? admin.get('/admin/blocked-accounts', signal) : Promise.resolve(nothing)),
@@ -146,14 +152,8 @@ export function RequestDrawer({ admin }: { admin: Admin }) {
               <RequestFacts
                 event={event}
                 blocked={isBlocked}
-                block={
-                  manage && event.subject && blockedList && !isBlocked
-                    ? () => {
-                        memory?.set(blockHandoff, event.subject)
-                        navigate?.('accounts')
-                      }
-                    : undefined
-                }
+                block={manage && event.subject && blockedList && !isBlocked ? handOff(blockHandoff, event.subject) : undefined}
+                blockAddress={manage && event.client_address ? handOff(addressHandoff, event.client_address) : undefined}
               />
             ) : (
               <>
@@ -176,7 +176,7 @@ export function RequestDrawer({ admin }: { admin: Admin }) {
 
 // RequestFacts is what the gateway recorded about one request, each fact
 // linked to the page where it lives.
-function RequestFacts({ event, blocked, block }: { event: RequestEvent; blocked: boolean; block?: () => void }) {
+function RequestFacts({ event, blocked, block, blockAddress }: { event: RequestEvent; blocked: boolean; block?: () => void; blockAddress?: () => void }) {
   const policy = versionOf(event.generation)
   return (
     <>
@@ -255,6 +255,11 @@ function RequestFacts({ event, blocked, block }: { event: RequestEvent; blocked:
           <dt>Client Address</dt>
           <dd>
             <code>{event.client_address}</code>
+            {blockAddress ? (
+              <button type="button" className="btn btn-small drawer-block" onClick={blockAddress}>
+                Block This Address…
+              </button>
+            ) : null}
           </dd>
         </div>
       </dl>

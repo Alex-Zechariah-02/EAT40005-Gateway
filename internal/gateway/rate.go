@@ -4,9 +4,11 @@ package gateway
 
 import (
 	"container/heap"
+	"net/http"
 	"sync"
 	"time"
 
+	"github.com/Alex-Zechariah-02/apiward/internal/audit"
 	"github.com/Alex-Zechariah-02/apiward/internal/compile"
 	"github.com/Alex-Zechariah-02/apiward/internal/fault"
 )
@@ -173,4 +175,47 @@ func (c rateClock) now() int64 {
 		return ms
 	}
 	return c.anchor.UnixMilli() + time.Since(c.anchor).Milliseconds()
+}
+
+// limit runs the rate stage. The counter is the rule's (a conditioned
+// operation shares its unconditioned sibling's), keyed by the verified
+// subject or the direct socket peer; client forwarding headers never choose
+// an address counter. It answers a refusal itself and reports whether the
+// request may continue.
+func (h *Handler) limit(q *request, rule *compile.Rule) bool {
+	if rule.Rate() == nil {
+		q.event.Stages[audit.StageRate] = audit.StageNotApplicable
+		return true
+	}
+	key := counterKey{operation: rule.Counter(), keyType: rule.RateKey(), key: q.event.Subject}
+	if rule.RateKey() == compile.RateKeyAddress {
+		key.key = q.event.ClientAddress
+	}
+	if !h.admitRate(q, audit.StageRate, key, rule.Rate()) {
+		return false
+	}
+	q.pass(audit.StageRate)
+	return true
+}
+
+// admitRate counts one request on key and answers a refusal at stage when
+// the limit is reached, the table is full or an address key is missing
+// (every key type but the subject counts by client address).
+func (h *Handler) admitRate(q *request, stage int, key counterKey, rule *compile.RateRule) bool {
+	if key.keyType != compile.RateKeySubject && key.key == "" {
+		q.event.Reason = "invalid_peer_address"
+		q.reject(stage, http.StatusBadRequest, "bad_request")
+		return false
+	}
+	switch h.controller.limiter.admit(key, rule, h.controller.clock.now()) {
+	case rateExceeded:
+		q.event.Reason = "quota_exceeded"
+		q.reject(stage, http.StatusTooManyRequests, "rate_limited")
+		return false
+	case rateNoCapacity:
+		q.event.Reason = "rate_capacity"
+		q.reject(stage, http.StatusServiceUnavailable, "gateway_unavailable")
+		return false
+	}
+	return true
 }

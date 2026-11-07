@@ -44,7 +44,7 @@ func TestInstalledSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	rows.Close()
-	want := []string{"activation", "administrator", "base", "blocked_account", "candidate", "control_result", "deployment", "enrolment", "override", "revision", "transition"}
+	want := []string{"activation", "administrator", "base", "blocked_account", "blocked_address", "candidate", "control_result", "deployment", "enrolment", "override", "revision", "transition"}
 	if !slices.Equal(tables, want) {
 		t.Fatalf("tables %v, want %v", tables, want)
 	}
@@ -76,13 +76,13 @@ func TestInstalledSchema(t *testing.T) {
 	if n := count(t, db, `SELECT COUNT(*) FROM pragma_index_info('sqlite_autoindex_override_1') WHERE name = 'creation'`); n != 1 {
 		t.Fatal("the override UNIQUE column constraint is not on creation")
 	}
-	foreignKeys := map[string]int{"revision": 1, "base": 2, "candidate": 1, "transition": 2, "activation": 4, "override": 3, "blocked_account": 1, "control_result": 1}
+	foreignKeys := map[string]int{"revision": 1, "base": 2, "candidate": 1, "transition": 2, "activation": 4, "override": 3, "blocked_account": 1, "blocked_address": 1, "control_result": 1}
 	for table, want := range foreignKeys {
 		if n := count(t, db, `SELECT COUNT(*) FROM pragma_foreign_key_list(?)`, table); n != want {
 			t.Errorf("table %s has %d foreign keys, want %d", table, n, want)
 		}
 	}
-	if n := count(t, db, `PRAGMA user_version`); n != 5 {
+	if n := count(t, db, `PRAGMA user_version`); n != 6 {
 		t.Fatalf("user_version %d", n)
 	}
 	var journal string

@@ -3,6 +3,7 @@
 package gateway
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -40,7 +41,7 @@ func TestMigrateFromVersionOne(t *testing.T) {
 		t.Fatalf("user_version %d after an interrupted migration", n)
 	}
 	out, code := e.runOperator(binaries.plain, nil, "migrate")
-	if code != 0 || !strings.Contains(out, "from schema version 1 to 5") {
+	if code != 0 || !strings.Contains(out, fmt.Sprintf("from schema version 1 to %d", store.DatabaseVersion)) {
 		t.Fatalf("migrate exited %d: %s", code, out)
 	}
 	if n := queryInt(t, e.database, `SELECT COUNT(*) FROM transition WHERE kind = 'operator.migrate' AND outcome = 'committed' AND audited_at IS NOT NULL`); n != 1 {

@@ -87,6 +87,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		q.reject(audit.StageIngress, http.StatusRequestEntityTooLarge, "payload_too_large")
 		return
 	}
+	if !h.admitAddress(q) {
+		return
+	}
 	q.pass(audit.StageIngress)
 
 	// Capture: the single generation used for every later decision.
@@ -114,7 +117,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	q.pass(audit.StageCanonical)
 
-	t, rule := g.Match(path, r.Method, compile.Inbound{Host: r.Host, Header: r.Header})
+	inbound := compile.Inbound{Host: r.Host, Header: r.Header}
+	if isPreflight(r) && h.preflight(q, g, path, inbound) {
+		return
+	}
+	t, rule := g.Match(path, r.Method, inbound)
 	if t == nil {
 		q.reject(audit.StageRoute, http.StatusNotFound, "not_found")
 		return
@@ -125,6 +132,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q.event.Operation, q.event.API, q.event.Upstream = rule.Operation(), rule.API(), rule.Upstream()
+	// From here every answer, refusals included, carries the API's browser
+	// access and response headers.
+	q.w = newAPIWriter(w, rule, r)
+	w = q.w
+	if !rule.AddressAllowed(q.event.ClientAddress) {
+		q.reject(audit.StageRoute, http.StatusForbidden, "address_not_allowed")
+		return
+	}
 	q.pass(audit.StageRoute)
 
 	if !rule.Permitted() {
@@ -176,31 +191,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		q.pass(audit.StageRBAC)
 	}
 
-	// Rate limiting uses either the verified subject or the direct socket
-	// peer. Client forwarding headers never choose an address counter.
-	if rule.Rate() == nil {
-		q.event.Stages[audit.StageRate] = audit.StageNotApplicable
-	} else {
-		key := counterKey{operation: rule.Operation(), keyType: rule.RateKey(), key: q.event.Subject}
-		if rule.RateKey() == compile.RateKeyAddress {
-			if q.event.ClientAddress == "" {
-				q.event.Reason = "invalid_peer_address"
-				q.reject(audit.StageRate, http.StatusBadRequest, "bad_request")
-				return
-			}
-			key.key = q.event.ClientAddress
-		}
-		switch h.controller.limiter.admit(key, rule.Rate(), h.controller.clock.now()) {
-		case rateExceeded:
-			q.event.Reason = "quota_exceeded"
-			q.reject(audit.StageRate, http.StatusTooManyRequests, "rate_limited")
-			return
-		case rateNoCapacity:
-			q.event.Reason = "rate_capacity"
-			q.reject(audit.StageRate, http.StatusServiceUnavailable, "gateway_unavailable")
-			return
-		}
-		q.pass(audit.StageRate)
+	if !h.limit(q, rule) {
+		return
 	}
 
 	document, refused := readBody(r, rule.Body(), h.maxBodyBytes)

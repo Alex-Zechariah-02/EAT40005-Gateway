@@ -91,7 +91,7 @@ func requestView(event audit.Event) requestEvent {
 		view.Roles = []string{}
 	}
 	switch event.Decision {
-	case "forwarded":
+	case "forwarded", "allowed": // allowed: a CORS preflight the gateway answered
 		view.Decision = "allowed"
 	case "upstream_failure":
 		view.Decision = "failed"
@@ -232,6 +232,10 @@ func previewDecision(g *compile.Generation, event observedRequest) (decision, co
 	if event.routingPath == "" {
 		return "refused", "bad_request", "", true
 	}
+	// A preflight's event does not keep the method it asked about.
+	if event.Code != nil && (*event.Code == "cors_preflight" || *event.Code == "cors_refused") {
+		return "", "", "", false
+	}
 	// Events keep neither host nor headers, so conditions cannot be replayed.
 	if g.Conditioned(event.routingPath, event.Method) {
 		return "", "", "", false
@@ -242,6 +246,9 @@ func previewDecision(g *compile.Generation, event observedRequest) (decision, co
 	}
 	if rule == nil {
 		return "refused", "method_not_allowed", "", true
+	}
+	if !rule.AddressAllowed(event.ClientAddress) {
+		return "refused", "address_not_allowed", rule.Operation(), true
 	}
 	if !rule.Permitted() {
 		return "refused", "forbidden", rule.Operation(), true

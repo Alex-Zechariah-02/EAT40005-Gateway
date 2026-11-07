@@ -1,5 +1,5 @@
 import { useId, useState } from 'react'
-import { connectApi } from './edits'
+import { connectApi, withBrowserAccess } from './edits'
 import { Wizard } from '../../shared/dialogs'
 import { Choice, Review, type WizardProps } from './wizards'
 import { blank, dialProblem, endpoints, idProblem, rowErrors, rowId, writes, type Row } from './inputs'
@@ -22,6 +22,8 @@ export function ConnectWizard({ policy, apply, close }: WizardProps) {
   const [dial, setDial] = useState('')
   const [api, setApi] = useState('')
   const [rows, setRows] = useState<Row[]>([blank(1)])
+  // origins are the web pages allowed to call the API from a browser, separated by spaces.
+  const [origins, setOrigins] = useState('')
   // revealed lists the steps whose Next was pressed early; their fields show what to fix.
   const [revealed, setRevealed] = useState<number[]>([])
   const shown = (step: number) => revealed.includes(step)
@@ -39,9 +41,10 @@ export function ConnectWizard({ policy, apply, close }: WizardProps) {
   const marks = (step: number) => (shown(step) ? Object.fromEntries(rows.map((row, index) => [row.key, errors[index]])) : {})
   const failing = (names: string[]) => errors.some((error) => names.some((name) => error[name]))
   const complete = !upstreamError && !dialError && !apiError && !failing(['target', 'id', 'count', 'seconds', 'bytes', 'schema'])
-  const next = complete ? connectApi(policy, existing ? { id: existing } : { id: upstream, dial }, api, endpoints(api, rows)) : policy
+  const connected = complete ? connectApi(policy, existing ? { id: existing } : { id: upstream, dial }, api, endpoints(api, rows)) : policy
+  const next = complete ? withBrowserAccess(connected, api, origins.split(/[\s,]+/).filter(Boolean)) : policy
   const permits = rows.reduce((sum, row) => sum + (row.open ? 0 : row.roles.length), 0)
-  const unsaved = existing !== '' || upstream !== '' || dial !== '' || api !== '' || JSON.stringify(rows) !== JSON.stringify([blank(1)])
+  const unsaved = existing !== '' || upstream !== '' || dial !== '' || api !== '' || origins !== '' || JSON.stringify(rows) !== JSON.stringify([blank(1)])
   const named = rows.map((row) => ({ row, id: rowId(api, row) }))
   const writing = named.filter(({ row }) => writes(row))
 
@@ -151,6 +154,20 @@ export function ConnectWizard({ policy, apply, close }: WizardProps) {
           body: <RateStep id={id} named={named} errors={marks(4)} change={change} />,
         },
         {
+          title: 'Browser Access',
+          plain: 'Optional: web pages on other sites that may call this API from a browser. Every other check still applies.',
+          technical: (
+            <>
+              Writes <code>apis[].cors</code>: <code>{'{"origins", "methods", "headers"}'}</code> with the endpoints' methods and the Content-Type header
+              (and Authorization when an endpoint needs a sign-in).
+            </>
+          ),
+          skip: () => setOrigins(''),
+          body: (
+            <Entry id={`${id}-origins`} label="Allowed Origins" value={origins} onChange={setOrigins} placeholder="https://shop.example.com" />
+          ),
+        },
+        {
           title: 'Validate Request Bodies',
           plain: 'Optional: the gateway refuses a write request whose body does not match its schema, before the service sees it.',
           technical: (
@@ -159,9 +176,9 @@ export function ConnectWizard({ policy, apply, close }: WizardProps) {
             </>
           ),
           problem: failing(['bytes', 'schema']) ? fix : undefined,
-          reveal: reveal(5),
+          reveal: reveal(6),
           skip: writing.length ? () => setRows((list) => list.map((row) => ({ ...row, checked: false }))) : undefined,
-          body: <BodyStep id={id} named={writing} errors={marks(5)} change={change} />,
+          body: <BodyStep id={id} named={writing} errors={marks(6)} change={change} />,
         },
         {
           title: 'Review',

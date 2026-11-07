@@ -109,3 +109,14 @@ export function connectApi(policy: Policy, upstream: { id: string; dial?: string
   for (const endpoint of endpoints) next = addEndpoint(next, endpoint)
   return next
 }
+
+// withBrowserAccess lets the listed origins call an API from a browser, for
+// the methods of its endpoints; no origins leaves the policy unchanged.
+export function withBrowserAccess(policy: Policy, api: string, origins: string[]): Policy {
+  if (!origins.length) return policy
+  const next = copy(policy)
+  const endpoints = next.operations.filter((operation) => operation.api === api)
+  const headers = endpoints.some((operation) => operation.auth === 'required') ? ['Authorization', 'Content-Type'] : ['Content-Type']
+  next.apis.find((entry) => entry.id === api)!.cors = { origins, methods: [...new Set(endpoints.map((operation) => operation.method))], headers }
+  return next
+}

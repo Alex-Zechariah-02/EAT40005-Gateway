@@ -1,4 +1,5 @@
-// Plugin rows: the effective plugins of a route become sign-in, roles, rate and size, or refuse the route.
+// Plugin rows: the effective plugins of a route become sign-in, roles, rate, size, browser access and
+// address rules, or refuse the route.
 
 package kong
 
@@ -23,6 +24,8 @@ type controls struct {
 	items    []pending
 	carried  map[string]any // effective plugin name → its carried config, for x-kong-plugin-*
 	when     map[string]any // the route's x-apiward-when, or nil
+	cors     *corsRule      // the route's cors plugin, or nil
+	allow    []string       // the route's allowed address ranges, or nil
 }
 
 // pending is an item every operation of the route gets.
@@ -71,7 +74,7 @@ func (r *reader) controls(plugins map[string]*plugin) (*controls, *refusal) {
 			r.carriedItem(p)
 		}
 	}
-	steps := []func(*controls, map[string]*plugin) *refusal{r.jwt, acl, rate, size}
+	steps := []func(*controls, map[string]*plugin) *refusal{r.jwt, acl, rate, size, cors, addresses}
 	for _, step := range steps {
 		if refused := step(c, plugins); refused != nil {
 			return nil, refused

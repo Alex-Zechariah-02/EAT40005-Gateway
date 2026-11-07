@@ -29,6 +29,7 @@ export const messages: Record<string, Message> = {
   unauthenticated: { title: 'Not signed in', action: 'Your session has ended, or the name or password is wrong. Sign in again.' },
   forbidden: { title: 'Your account cannot do this', action: 'Your administrator account does not have the permission for this action.' },
   not_found: { title: 'Not found', action: 'It does not exist, or it was removed. Refresh to see the current list.' },
+  limit_exceeded: { title: 'The blocked address list is full', action: 'It holds at most 1,024 entries. Unblock ranges no longer needed, or block a wider range.' },
   http_404: { title: 'This gateway does not offer that', action: 'The gateway has no such address. It may run a version without this feature.' },
   stream_limit: { title: 'Too many live views are open', action: 'At most 8 can be open at once. Close one, for example in another tab, then reload.' },
   keys_invalid: {
@@ -133,6 +134,10 @@ export const messages: Record<string, Message> = {
   REWRITE_INVALID: {
     title: "An API's forward rule is not valid",
     action: 'Use prefixes such as /api without a trailing slash, and remove only a prefix that every endpoint path of the API starts with.',
+  },
+  CORS_WILDCARD_NOT_ALLOWED: {
+    title: 'Any origin is allowed only on public APIs',
+    action: 'List the allowed origins, or make every endpoint of the API public and turn off credentials.',
   },
   UNAVAILABLE: { title: 'The gateway is unavailable', action: 'It changed nothing. Try again shortly.' },
   AUDIT_UNAVAILABLE: {

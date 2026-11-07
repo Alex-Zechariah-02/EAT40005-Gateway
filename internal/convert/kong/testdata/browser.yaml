@@ -1,0 +1,27 @@
+# Browser access and an address allow list on a service: both rows are
+# equivalent and come back as the same plugins.
+_format_version: "3.0"
+services:
+  - name: site
+    url: http://site.internal:8080
+    plugins:
+      - name: cors
+        config:
+          origins: ['https://shop\.example']
+          methods: [GET, POST, DELETE]
+          headers: [Content-Type]
+          exposed_headers: [X-Total]
+          max_age: 600
+          credentials: false
+      - name: ip-restriction
+        config:
+          allow: ["10.0.0.0/8", "192.0.2.7"]
+    routes:
+      - name: pages
+        paths: ["~/pages$"]
+        methods: [GET]
+        strip_path: false
+      - name: contact
+        paths: ["~/contact$"]
+        methods: [POST]
+        strip_path: false

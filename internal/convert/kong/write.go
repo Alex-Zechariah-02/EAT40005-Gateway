@@ -87,6 +87,12 @@ func Write(document map[string]any, ledger *exchange.Ledger, options Options) (m
 		return nil, nil, fmt.Errorf("%s differs from the rule read from the Kong file; change the service path and strip_path in Kong instead",
 			policy.ForwardExtension)
 	}
+	// Restored routes keep Kong's own cors and ip-restriction plugins.
+	for _, name := range []string{policy.CORSExtension, policy.AddressesExtension} {
+		if ledger.Source.Format == Format && !same(view.Document[name], document[name]) {
+			return nil, nil, fmt.Errorf("%s differs from the setting read from the Kong file; change the plugin in Kong instead", name)
+		}
+	}
 	for _, name := range sortedKeys(original) {
 		if !slices.Contains([]string{"_format_version", "services", "routes", "plugins", "consumers"}, name) {
 			out[name] = original[name]

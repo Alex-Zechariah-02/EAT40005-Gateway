@@ -40,7 +40,7 @@ test.describe.serial('request drawer', () => {
     await expect(drawerFact(admin, 'Policy Version')).toContainText(`Version ${version}`)
     await expect(drawerFact(admin, 'Policy Version')).toContainText(anonymous.generation)
     await expect(drawerFact(admin, 'Account')).toHaveText('None (no token)')
-    await expect(drawerFact(admin, 'Client Address')).toHaveText(anonymous.client_address)
+    await expect(drawerFact(admin, 'Client Address').locator('code')).toHaveText(anonymous.client_address)
     const checks = d.getByRole('list', { name: "The gateway's checks, in order" })
     await expect(checks.getByRole('listitem').filter({ hasText: 'Route' })).toContainText('Passed')
     await expect(checks.getByRole('listitem').filter({ hasText: 'Sign-In' })).toContainText('Refused Here')

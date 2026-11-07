@@ -216,3 +216,23 @@
   color: var(--accent-active);
   font-weight: 600;
 }
+/* API settings groups in the box editor: one quiet rule above each group. */
+.designer-group {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin: 8px 0 0;
+  padding: 16px 0 0;
+  border: 0;
+  border-top: 1px solid var(--rule);
+}
+.designer-group legend {
+  float: left;
+  width: 100%;
+  margin-block-end: 4px;
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+.designer-group > .hint {
+  margin: 0;
+}

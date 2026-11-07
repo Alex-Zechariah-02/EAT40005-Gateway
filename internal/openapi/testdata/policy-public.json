@@ -2,7 +2,10 @@
   "schema_version": 4,
   "profile": "core",
   "upstreams": [{"id": "site-svc", "dial": "127.0.0.1:9301"}],
-  "apis": [{"id": "site", "upstream": "site-svc", "forward": {"add_prefix": "/site"}}],
+  "apis": [{"id": "site", "upstream": "site-svc", "forward": {"add_prefix": "/site"},
+            "cors": {"origins": ["https://www.example.com", "https://example.com"], "methods": ["POST", "GET"], "headers": ["content-type"], "max_age_seconds": 0},
+            "response_headers": {"nosniff": true, "frame": "sameorigin", "remove": ["X-Powered-By", "Server"]},
+            "allow_addresses": ["198.51.100.0/24", "10.0.0.0/8"]}],
   "operations": [
     {"id": "site.home", "api": "site", "method": "GET", "target": "/", "access": "allow", "auth": "none"},
     {"id": "site.pages", "api": "site", "method": "GET", "target": "/pages/*", "access": "allow", "auth": "none",

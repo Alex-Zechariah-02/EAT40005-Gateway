@@ -13,7 +13,7 @@ const row = (n: number) => flow().getByRole('group', { name: `Endpoint ${n}`, ex
 const schema = '{"type": "object", "properties": {"note": {"type": "string", "maxLength": 200}}, "required": ["note"], "additionalProperties": false}'
 
 async function step(title: string, plain: string, technical: RegExp) {
-  await expect(flow().locator('h3[tabindex="-1"]')).toHaveText(new RegExp(`^Step \\d of 7: ${title}$`))
+  await expect(flow().locator('h3[tabindex="-1"]')).toHaveText(new RegExp(`^Step \\d of 8: ${title}$`))
   await expect(flow().locator('.wizard-plain')).toHaveText(plain)
   await expect(flow().locator('.wizard-technical')).toHaveText(technical)
 }
@@ -50,6 +50,7 @@ async function connect(body: string | null) {
   await next().click()
   await flow().getByRole('group', { name: /^analytics\.notes/ }).getByLabel('Requests', { exact: true }).fill('20')
   await next().click()
+  await next().click() // Browser Access: none
   if (body === null) await flow().getByRole('button', { name: 'Skip This Step', exact: true }).click()
   else {
     const notes = flow().getByRole('group', { name: /^analytics\.notes/ })
@@ -129,6 +130,9 @@ test.describe.serial('Connect an API on the native Gateway', () => {
     await next().click()
     await fieldError(flow().getByRole('group', { name: /^billing\.invoices/ }).getByLabel('Requests', { exact: true }), 'Enter a whole number of at least 1.')
     await flow().getByRole('group', { name: /^billing\.invoices/ }).getByLabel('Requests', { exact: true }).fill('30')
+    await next().click()
+
+    await step('Browser Access', 'Optional: web pages on other sites that may call this API from a browser. Every other check still applies.', /^Writes apis\[\]\.cors: \{"origins", "methods", "headers"\}/)
     await next().click()
 
     await step('Validate Request Bodies', 'Optional: the gateway refuses a write request whose body does not match its schema, before the service sees it.', /^Writes operations\[\]\.body: \{"max_bytes", "schema"\}\. Only the gateway checks the schema, when the draft is saved\.$/)

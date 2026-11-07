@@ -99,6 +99,19 @@ func (g *Generation) Conditioned(path, method string) bool {
 	return t != nil && len(t.variants[method]) > 0
 }
 
+// Preflight returns the rule a CORS preflight's requested method selects on
+// the path, as Match would for the actual request, and whether the path's
+// target has an operation of an API with browser access; only then does the
+// gateway answer the preflight.
+func (g *Generation) Preflight(path, method string, in Inbound) (*Rule, bool) {
+	t := g.lookup(path)
+	if t == nil || !t.cors {
+		return nil, false
+	}
+	_, rule := g.Match(path, method, in)
+	return rule, true
+}
+
 // lookup returns the most specific target for a canonical path.
 func (g *Generation) lookup(path string) *target {
 	if t := g.exact[path]; t != nil {

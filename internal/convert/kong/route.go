@@ -117,6 +117,11 @@ func (r *reader) readRoute(svc *service, route map[string]any, pointer string) {
 		c.when = when
 		c.items = append(c.items, pending{suffix: "when", facet: "route", source: pointer, d: whenDistance(when)})
 	}
+	if r.forwardSet && !slices.Equal(c.allow, r.allow) {
+		r.refuse("route:"+name, "route", pointer, CodeSetting,
+			"another route of the file allows other client addresses; one API has one allow list.")
+		return
+	}
 	before := r.count
 	r.operations(name, pointer, route, c)
 	if r.count == before {
@@ -124,7 +129,8 @@ func (r *reader) readRoute(svc *service, route map[string]any, pointer string) {
 	}
 	svc.serves = true
 	// The first route that yields operations fixes the API's forward rule.
-	r.forward, r.forwardSet = forward, true
+	r.forward, r.forwardSet, r.allow = forward, true, c.allow
+	r.corsRules = append(r.corsRules, c.cors)
 	if forward != (policy.Forward{}) {
 		r.add("route:"+name+":forward", "transform", pointer, "#/"+policy.ForwardExtension,
 			semantics.Distance{Class: exchange.Equivalent, Note: forwardNote(forward)})

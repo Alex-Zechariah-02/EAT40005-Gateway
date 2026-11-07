@@ -1,4 +1,5 @@
 import { type Message, messages } from './messages'
+import type { ApiEntry, When } from './rules'
 
 // The protected Admin API's types, and the words for its codes and changes.
 // Nothing here decides what an administrator may do; the server checks
@@ -73,44 +74,13 @@ export interface Operation {
   when?: When
 }
 
-// When lists the host and header conditions that select an endpoint among
-// those sharing its method and path. Conditions never grant access.
-export interface When {
-  hosts?: string[]
-  headers?: { name: string; value: string }[]
-}
-
-// whenRule describes an endpoint's conditions in words, or null when it has
-// none. The gateway alone decides which endpoint a request selects.
-export function whenRule(when: When | undefined): string | null {
-  const hosts = when?.hosts?.length ? `host ${when.hosts.join(' or ')}` : ''
-  const headers = (when?.headers ?? []).map((h) => `header ${h.name}: ${h.value}`)
-  const text = [hosts, ...headers].filter(Boolean).join(' and ')
-  return text ? `Only for ${text}` : null
-}
-
-// Forward is an API's path rewrite: the service receives the request path
-// without strip_prefix, after add_prefix. Decisions use the request path.
-export interface Forward {
-  strip_prefix?: string
-  add_prefix?: string
-}
-
-// forwardRule describes a forward rule in words, or null when the path is
-// forwarded unchanged. The gateway alone applies the rule.
-export function forwardRule(forward: Forward | undefined): string | null {
-  const parts = [forward?.strip_prefix ? `removes ${forward.strip_prefix}` : '', forward?.add_prefix ? `adds ${forward.add_prefix} in front` : '']
-  const text = parts.filter(Boolean).join(', then ')
-  return text ? text[0].toUpperCase() + text.slice(1) : null
-}
-
 // Policy is a schema version 4 document. It names no accounts: roles come
 // from the trusted issuer's tokens and blocking is a separate list.
 export interface Policy {
   schema_version: number
   profile: string
   upstreams: { id: string; dial: string }[]
-  apis: { id: string; upstream: string; forward?: Forward }[]
+  apis: ApiEntry[]
   operations: Operation[]
   roles: { id: string }[]
   permits: { role: string; operation: string }[]

@@ -40,6 +40,12 @@ type reader struct {
 	// yields operations (forwardSet); routes with another rule are refused.
 	forward    policy.Forward
 	forwardSet bool
+	// corsRules holds each imported route's cors (nil: none); allow is the
+	// API's allow list, fixed with the forward rule (routes with another
+	// are refused).
+	corsRules []*corsRule
+	browser   map[string]any // the API's x-apiward-cors, or nil
+	allow     []string
 }
 
 // consumer is what the reader needs from a consumer: never a credential.
@@ -80,6 +86,7 @@ func Read(root map[string]any, data []byte) (*Result, error) {
 	for _, svc := range r.ordered {
 		r.serviceItem(svc)
 	}
+	r.settleCORS()
 	r.unusedPlugins()
 	r.rootMembers(root)
 	slices.SortFunc(r.ledger.Items, func(a, b exchange.Item) int { return cmp.Compare(a.ID, b.ID) })

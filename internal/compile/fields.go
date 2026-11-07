@@ -7,6 +7,7 @@ import (
 	"cmp"
 	"iter"
 	"maps"
+	"net/netip"
 	"slices"
 )
 
@@ -90,3 +91,34 @@ func (g *Generation) Rules() []*Rule {
 	slices.SortFunc(list, func(a, b *Rule) int { return cmp.Compare(a.operation, b.operation) })
 	return list
 }
+
+// Counter is the operation whose rate counter the rule counts on: its own,
+// or for a conditioned operation its unconditioned sibling's.
+func (r *Rule) Counter() string { return r.counter }
+
+// CORS is the browser access of the rule's API; nil when it has none.
+func (r *Rule) CORS() *CORS { return r.settings.cors }
+
+// Response is the response header rule of the rule's API; nil when it has
+// none.
+func (r *Rule) Response() *ResponseRule { return r.settings.response }
+
+// PreflightRate is the rate rule that limits CORS preflights to the rule's
+// API, per client address; nil when no public operation has one.
+func (r *Rule) PreflightRate() *RateRule { return r.settings.preflight }
+
+// AddressAllowed reports whether the API's allow list admits the client
+// address; an address that does not parse is never admitted by a list.
+func (r *Rule) AddressAllowed(address string) bool {
+	if !r.settings.limited {
+		return true
+	}
+	addr, err := netip.ParseAddr(address)
+	if err != nil {
+		return false
+	}
+	addr = addr.Unmap()
+	return slices.ContainsFunc(r.settings.addresses, func(p netip.Prefix) bool { return p.Contains(addr) })
+}
+
+func hasCORS(r *Rule) bool { return r != nil && r.settings.cors != nil }

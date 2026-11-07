@@ -17,7 +17,7 @@ import (
 // outcomeKind names the outcome event of a committed transition.
 func outcomeKind(t store.TransitionRecord) string {
 	switch t.Kind {
-	case "account.block", "account.unblock", "keys.reload":
+	case "account.block", "account.unblock", "address.block", "address.unblock", "keys.reload":
 		return t.Kind
 	case "cpa.activate":
 		return "cpa.activated"

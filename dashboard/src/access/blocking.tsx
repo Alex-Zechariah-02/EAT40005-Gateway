@@ -1,7 +1,7 @@
-import { useContext, useEffect, useId, useState } from 'react'
+import { useId, useState } from 'react'
 import { newKey } from '../shared/http'
 import type { Page } from '../shared/api'
-import { useMutation, useResource, ViewMemory } from '../shared/hooks'
+import { useMutation, useResource } from '../shared/hooks'
 import { AccountLink, XRef } from '../shared/links'
 import { Badge, Field, ListToolbar, matches, TableScroll } from '../shared/ui'
 import { Confirm } from '../shared/dialogs'
@@ -10,8 +10,10 @@ import { PageHeader } from '../app/header'
 import { ReadStamp, Time, Zone } from '../shared/time'
 import type { ViewProps } from '../app/views'
 import { reasonOf, type RequestEvent } from '../monitor/requests'
+import { addressHandoff, AddressesPanel, BlockedSwitch, useHandoff } from './addresses'
 
-// The Accounts page: blocked accounts and accounts seen in traffic.
+// The Accounts page: blocked accounts and accounts seen in traffic, and the
+// blocked client addresses.
 
 // blockHandoff is the page memory's key for an account another page asks to
 // block; this page then opens its usual block confirmation for it.
@@ -27,8 +29,11 @@ interface BlockedAccount {
 // policy change: no trial, no rollback, and it lasts until an explicit unblock.
 // Accounts recently seen in traffic, with the roles their tokens carried, are
 // listed so an administrator can act on what is happening.
-export function AccountsView({ admin, can }: ViewProps) {
+export function AccountsView(props: ViewProps) {
+  const { admin, can } = props
   const id = useId()
+  const [view, setView] = useState<'accounts' | 'addresses'>('accounts')
+  const [handedAddress, setHandedAddress] = useState<{ address: string } | null>(null)
   const list = useResource<{ items: BlockedAccount[] }>((signal) => admin.get('/admin/blocked-accounts', signal), [])
   const [query, setQuery] = useState('')
   const [show, setShow] = useState<'all' | 'blocked' | 'seen'>('all')
@@ -51,12 +56,11 @@ export function AccountsView({ admin, can }: ViewProps) {
     setReason('')
     setBlocking(true)
   }
-  const memory = useContext(ViewMemory)
-  useEffect(() => {
-    const handed = memory?.get(blockHandoff)
-    memory?.delete(blockHandoff)
-    if (manage && typeof handed === 'string') openBlock(handed)
-  }, [])
+  useHandoff(blockHandoff, (account) => manage && openBlock(account))
+  useHandoff(addressHandoff, (address) => {
+    setView('addresses')
+    setHandedAddress({ address })
+  })
   const submit = () => {
     if (!subject.trim() || !reason.trim()) return
     setBlocking(false)
@@ -88,16 +92,18 @@ export function AccountsView({ admin, can }: ViewProps) {
 
   return (
     <>
-      <PageHeader title="Accounts" lede="Block or unblock accounts; a block applies at every endpoint at once.">
+      <PageHeader title="Accounts" lede="Block or unblock accounts and client addresses; a block applies at every endpoint at once.">
         <ReadStamp okAt={list.last?.at ?? null} failed={list.failed} loading={list.loading} onRefresh={refresh} />
-        {manage ? (
+        {manage && view === 'accounts' ? (
           <button type="button" className="btn btn-primary btn-small" onClick={() => openBlock()}>
             Block an Account
           </button>
         ) : null}
       </PageHeader>
-      {list.reply && list.reply.kind !== 'ok' ? <Problem reply={list.reply} /> : null}
-      {recent.reply && recent.reply.kind !== 'ok' ? <Problem reply={recent.reply} /> : null}
+      <BlockedSwitch view={view} onView={setView} />
+      {view === 'addresses' ? <AddressesPanel {...props} handed={handedAddress} /> : null}
+      {view === 'accounts' && list.reply && list.reply.kind !== 'ok' ? <Problem reply={list.reply} /> : null}
+      {view === 'accounts' && recent.reply && recent.reply.kind !== 'ok' ? <Problem reply={recent.reply} /> : null}
       <MutationResult
         mutation={block}
         onRefresh={list.refresh}
@@ -119,7 +125,7 @@ export function AccountsView({ admin, can }: ViewProps) {
           </>
         )}
       />
-      <section className="section card" aria-labelledby={`${id}-list`}>
+      <section className="section card" aria-labelledby={`${id}-list`} hidden={view !== 'accounts'}>
         <h2 id={`${id}-list`} className="visually-hidden">
           Accounts
         </h2>
