@@ -94,6 +94,7 @@ func TestExchangeStrict(t *testing.T) {
 		"carried value too large": {`"value": {"Free": ["Form", 1]}`, `"value": ` + big},
 		"carried total too large": {`"carried": [`, `"carried": [` + many},
 		"unknown root extension":  {`"x-apiward-migration": {`, `"x-apiward-other": 1, "x-apiward-migration": {`},
+		"accepted when exact":     {`"note": "", "accepted": false},`, `"note": "", "accepted": true},`}, // the first item is exact
 		"blocked unknown member":  {`"credentials_skipped"`, `"blocked": [{"provider": "p", "subject": "s", "x": 1}], "credentials_skipped"`},
 	}
 	for name, change := range cases {

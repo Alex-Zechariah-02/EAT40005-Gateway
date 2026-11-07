@@ -10,6 +10,7 @@ import (
 
 	"github.com/Alex-Zechariah-02/apiward/internal/exchange"
 	"github.com/Alex-Zechariah-02/apiward/internal/openapi"
+	"github.com/Alex-Zechariah-02/apiward/internal/overlay"
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
@@ -19,15 +20,15 @@ const MaxInputBytes = 8 << 20
 // Synopses of the commands.
 const (
 	importUsage = `gateway migrate import --from openapi --in <file.json|.yaml|.yml>
-  --out <new exchange file.json|.yaml|.yml> --report <new file>`
+  --out <new exchange file.json|.yaml|.yml> --report <new file> [--decisions <overlay>]`
 	policyUsage = `gateway migrate policy --exchange <file> --base <policy.json> --api <id> --upstream <id>
-  --out <new file> --report <new file> [--with-permits]`
+  --out <new file> --report <new file> [--decisions <overlay>] [--with-permits]`
 )
 
 var commands = map[string]openapi.Subcommand{
-	"import": {Usage: importUsage, Required: []string{"from", "in", "out", "report"}, Run: runImport},
+	"import": {Usage: importUsage, Required: []string{"from", "in", "out", "report"}, Optional: noDecisions(), Run: runImport},
 	"policy": {Usage: policyUsage, Required: []string{"exchange", "base", "api", "upstream", "out", "report"},
-		Switches: []string{"with-permits"}, Run: runPolicy},
+		Optional: noDecisions(), Switches: []string{"with-permits"}, Run: runPolicy},
 }
 
 // Command runs "migrate <subcommand>" and returns the exit status.
@@ -58,8 +59,7 @@ func runImport(values map[string]string, stderr io.Writer) (int, error) {
 	if err != nil {
 		return openapi.ExitFailed, err
 	}
-	ledger := openapiLedger(root, classified, data)
-	document, err := exchange.Attach(root, ledger)
+	document, ledger, stale, err := decidedImport(root, openapiLedger(root, classified, data), values["decisions"])
 	if err != nil {
 		return openapi.ExitFailed, err
 	}
@@ -71,6 +71,7 @@ func runImport(values map[string]string, stderr io.Writer) (int, error) {
 		return openapi.ExitFailed, fmt.Errorf("the exchange file would not be readable: %w", err)
 	}
 	report := newReport(classified, ledger)
+	report.StaleDecisions = stale
 	if err := openapi.Write(values["out"], json.RawMessage(encoded), values["report"], report); err != nil {
 		return openapi.ExitFailed, err
 	}
@@ -80,6 +81,10 @@ func runImport(values map[string]string, stderr io.Writer) (int, error) {
 
 func runPolicy(values map[string]string, stderr io.Writer) (int, error) {
 	_, root, format, err := readDocument(values["exchange"], "exchange")
+	if err != nil {
+		return openapi.ExitFailed, err
+	}
+	root, stale, err := decide(root, values["decisions"])
 	if err != nil {
 		return openapi.ExitFailed, err
 	}
@@ -102,12 +107,66 @@ func runPolicy(values map[string]string, stderr io.Writer) (int, error) {
 	}
 	imported.Refused = append(imported.Refused, left...)
 	report := newReport(imported, ledger)
+	report.StaleDecisions = stale
 	if err := openapi.Write(values["out"], result, values["report"], report); err != nil {
 		return openapi.ExitFailed, err
 	}
 	fmt.Fprintf(stderr, "imported %d operations (%d widened, %d refused); see %s\n",
 		len(imported.Mapped)+len(imported.Widened), len(imported.Widened), len(imported.Refused), values["report"])
 	return report.Exit(), nil
+}
+
+// noDecisions gives --decisions its default: no decisions file.
+func noDecisions() map[string]string { return map[string]string{"decisions": ""} }
+
+// decidedImport attaches the ledger and applies the decisions to the
+// exchange file before it is written, so the file records them; the result
+// passes the ledger's check again.
+func decidedImport(root map[string]any, ledger *exchange.Ledger, decisions string) (map[string]any, *exchange.Ledger, []string, error) {
+	document, err := exchange.Attach(root, ledger)
+	if err != nil || decisions == "" {
+		return document, ledger, []string{}, err
+	}
+	encoded, err := openapi.Encode(document, openapi.JSON)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	value, err := openapi.Decode(encoded, openapi.JSON, MaxInputBytes)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("the exchange file would not be readable: %w", err)
+	}
+	decided, stale, err := decide(value.(map[string]any), decisions)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if _, ledger, err = exchange.Split(decided); err != nil {
+		return nil, nil, nil, err
+	}
+	return decided, ledger, stale, nil
+}
+
+// decide applies the decisions file at path, if one is named, to an
+// exchange file and returns it with the stale actions, clipped for the report.
+func decide(root map[string]any, path string) (map[string]any, []string, error) {
+	if path == "" {
+		return root, []string{}, nil
+	}
+	_, file, _, err := readDocument(path, "decisions")
+	if err != nil {
+		return nil, nil, err
+	}
+	decisions, err := overlay.Parse(file)
+	if err != nil {
+		return nil, nil, fmt.Errorf("decisions: %w", err)
+	}
+	decided, stale, err := decisions.Apply(root, openapi.DefaultBodyBytes)
+	if err != nil {
+		return nil, nil, fmt.Errorf("decisions: %w", err)
+	}
+	for i := range stale {
+		stale[i] = policy.Clip(stale[i])
+	}
+	return decided, stale, nil
 }
 
 // readDocument reads a bounded JSON or YAML file through the import's gate

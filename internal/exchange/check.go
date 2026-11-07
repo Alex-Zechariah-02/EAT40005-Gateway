@@ -94,7 +94,8 @@ func lowerName(name string) bool {
 
 // Check enforces the ledger rules: known format and version, one item per
 // identifier prefixed by the format, a direction exactly when approximated,
-// a target exactly when expressible, and bounded carried values.
+// a target exactly when expressible, acceptance only of a looser
+// approximation, and bounded carried values.
 func (l *Ledger) Check() error {
 	if l.Version != Version {
 		return fmt.Errorf("%s: version must be %d", Member, Version)
@@ -137,6 +138,8 @@ func (item Item) check(format string) error {
 		return errors.New("direction is given exactly when the class is approximated")
 	case item.Direction != "" && !slices.Contains([]Direction{Stricter, Looser, Both}, item.Direction):
 		return fmt.Errorf("unknown direction %q", policy.Clip(string(item.Direction)))
+	case item.Accepted && item.Direction != Looser:
+		return errors.New("accepted is true only on a looser approximation")
 	case !pointer(item.Source):
 		return errors.New("source must be a JSON pointer starting with #")
 	case (item.Class == NotExpressible) != (item.Target == ""):

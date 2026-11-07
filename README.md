@@ -97,22 +97,31 @@ Migration runs in two offline steps with a file to review between them. `gateway
 
 ```
 gateway migrate import --from openapi --in <file.json|.yaml|.yml>
-  --out <new exchange file.json|.yaml|.yml> --report <new file>
+  --out <new exchange file.json|.yaml|.yml> --report <new file> [--decisions <overlay>]
 gateway migrate policy --exchange <file> --base <policy.json> --api <id> --upstream <id>
-  --out <new file> --report <new file> [--with-permits]
+  --out <new file> --report <new file> [--decisions <overlay>] [--with-permits]
 ```
 
 Each input is read only from the named path and may be at most 8 MiB, nested at most 16 levels; YAML passes the same gate as the OpenAPI import. Outputs must not exist yet; both are created together or neither is, and the output and the report must be different files.
 
 **The ledger** is the root member `x-apiward-migration`: `version` (`1`); `source` (`format`, `format_version`, `sha256` of the input); `items`, one per setting; `carried`, settings kept as opaque data for the gateway they came from (`vendor`, `scope`, `path`, `value`), never compiled into a policy; `credentials_skipped` (`type`, `count`), credentials counted but never read or copied; and `trust.issuers` (`issuer`, `audience`, `public_key_ids`). Each item has `id` (`<format>:<kind>:<name>`), `facet` (`route`, `access`, `auth`, `roles`, `rate`, `validation`, `size`, `upstream`, `transform`, `failure` or `other`), `class`, `direction`, `source` and `target` (JSON Pointers into the input and the exchange file), `note` and `accepted`. The class is `exact`, `equivalent`, `approximated` or `not_expressible`; an approximation also states whether the gateway is `stricter`, `looser` or differs in `both` directions, and a setting that cannot be expressed has an empty `target`. Unknown members anywhere in the ledger, or another `x-apiward-…` root member, refuse the file.
 
-**Looser settings are not imported by default.** `migrate policy` leaves out each operation that a looser item points to, reporting `LOOSER_NOT_ACCEPTED` with the item's `id` in `field`. Setting that item's `accepted` to `true` in the exchange file imports the operation as described.
+**Looser settings are not imported by default.** `migrate policy` leaves out each operation that a looser item points to, reporting `LOOSER_NOT_ACCEPTED` with the item's `id` in `field`. Accepting that item with a decision (below) imports the operation as described. Only a looser approximation can have `accepted` set to `true`.
+
+**Decisions** are a file of repeatable choices, given with `--decisions`: an [OpenAPI Overlay 1.2.0](https://spec.openapis.org/overlay/v1.2.0.html) document (JSON or YAML, through the same gate) with `overlay: 1.2.0`, an `info` object with `title` and `version`, and a list of `actions`. `migrate import` applies them to the exchange file before writing it, so the file records them; `migrate policy` applies them to the exchange file it reads, before converting it. Actions apply in order, each to the result of the one before, and each must select exactly one node.
+
+- Only `update` actions are accepted (each with a `target`, an `update` and an optional `description`); `remove`, `copy`, reusable actions, `components` and extension members refuse the file.
+- A `target` is one of three forms: a normalized JSONPath into an operation, such as `$['paths']['/orders']['get']['x-apiward-rate']`; `$.paths[*][?@.operationId=='<id>']`; or `$['x-apiward-migration'].items[?@.id=='<id>']` (or the item's normalized path, `$['x-apiward-migration']['items'][<n>]`). Write the forms exactly, with single quotes and no spaces.
+- An update merges as the Overlay specification states: objects member by member, lists by appending, single values by replacing.
+- On an operation a decision may only make `x-apiward-access`, `x-apiward-rate` and `x-apiward-max-bytes` stricter: set access to `deny`; add a rate rule, or lower its `count` or lengthen its `window_seconds` with the same `algorithm` and `key`; lower the body limit (16384 bytes when none is stated). Any other change, including one that would widen access, refuses the file.
+- On a ledger item the only decision is to accept a looser approximation, with exactly `{"accepted": true, "direction": "looser"}`.
+- An action that selects nothing is **stale**: it changes nothing, is listed in the report's `stale_decisions` as `actions[<n>]: <target>`, and makes the exit status `2`. An action that selects more than one node, a refused action or an unreadable file writes nothing (exit `1`).
 
 **Policy limits.** If the new policy would exceed a limit of the policy document (its size, nesting, or the number of upstreams, APIs, operations, roles or permits), nothing is written and the error starts with `POLICY_LIMIT_EXCEEDED` and names the limit. Import fewer operations, or one API at a time.
 
 Both reports extend the import report with `ledger_summary` (counts of `exact`, `equivalent`, `approximated` by `stricter`, `looser` and `both`, and `not_expressible`), `stale_decisions`, `credentials_skipped` and `carried_count`. Every list is present, possibly empty.
 
-Exit status: `0` every setting is exact or equivalent and nothing was changed, refused, widened, carried or skipped; `2` both files written, but at least one of those happened (read the report); `1` nothing written.
+Exit status: `0` every setting is exact or equivalent and nothing was changed, refused, widened, carried, skipped or stale; `2` both files written, but at least one of those happened (read the report); `1` nothing written.
 
 ## How it is built
 
@@ -138,6 +147,7 @@ Each package under `internal/` imports only the packages listed before it; a tes
 - `internal/audit`: the durable security log; an admitted request is acknowledged only after its record is synced to disk, and the writer never deletes a file.
 - `internal/openapi`: the offline OpenAPI import and export; it turns a description into a candidate policy, checks it with the compiler, and writes one API of a policy back as a description.
 - `internal/exchange`: the migration exchange file's ledger: its types, strict reading and the rules every ledger must meet.
+- `internal/overlay`: decisions files: a restricted Overlay 1.2.0 profile that may only make operations stricter or accept a looser ledger item, applied in order to a copy of an exchange file.
 - `internal/semantics`: the meaning of settings other gateways use (path matching and rewriting, identity, roles, rate algorithms, failure modes) and how far each is from the gateway's own, with the bounds of each rate algorithm.
 - `internal/migrate`: the offline `gateway migrate` commands, which classify a configuration into an exchange file and turn an exchange file into a candidate policy.
 - `internal/gateway`: the gateway itself, which uses the packages above.
