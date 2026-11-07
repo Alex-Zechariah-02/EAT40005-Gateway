@@ -44,6 +44,9 @@ func (c *controls) describe(operationID, method, target string, prefix bool) map
 	for name, value := range c.carried {
 		op["x-kong-plugin-"+name] = value
 	}
+	if c.when != nil {
+		op[policy.WhenExtension] = c.when
+	}
 	return op
 }
 

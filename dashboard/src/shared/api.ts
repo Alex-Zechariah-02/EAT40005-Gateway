@@ -70,6 +70,23 @@ export interface Operation {
   body?: { max_bytes: number; schema: unknown }
   headers?: unknown
   rate?: RateRule
+  when?: When
+}
+
+// When lists the host and header conditions that select an endpoint among
+// those sharing its method and path. Conditions never grant access.
+export interface When {
+  hosts?: string[]
+  headers?: { name: string; value: string }[]
+}
+
+// whenRule describes an endpoint's conditions in words, or null when it has
+// none. The gateway alone decides which endpoint a request selects.
+export function whenRule(when: When | undefined): string | null {
+  const hosts = when?.hosts?.length ? `host ${when.hosts.join(' or ')}` : ''
+  const headers = (when?.headers ?? []).map((h) => `header ${h.name}: ${h.value}`)
+  const text = [hosts, ...headers].filter(Boolean).join(' and ')
+  return text ? `Only for ${text}` : null
 }
 
 // Forward is an API's path rewrite: the service receives the request path

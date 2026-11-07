@@ -60,7 +60,7 @@ func TestFetchArraySchemas(t *testing.T) {
 			t.Errorf("wrapped=%t: array schema refused: %v", wrapped, err)
 			continue
 		}
-		_, operation := g.Match("/orders", "POST")
+		_, operation := g.Match("/orders", "POST", compile.Inbound{})
 		for _, tc := range []struct {
 			body string
 			ok   bool

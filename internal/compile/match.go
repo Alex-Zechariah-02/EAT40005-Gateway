@@ -69,23 +69,48 @@ func IsCanonical(path string) bool {
 }
 
 // Match selects the most specific target for a canonical path, then the
-// method on that target only. A less specific target is never consulted for a
-// missing method.
-func (g *Generation) Match(path, method string) (*target, *Rule) {
-	t := g.exact[path]
-	if t == nil {
-		for _, candidate := range g.prefixes {
-			rest, ok := strings.CutPrefix(path, candidate.prefix)
-			if ok && rest != "" {
-				t = candidate
-				break
-			}
-		}
-	}
+// method on that target only, then among that method's operations the one
+// with the most conditions the request meets, else the unconditioned one. A
+// less specific target is never consulted for a missing method. When the
+// method has only conditioned operations and none holds, no target matches.
+func (g *Generation) Match(path, method string, in Inbound) (*target, *Rule) {
+	t := g.lookup(path)
 	if t == nil {
 		return nil, nil
 	}
+	if variants := t.variants[method]; len(variants) > 0 {
+		host := requestHost(in.Host)
+		for _, v := range variants {
+			if v.when.holds(host, in.Header) {
+				return t, v
+			}
+		}
+		if t.methods[method] == nil {
+			return nil, nil
+		}
+	}
 	return t, t.methods[method]
+}
+
+// Conditioned reports whether the method on the path's target has
+// conditioned operations, so the operation depends on host and headers.
+func (g *Generation) Conditioned(path, method string) bool {
+	t := g.lookup(path)
+	return t != nil && len(t.variants[method]) > 0
+}
+
+// lookup returns the most specific target for a canonical path.
+func (g *Generation) lookup(path string) *target {
+	if t := g.exact[path]; t != nil {
+		return t
+	}
+	for _, candidate := range g.prefixes {
+		rest, ok := strings.CutPrefix(path, candidate.prefix)
+		if ok && rest != "" {
+			return candidate
+		}
+	}
+	return nil
 }
 
 // Authorise retains only declared roles from already verified claims. Unknown

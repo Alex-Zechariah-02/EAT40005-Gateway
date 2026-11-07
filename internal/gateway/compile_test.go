@@ -143,7 +143,7 @@ func TestSpecificityIgnoresDeclarationOrder(t *testing.T) {
 		}
 		var got []string
 		for _, r := range requests {
-			_, rule := g.Match(r.path, "GET")
+			_, rule := g.Match(r.path, "GET", compile.Inbound{})
 			if rule == nil {
 				got = append(got, "")
 				continue
@@ -180,14 +180,14 @@ func TestDenyAllPolicyCompiles(t *testing.T) {
 		if prefix, ok := strings.CutSuffix(op.Target, "*"); ok {
 			path = prefix + "x"
 		}
-		if _, r := g.Match(path, op.Method); r == nil || r.Permitted() {
+		if _, r := g.Match(path, op.Method, compile.Inbound{}); r == nil || r.Permitted() {
 			t.Errorf("%s %s: %+v, want a matched, denied operation", op.Method, path, r)
 		}
 	}
 
 	// Without permits no subject is allowed anything, whatever its roles.
 	for _, op := range p.Operations {
-		_, r := g.Match(strings.Replace(op.Target, "*", "x", 1), op.Method)
+		_, r := g.Match(strings.Replace(op.Target, "*", "x", 1), op.Method, compile.Inbound{})
 		for _, subject := range []string{"cust-001", "staff-01", "both@example.test", "nobody-01", "former-01"} {
 			if roles, _, reason := g.Authorise(testRoles(subject), r); reason == "" {
 				t.Errorf("%s allowed %s with roles %v under deny-all", subject, op.ID, roles)
@@ -232,7 +232,7 @@ func TestRoleEvaluation(t *testing.T) {
 		{"staff-01", "GET", "/reports/summary", "no_permit", nil},
 	}
 	for _, tc := range cases {
-		_, r := g.Match(tc.path, tc.method)
+		_, r := g.Match(tc.path, tc.method, compile.Inbound{})
 		if r == nil {
 			t.Fatalf("%s %s matched nothing", tc.method, tc.path)
 		}

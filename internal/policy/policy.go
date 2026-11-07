@@ -89,6 +89,7 @@ type Operation struct {
 	Body    *BodyRule       `json:"body,omitempty"`
 	Headers json.RawMessage `json:"headers,omitempty"` // JSON Schema for declared request headers
 	Rate    *RateRule       `json:"rate,omitempty"`
+	When    *When           `json:"when,omitempty"`
 }
 
 // BodyRule declares a JSON request body, its size ceiling and the JSON Schema
@@ -199,7 +200,7 @@ func DecodeStrict(data []byte, value any) error {
 //
 // Values of members named "schema" or "headers" are JSON Schemas, whose
 // keywords and property names are case-sensitive and not limited to
-// [a-z0-9_]. They are decoded as raw JSON, never into Go structs, so only the
+// [a-z0-9_]; the "headers" list of a "when" object is not one. They are decoded as raw JSON, never into Go structs, so only the
 // repeated-name and depth rules apply inside them.
 func CheckMembers(data []byte, maxDepth int) error {
 	// encoding/json replaces malformed Unicode. Policy, operator and Admin
@@ -212,7 +213,8 @@ func CheckMembers(data []byte, maxDepth int) error {
 		wantName bool
 		names    map[string]bool
 		lastName string
-		schema   bool // inside a schema value
+		name     string // the member this container is the value of
+		schema   bool   // inside a schema value
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	var stack []*container
@@ -258,8 +260,13 @@ func CheckMembers(data []byte, maxDepth int) error {
 				return Invalid("LIMIT_EXCEEDED", "")
 			}
 			inSchema := parent != nil &&
-				(parent.schema || (parent.object && (parent.lastName == "schema" || parent.lastName == "headers")))
+				(parent.schema || (parent.object && (parent.lastName == "schema" || parent.lastName == "headers" && parent.name != "when")))
+			name := ""
+			if parent != nil && parent.object {
+				name = parent.lastName
+			}
 			stack = append(stack, &container{
+				name:     name,
 				object:   delim == '{',
 				wantName: delim == '{',
 				names:    map[string]bool{},

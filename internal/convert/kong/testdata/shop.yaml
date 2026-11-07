@@ -78,7 +78,16 @@ services:
         strip_path: false
       - name: hosted
         paths: [/hosted]
-        hosts: [api.example.com]
+        methods: [GET]
+        hosts: [API.example.com, "*.example.com"]
+        headers:
+          x-version: ["2"]
+        strip_path: false
+      - name: versions
+        paths: [/versions]
+        methods: [GET]
+        headers:
+          x-version: ["1", "2"]
         strip_path: false
       - name: keyed
         paths: [/keyed]

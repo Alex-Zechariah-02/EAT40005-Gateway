@@ -8,6 +8,7 @@ import (
 
 	"github.com/Alex-Zechariah-02/apiward/internal/exchange"
 	"github.com/Alex-Zechariah-02/apiward/internal/openapi"
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // stored passes a result through the exchange file as written and read, so
@@ -121,6 +122,7 @@ func TestKongExport(t *testing.T) {
 		"/orders/{rest}": map[string]any{"get": op(map[string]any{"operationId": "deep.get", "x-apiward-target": "/orders/*", "x-apiward-roles": []any{}})},
 		"/odd": map[string]any{"post": op(map[string]any{"operationId": "odd.post", "security": []any{},
 			"x-apiward-rate":      map[string]any{"algorithm": "sliding-window", "count": int64(3), "window_seconds": int64(30), "key": "client_address"},
+			policy.WhenExtension:  map[string]any{"hosts": []any{"*.example.com"}, "headers": []any{map[string]any{"name": "x-version", "value": "2"}}},
 			"x-apiward-max-bytes": int64(512), "requestBody": map[string]any{"content": map[string]any{"application/json": map[string]any{
 				"schema": map[string]any{"type": "object", "additionalProperties": false}}}}})},
 	}}
@@ -131,7 +133,7 @@ func TestKongExport(t *testing.T) {
 	}
 	routes := list(object(list(out["services"])[0])["routes"])
 	want := []string{
-		`{"methods":["POST"],"name":"odd-post","paths":["~/odd$"],"plugins":[{"config":{"allowed_payload_size":512,"require_content_length":false,"size_unit":"bytes"},"name":"request-size-limiting"}],"regex_priority":100000,"strip_path":false}`,
+		`{"headers":{"x-version":["2"]},"hosts":["*.example.com"],"methods":["POST"],"name":"odd-post","paths":["~/odd$"],"plugins":[{"config":{"allowed_payload_size":512,"require_content_length":false,"size_unit":"bytes"},"name":"request-size-limiting"}],"regex_priority":100000,"strip_path":false}`,
 		`{"methods":["GET"],"name":"orders-get","paths":["~/orders$"],"plugins":[{"config":{"claims_to_verify":["exp"]},"name":"jwt"},{"config":{"allow":["STAFF"]},"name":"acl"},{"config":{"fault_tolerant":false,"limit_by":"consumer","minute":9,"policy":"local"},"name":"rate-limiting"}],"regex_priority":100000,"strip_path":false}`,
 		`{"methods":["GET"],"name":"deep-get","paths":["~/orders/.+"],"plugins":[{"config":{"claims_to_verify":["exp"]},"name":"jwt"},{"config":{"message":"Forbidden","status_code":403},"name":"request-termination"}],"regex_priority":8,"strip_path":false}`,
 	}

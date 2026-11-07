@@ -1,5 +1,5 @@
 import { useContext, useState } from 'react'
-import { forwardRule, type Policy, type Revision } from '../shared/api'
+import { forwardRule, whenRule, type Policy, type Revision } from '../shared/api'
 import { useGatewayState, liveMs, usePoll, useResource, ViewMemory } from '../shared/hooks'
 import { RequestRules } from './request-rules'
 import { Badge, Empty, ListToolbar, matches, MoreDetails, TableScroll } from '../shared/ui'
@@ -184,6 +184,7 @@ export function ApisView({ admin, can, open }: ViewProps) {
                                         <code>{o.id}</code>
                                       </XRef>
                                     </span>
+                                    {whenRule(o.when) ? <span className="cell-sub">{whenRule(o.when)}</span> : null}
                                   </td>
                                   <td>
                                     {o.access !== 'allow' ? (

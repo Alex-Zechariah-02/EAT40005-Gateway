@@ -7,6 +7,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -42,11 +44,15 @@ type target struct {
 	pattern string
 	prefix  string // "/a/" for "/a/*", "/" for "/*"; empty for exact targets
 	methods map[string]*Rule
-	allow   string // value for the Allow header
+	// variants holds per method the conditioned rules, most conditions
+	// first; a method's unconditioned rule, if any, is in methods.
+	variants map[string][]*Rule
+	allow    string // value for the Allow header
 }
 
 type Rule struct {
 	operation string
+	index     int // position in the policy's operations
 	api       string
 	upstream  string
 	dial      string
@@ -58,6 +64,7 @@ type Rule struct {
 	headers   *headerRule     // nil: no header schema
 	rate      *RateRule       // nil: no rate limit
 	rateKey   string          // subject or direct peer address, checked by the compiler
+	when      *condition      // nil: selected when no conditioned rule holds
 }
 
 // Compile validates a complete policy and builds its generation. It either
@@ -153,14 +160,15 @@ func Compile(p policy.Policy, revision int64, notAfter time.Time) (*Generation, 
 
 		t := targets[op.Target]
 		if t == nil {
-			t = &target{pattern: op.Target, prefix: prefix, methods: map[string]*Rule{}}
+			t = &target{pattern: op.Target, prefix: prefix, methods: map[string]*Rule{}, variants: map[string][]*Rule{}}
 			targets[op.Target] = t
 		}
-		if _, exists := t.methods[op.Method]; exists {
+		if _, exists := t.methods[op.Method]; exists && op.When == nil {
 			return nil, policy.Invalid("DUPLICATE_OPERATION", "operations[%d]", i)
 		}
 		r := &Rule{
 			operation: op.ID,
+			index:     i,
 			api:       op.API,
 			upstream:  upstream,
 			dial:      dials[upstream],
@@ -172,7 +180,11 @@ func Compile(p policy.Policy, revision int64, notAfter time.Time) (*Generation, 
 		if err := compileControls(op, i, r); err != nil {
 			return nil, err
 		}
-		t.methods[op.Method] = r
+		if op.When == nil {
+			t.methods[op.Method] = r
+		} else {
+			t.variants[op.Method] = append(t.variants[op.Method], r)
+		}
 		rules[op.ID] = r
 	}
 
@@ -181,11 +193,16 @@ func Compile(p policy.Policy, revision int64, notAfter time.Time) (*Generation, 
 		return nil, err
 	}
 	g.roles = roles
+	if err := checkVariants(targets, p.Operations); err != nil {
+		return nil, err
+	}
 
 	for _, t := range targets {
-		methods := make([]string, 0, len(t.methods))
-		for m := range t.methods {
-			methods = append(methods, m)
+		methods := slices.Collect(maps.Keys(t.methods))
+		for m := range t.variants {
+			if t.methods[m] == nil {
+				methods = append(methods, m)
+			}
 		}
 		sort.Strings(methods)
 		t.allow = strings.Join(methods, ", ")
@@ -224,6 +241,11 @@ func DenyAll(p policy.Policy) bool {
 // rule into its rule. A rule that cannot be compiled rejects the whole policy.
 func compileControls(op policy.Operation, i int, r *Rule) error {
 	var err error
+	if op.When != nil {
+		if r.when, err = compileWhen(op.When, i); err != nil {
+			return err
+		}
+	}
 	if op.Body != nil {
 		if op.Body.MaxBytes <= 0 || op.Body.MaxBytes > policy.MaxBodyLimit {
 			return policy.Invalid("INVALID_VALUE", "operations[%d].body.max_bytes", i)

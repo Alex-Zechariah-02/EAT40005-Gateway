@@ -46,7 +46,9 @@ var (
 	routeFolded = []string{"name", "id", "tags", "paths", "methods", "strip_path", "protocols", "service", "plugins",
 		"created_at", "updated_at"}
 	// routeMatch members select requests by other than path and method.
-	routeMatch = []string{"hosts", "headers", "snis", "sources", "destinations", "expression", "priority"}
+	routeMatch = []string{"snis", "sources", "destinations", "expression", "priority"}
+	// routeConditions members become the operation's host and header conditions.
+	routeConditions = []string{"hosts", "headers"}
 	// routeOther members are kept for the way back only.
 	routeOther = []string{"preserve_host", "regex_priority", "path_handling", "https_redirect_status_code",
 		"request_buffering", "response_buffering", "filter_chains"}

@@ -232,7 +232,11 @@ func previewDecision(g *compile.Generation, event observedRequest) (decision, co
 	if event.routingPath == "" {
 		return "refused", "bad_request", "", true
 	}
-	target, rule := g.Match(event.routingPath, event.Method)
+	// Events keep neither host nor headers, so conditions cannot be replayed.
+	if g.Conditioned(event.routingPath, event.Method) {
+		return "", "", "", false
+	}
+	target, rule := g.Match(event.routingPath, event.Method, compile.Inbound{})
 	if target == nil {
 		return "refused", "not_found", "", true
 	}

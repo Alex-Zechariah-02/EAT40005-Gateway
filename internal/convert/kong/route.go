@@ -102,7 +102,8 @@ func (r *reader) readRoute(svc *service, route map[string]any, pointer string) {
 	if refusal == "" && transform == "" && r.forwardSet && forward != r.forward {
 		transform = CodeTransform + ": another route of the file forwards with a different rule; one API has one forward rule."
 	}
-	if refusal = cmp.Or(refusal, transform); refusal != "" {
+	when, unmatched := routeWhen(route)
+	if refusal = cmp.Or(refusal, transform, unmatched); refusal != "" {
 		r.add("route:"+name, "route", pointer, "", semantics.Distance{Class: exchange.NotExpressible, Note: refusal})
 		return
 	}
@@ -111,6 +112,10 @@ func (r *reader) readRoute(svc *service, route map[string]any, pointer string) {
 		r.refuse("route:"+name, "route", pointer, refused.code, refused.message)
 		r.causes[refused.source] = refused.code + ": " + refused.message
 		return
+	}
+	if when != nil {
+		c.when = when
+		c.items = append(c.items, pending{suffix: "when", facet: "route", source: pointer, d: whenDistance(when)})
 	}
 	before := r.count
 	r.operations(name, pointer, route, c)
@@ -131,7 +136,7 @@ func routeRefusal(svc *service, route map[string]any) string {
 	if svc.refusal != "" {
 		return svc.refusal
 	}
-	if member := unknownMember(route, routeFolded, routeMatch, routeOther); member != "" {
+	if member := unknownMember(route, routeFolded, routeMatch, routeConditions, routeOther); member != "" {
 		return CodeUnknown + ": the route member " + member + " is not known."
 	}
 	for _, member := range routeMatch {

@@ -6,6 +6,7 @@ import (
 	"cmp"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"slices"
 	"strings"
 )
@@ -16,7 +17,8 @@ var methodOrder = []string{"GET", "PUT", "POST", "DELETE", "OPTIONS", "HEAD", "P
 // Encode returns the canonical form of p: 2-space JSON with members in
 // struct order and a trailing newline; upstreams, APIs and roles sorted by
 // id; operations by API, target and method; permits by role and operation.
-// Schemas have their members sorted and each "required" list sorted. The
+// Schemas have their members sorted and each "required" list sorted;
+// condition hosts are sorted, header conditions sorted by canonical name. The
 // input is not changed. It fails only on a schema that is not valid JSON.
 func Encode(p Policy) ([]byte, error) {
 	out := p
@@ -39,6 +41,7 @@ func Encode(p Policy) ([]byte, error) {
 			}
 			op.Body = &body
 		}
+		op.When = canonicalWhen(op.When)
 		out.Operations[i] = op
 	}
 	slices.SortFunc(out.Operations, func(a, b Operation) int {
@@ -50,6 +53,22 @@ func Encode(p Policy) ([]byte, error) {
 		return nil, err
 	}
 	return append(document, '\n'), nil
+}
+
+// canonicalWhen returns a copy with sorted hosts and header conditions whose
+// names are in canonical form; neither order nor name case carries meaning.
+func canonicalWhen(w *When) *When {
+	if w == nil {
+		return nil
+	}
+	out := When{Hosts: sorted(w.Hosts, strings.Compare)}
+	for _, h := range w.Headers {
+		out.Headers = append(out.Headers, HeaderCondition{Name: http.CanonicalHeaderKey(h.Name), Value: h.Value})
+	}
+	slices.SortFunc(out.Headers, func(a, b HeaderCondition) int {
+		return cmp.Or(strings.Compare(a.Name, b.Name), strings.Compare(a.Value, b.Value))
+	})
+	return &out
 }
 
 // sorted returns a sorted copy that is empty rather than nil, so an empty

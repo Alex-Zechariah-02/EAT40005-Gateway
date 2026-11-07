@@ -98,7 +98,7 @@ func TestValidPolicyCompilesDeterministically(t *testing.T) {
 	p.Upstreams[0].Dial = "127.0.0.1:1"
 	p.Roles[1].ID = "OTHER"
 	p.Permits[0].Role = "CUSTOMER"
-	_, r := first.Match("/orders", "GET")
+	_, r := first.Match("/orders", "GET", compile.Inbound{})
 	if r == nil || !r.Permitted() || r.Dial() != "127.0.0.1:9101" || r.API() != "orders" || r.Upstream() != "orders" {
 		t.Fatalf("generation changed with its source policy: %+v", r)
 	}
@@ -134,6 +134,7 @@ func TestMalformedPolicyDocumentsAreRejected(t *testing.T) {
 		{"case variant of a field", head + `,"Profile":"core"}`, "UNKNOWN_FIELD"},
 		{"case variant of a nested field", head + `,"upstreams":[{"ID":"a","dial":"127.0.0.1:1"}]}`, "UNKNOWN_FIELD"},
 		{"unknown field", head + `,"rate_rules":[]}`, "UNKNOWN_FIELD"},
+		{"case variant inside conditions", head + `,"operations":[{"id":"x","api":"a","method":"GET","target":"/x","access":"allow","auth":"none","when":{"headers":[{"name":"X-A","value":"1","NAME":"X-B"}]}}]}`, "UNKNOWN_FIELD"},
 		{"schema reference not supported", head + `,"schemas":[]}`, "UNKNOWN_FIELD"},
 		{"unknown nested field", head + `,"operations":[{"id":"x","api":"a","method":"GET","target":"/x","access":"allow","auth":"none","rbac":"off"}]}`, "UNKNOWN_FIELD"},
 		{"subject with an inherited role field", head + `,"subjects":[{"id":"a","status":"active","roles":[],"inherits":"ADMIN"}]}`, "UNKNOWN_FIELD"},

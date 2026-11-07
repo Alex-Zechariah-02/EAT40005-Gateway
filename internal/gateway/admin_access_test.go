@@ -95,6 +95,26 @@ func TestAdminAccessCheck(t *testing.T) {
 		t.Errorf("the policy in force still refuses: %+v", got)
 	}
 
+	// The host and headers given select a conditioned operation.
+	conditioned := e.protectedPolicy()
+	for _, op := range conditioned.Operations {
+		if op.ID == "read-a" {
+			op.ID, op.Access = "read-a-v2", "deny"
+			op.When = &policy.When{Hosts: []string{"*.example.com"}, Headers: []policy.HeaderCondition{{Name: "x-version", Value: "2"}}}
+			conditioned.Operations = append(conditioned.Operations, op)
+		}
+	}
+	if code, staged, body = e.stage(admin, conditioned, `"r1"`, "access-check-stage-3"); code != 201 {
+		t.Fatalf("stage: %d %s", code, body)
+	}
+	variant := `{"method":"GET","path":"/a/x","roles":["READER"],"host":"API.example.com:443","headers":{"X-Version":"2"},"candidate":%d}`
+	if got := ask(fmt.Sprintf(variant, staged.Candidate.ID)); text(got.Operation) != "read-a-v2" || text(got.Code) != "forbidden" {
+		t.Errorf("conditioned operation of a draft: %+v", got)
+	}
+	if got := ask(fmt.Sprintf(`{"method":"GET","path":"/a/x","roles":["READER"],"candidate":%d}`, staged.Candidate.ID)); text(got.Operation) != "read-a" {
+		t.Errorf("no conditions given: %+v", got)
+	}
+
 	for _, tc := range []struct{ body, field string }{
 		{`{"method":"GET","path":"/a/%2fx","roles":[]}`, "path"},
 		{`{"method":"GET","path":"a/x","roles":[]}`, "path"},

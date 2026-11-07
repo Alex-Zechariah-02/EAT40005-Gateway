@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/exchange"
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // TestKongImport checks one ledger item per mapping row of the shop fixture.
@@ -47,7 +48,8 @@ func TestKongImport(t *testing.T) {
 		{"plugin:consumer.guest:rate-limiting", exchange.NotExpressible, "", CodeConsumer},
 		{"route:legacy", exchange.NotExpressible, "", CodeTransform},
 		{"route:search", exchange.NotExpressible, "", CodeMatch + ": regular-expression"},
-		{"route:hosted", exchange.NotExpressible, "", CodeMatch + ": routes selected by hosts"},
+		{"operation:hosted:GET /hosted:when", exchange.Equivalent, "", "most conditions"},
+		{"route:versions", exchange.NotExpressible, "", CodeMatch + ": a header condition with one value"},
 		{"route:keyed", exchange.NotExpressible, "", CodeAuth},
 		{"plugin:route.keyed:key-auth", exchange.NotExpressible, "", CodeAuth},
 		{"route:denied", exchange.NotExpressible, "", CodeDeny},
@@ -95,13 +97,14 @@ func TestKongOperations(t *testing.T) {
 		{"/staff", "get", "security", `[{"apiward":[]}]`},
 		{"/staff", "get", "x-apiward-roles", `["STAFF"]`},
 		{"/burst", "get", "x-apiward-rate", `{"algorithm":"sliding-window","count":2,"key":"client_address","window_seconds":1}`},
+		{"/hosted", "get", policy.WhenExtension, `{"headers":[{"name":"x-version","value":"2"}],"hosts":["api.example.com","*.example.com"]}`},
 	}
 	for _, c := range checks {
 		if got := encode(t, op(c.path, c.method)[c.member]); got != c.want {
 			t.Errorf("%s %s %s = %s, want %s", c.method, c.path, c.member, got, c.want)
 		}
 	}
-	for _, refused := range []string{"/legacy", "/search", "/hosted", "/keyed", "/denied", "/monthly", "/odd"} {
+	for _, refused := range []string{"/legacy", "/search", "/versions", "/keyed", "/denied", "/monthly", "/odd"} {
 		if paths[refused] != nil {
 			t.Errorf("%s written although its route is refused", refused)
 		}
@@ -145,8 +148,8 @@ func TestKongRefusesFile(t *testing.T) {
 func TestLedgerComplete(t *testing.T) {
 	settings := []string{"#/services/0", "#/services/0/connect_timeout", "#/services/0/plugins/0",
 		"#/consumers/0", "#/consumers/1", "#/consumers/1/plugins/0", "#/plugins/0", "#/certificates/0", "#/upstreams/0"}
-	routePlugins := map[int]int{1: 5, 2: 1, 3: 2, 4: 1, 8: 1, 9: 2, 10: 1, 12: 1}
-	for route := 0; route <= 12; route++ {
+	routePlugins := map[int]int{1: 5, 2: 1, 3: 2, 4: 1, 9: 1, 10: 2, 11: 1, 13: 1}
+	for route := 0; route <= 13; route++ {
 		pointer := "#/services/0/routes/" + strconv.Itoa(route)
 		settings = append(settings, pointer)
 		for p := 0; p < routePlugins[route]; p++ {

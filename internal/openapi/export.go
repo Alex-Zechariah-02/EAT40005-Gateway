@@ -65,8 +65,12 @@ func Export(p policy.Policy, options ExportOptions) (map[string]any, *ExportRepo
 	for _, permit := range p.Permits {
 		roles[permit.Operation] = append(roles[permit.Operation], permit.Role)
 	}
+	// A path item holds one operation per method: the unconditioned one
+	// is described first, so a conditioned variant never takes its place.
+	ops := slices.Clone(p.Operations)
+	slices.SortStableFunc(ops, func(a, b policy.Operation) int { return conditioned(a) - conditioned(b) })
 	paths, signedIn := map[string]any{}, false
-	for _, op := range p.Operations {
+	for _, op := range ops {
 		if op.API != options.API {
 			continue
 		}
@@ -80,7 +84,13 @@ func Export(p policy.Policy, options ExportOptions) (map[string]any, *ExportRepo
 			item = map[string]any{}
 			paths[path] = item
 		}
-		item[strings.ToLower(op.Method)] = operation
+		method := strings.ToLower(op.Method)
+		if _, taken := item[method]; taken {
+			report.Changed = append(report.Changed, Changed{Operation: op.ID, Field: "when",
+				Note: "Not exported: an OpenAPI description holds one operation per path and method, and " + path + " already has one."})
+			continue
+		}
+		item[method] = operation
 		signedIn = signedIn || op.Auth == "required"
 		report.Exported = append(report.Exported, Exported{Operation: op.ID, Method: op.Method, Path: path})
 	}
@@ -147,7 +157,18 @@ func describe(op policy.Operation, roles []any, report *ExportReport) (string, m
 	if op.Rate != nil {
 		operation["x-apiward-rate"] = op.Rate
 	}
+	if op.When != nil {
+		operation[policy.WhenExtension] = op.When
+	}
 	return path, operation
+}
+
+// conditioned ranks operations with conditions after those without.
+func conditioned(op policy.Operation) int {
+	if op.When == nil {
+		return 0
+	}
+	return 1
 }
 
 // headerParameters writes a header schema as one parameter per declared

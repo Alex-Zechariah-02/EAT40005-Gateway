@@ -10,7 +10,8 @@
     {"id": "site.contact", "api": "site", "method": "POST", "target": "/contact", "access": "allow", "auth": "none",
      "body": {"max_bytes": 1048576, "schema": {"type": "array", "maxItems": 3, "items": {"type": ["string", "null"], "maxLength": 200}}},
      "rate": {"algorithm": "sliding-window", "count": 1000000, "window_seconds": 1, "key": "client_address"}},
-    {"id": "site.search", "api": "site", "method": "GET", "target": "/search", "access": "allow", "auth": "none"}
+    {"id": "site.search", "api": "site", "method": "GET", "target": "/search", "access": "allow", "auth": "none",
+     "when": {"hosts": ["www.example.com", "*.example.com"], "headers": [{"name": "X-Version", "value": "2"}]}}
   ],
   "roles": [{"id": "visitor"}],
   "permits": []

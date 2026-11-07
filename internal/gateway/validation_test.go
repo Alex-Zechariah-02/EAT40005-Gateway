@@ -39,10 +39,10 @@ func TestSchemaCompilation(t *testing.T) {
 			t.Errorf("schema %s rejected: %v", schema, err)
 			continue
 		}
-		if _, r := g.Match("/orders", "POST"); r.Body() == nil || r.Body().Validate("not an object") == nil || r.Body().MaxBytes() != 1024 {
+		if _, r := g.Match("/orders", "POST", compile.Inbound{}); r.Body() == nil || r.Body().Validate("not an object") == nil || r.Body().MaxBytes() != 1024 {
 			t.Errorf("schema %s not bound to its operation", schema)
 		}
-		if _, r := g.Match("/orders", "GET"); r.Body() != nil {
+		if _, r := g.Match("/orders", "GET", compile.Inbound{}); r.Body() != nil {
 			t.Errorf("schema %s bound to another operation", schema)
 		}
 	}

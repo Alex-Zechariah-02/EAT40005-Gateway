@@ -16,7 +16,7 @@ const CodeExtension = "EXTENSION_INVALID"
 
 // extensionNames are the operation members the import reads; any other
 // x-apiward-* member is refused rather than ignored.
-var extensionNames = []string{"x-apiward-target", "x-apiward-access", "x-apiward-roles", "x-apiward-rate", "x-apiward-max-bytes"}
+var extensionNames = []string{"x-apiward-target", "x-apiward-access", "x-apiward-roles", "x-apiward-rate", "x-apiward-max-bytes", policy.WhenExtension}
 
 // extensions applies the operation's x-apiward-* members to the candidate,
 // whose target and widened flag targetOf has already set.
@@ -54,6 +54,13 @@ func (m *mapper) extensions(object map[string]any, c *candidate) *refusal {
 			return refuse(CodeExtension, "x-apiward-max-bytes", "x-apiward-max-bytes must be an integer from 1 to %d.", policy.MaxBodyLimit)
 		}
 		c.maxBytes = size
+	}
+	if value, present := object[policy.WhenExtension]; present {
+		when, refused := whenOf(value)
+		if refused != nil {
+			return refused
+		}
+		c.op.When = when
 	}
 	if value, present := object["x-apiward-roles"]; present && m.options.WithPermits {
 		return rolesOf(value, c)
@@ -96,6 +103,24 @@ func rateOf(value any) (*policy.RateRule, *refusal) {
 		return nil, refused
 	}
 	return &rate, nil
+}
+
+// whenOf reads conditions with exactly the policy's members; the compiler
+// checks their values. They are checked as the member "when", so the name
+// rules apply inside its header list as in a policy.
+func whenOf(value any) (*policy.When, *refusal) {
+	refused := refuse(CodeExtension, policy.WhenExtension, "%s must be {hosts, headers} as in a policy.", policy.WhenExtension)
+	if _, isObject := value.(map[string]any); !isObject {
+		return nil, refused
+	}
+	data, err := json.Marshal(map[string]any{"when": value})
+	var holder struct {
+		When policy.When `json:"when"`
+	}
+	if err != nil || policy.CheckMembers(data, 4) != nil || policy.DecodeStrict(data, &holder) != nil {
+		return nil, refused
+	}
+	return &holder.When, nil
 }
 
 // rolesOf reads the roles permitted to the operation: distinct identifiers.

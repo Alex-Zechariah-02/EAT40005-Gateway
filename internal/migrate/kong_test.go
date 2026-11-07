@@ -149,7 +149,7 @@ func TestKongInventory(t *testing.T) {
 	if err := json.Unmarshal(data, &inventory); err != nil {
 		t.Fatal(err)
 	}
-	if inventory.Services != 1 || inventory.Consumers != 2 || len(inventory.Routes) != 13 || len(inventory.Credentials) != 5 ||
+	if inventory.Services != 1 || inventory.Consumers != 2 || len(inventory.Routes) != 14 || len(inventory.Credentials) != 5 ||
 		!slices.Contains(inventory.Unsupported, "route:legacy: PATH_TRANSFORM_UNSUPPORTED") {
 		t.Errorf("inventory = %s", data)
 	}

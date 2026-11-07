@@ -114,7 +114,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	q.pass(audit.StageCanonical)
 
-	t, rule := g.Match(path, r.Method)
+	t, rule := g.Match(path, r.Method, compile.Inbound{Host: r.Host, Header: r.Header})
 	if t == nil {
 		q.reject(audit.StageRoute, http.StatusNotFound, "not_found")
 		return

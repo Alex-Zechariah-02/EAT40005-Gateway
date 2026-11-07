@@ -13,7 +13,8 @@ func TestCanonicalOrder(t *testing.T) {
 		APIs:      []API{{ID: "y", Upstream: "b"}, {ID: "x", Upstream: "a"}},
 		Operations: []Operation{
 			{ID: "y.patch", API: "y", Method: "PATCH", Target: "/y"},
-			{ID: "y.get", API: "y", Method: "GET", Target: "/y"},
+			{ID: "y.get", API: "y", Method: "GET", Target: "/y", When: &When{Hosts: []string{"b.test", "a.test"},
+				Headers: []HeaderCondition{{Name: "x-z", Value: "1"}, {Name: "X-A", Value: "2"}}}},
 			{ID: "x.post", API: "x", Method: "POST", Target: "/x/*",
 				Body: &BodyRule{MaxBytes: 10, Schema: json.RawMessage(`{"type":"object","required":["b","a"],"additionalProperties":false,"properties":{"b":{"type":"string"},"a":{"type":"integer","maximum":1e3}}}`)}},
 			{ID: "y.delete", API: "y", Method: "DELETE", Target: "/y"},
@@ -47,6 +48,9 @@ func TestCanonicalOrder(t *testing.T) {
 	permits := decoded.Permits
 	if permits[0] != (Permit{"A", "x.get"}) || permits[1] != (Permit{"A", "y.get"}) || permits[2] != (Permit{"B", "y.get"}) {
 		t.Fatalf("permits %v", permits)
+	}
+	if when, _ := json.Marshal(decoded.Operations[2].When); string(when) != `{"hosts":["a.test","b.test"],"headers":[{"name":"X-A","value":"2"},{"name":"X-Z","value":"1"}]}` {
+		t.Fatalf("conditions %s", when)
 	}
 	wantSchema := `{"additionalProperties":false,"properties":{"a":{"maximum":1e3,"type":"integer"},"b":{"type":"string"}},"required":["a","b"],"type":"object"}`
 	if compact := compactJSON(t, decoded.Operations[1].Body.Schema); compact != wantSchema {

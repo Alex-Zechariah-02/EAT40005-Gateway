@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
 
 // Regular-expression priorities: an exact path before any prefix, and a
@@ -54,6 +56,7 @@ func (w *writer) generate(pointer string, op map[string]any, original map[string
 	pattern, priority := pathPattern(path, text(op["x-apiward-target"]))
 	route := map[string]any{"name": name, "paths": []any{pattern}, "methods": []any{strings.ToUpper(method)},
 		"strip_path": false, "regex_priority": priority}
+	putWhen(route, object(op[policy.WhenExtension]))
 	plugins := append(w.rules(name, op), w.kept(op, original)...)
 	if len(plugins) > 0 {
 		route["plugins"] = plugins

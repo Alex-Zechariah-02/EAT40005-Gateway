@@ -85,7 +85,7 @@ export function shapeIssue(value: unknown): Issue | null {
     apis: [{ id: 'string', upstream: 'string' }, { forward: 'object' }],
     operations: [
       { id: 'string', api: 'string', method: 'string', target: 'string', access: 'string', auth: 'string' },
-      { body: 'object', headers: 'object', rate: 'object' },
+      { body: 'object', headers: 'object', rate: 'object', when: 'object' },
     ],
     roles: [{ id: 'string' }],
     permits: [{ role: 'string', operation: 'string' }],
@@ -105,6 +105,10 @@ export function shapeIssue(value: unknown): Issue | null {
           if (!error && item.body !== undefined) {
             error = members(item.body, { max_bytes: 'number', schema: 'object' })
             if (error) field += '.body'
+          }
+          if (!error && item.when !== undefined) {
+            error = members(item.when, {}, { hosts: 'array', headers: 'array' })
+            if (error) field += '.when'
           }
         }
         if (section === 'apis' && item.forward !== undefined) {

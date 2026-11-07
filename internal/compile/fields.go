@@ -77,6 +77,9 @@ func (g *Generation) Rules() []*Rule {
 		for _, r := range t.methods {
 			list = append(list, r)
 		}
+		for _, variants := range t.variants {
+			list = append(list, variants...)
+		}
 	}
 	for _, t := range g.exact {
 		add(t)

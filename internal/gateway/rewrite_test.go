@@ -43,7 +43,7 @@ func TestRewriteCompile(t *testing.T) {
 		t.Fatal(err)
 	}
 	for in, want := range map[string]string{"/orders": "/api/v2", "/orders/7": "/api/v2/7", "/orders/7/": "/api/v2/7/", "/ordersx": ""} {
-		_, rule := g.Match("/orders/7", http.MethodGet)
+		_, rule := g.Match("/orders/7", http.MethodGet, compile.Inbound{})
 		d, ok := rule.Destination(in)
 		if ok != (want != "") || d.Path() != want {
 			t.Errorf("%s forwarded as %q (%v), want %q", in, d.Path(), ok, want)

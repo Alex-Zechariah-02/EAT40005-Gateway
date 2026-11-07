@@ -53,7 +53,7 @@ func TestFetchPolicyVersion4(t *testing.T) {
 	if err != nil {
 		t.Fatalf("public client-address rate must compile: %v", err)
 	}
-	_, operation := generation.Match("/inventory/search", "GET")
+	_, operation := generation.Match("/inventory/search", "GET", compile.Inbound{})
 	if operation == nil || !operation.Public() || !operation.Permitted() || operation.Rate() == nil {
 		t.Fatalf("compiled public search lost its controls: %+v", operation)
 	}

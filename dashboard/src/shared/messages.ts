@@ -122,6 +122,18 @@ export const messages: Record<string, Message> = {
   INVALID_METHOD: { title: 'An endpoint method is not allowed', action: 'Use GET, HEAD, POST, PUT, PATCH, DELETE or OPTIONS.' },
   INVALID_TARGET: { title: 'An endpoint path is not valid', action: 'Use an exact path, such as /orders, or a prefix ending in /*.' },
   DUPLICATE_OPERATION: { title: 'Two endpoints have the same method and path', action: 'Remove one, or change its method or path.' },
+  TARGET_COLLISION: {
+    title: 'One request could select two endpoints',
+    action: 'Give endpoints that share a method and path host or header conditions that no single request can meet together.',
+  },
+  CONDITION_WEAKER: {
+    title: 'An endpoint with conditions is weaker than the one without',
+    action: 'Make it at least as strict: the same sign-in, no permission the other lacks, a rate limit no looser and the same request rules.',
+  },
+  REWRITE_INVALID: {
+    title: "An API's forward rule is not valid",
+    action: 'Use prefixes such as /api without a trailing slash, and remove only a prefix that every endpoint path of the API starts with.',
+  },
   UNAVAILABLE: { title: 'The gateway is unavailable', action: 'It changed nothing. Try again shortly.' },
   AUDIT_UNAVAILABLE: {
     title: 'The security log cannot be written',

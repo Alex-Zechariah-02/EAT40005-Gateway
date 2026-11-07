@@ -22,6 +22,7 @@ type controls struct {
 	maxBytes int64
 	items    []pending
 	carried  map[string]any // effective plugin name → its carried config, for x-kong-plugin-*
+	when     map[string]any // the route's x-apiward-when, or nil
 }
 
 // pending is an item every operation of the route gets.

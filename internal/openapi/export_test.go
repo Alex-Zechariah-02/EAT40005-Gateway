@@ -131,10 +131,12 @@ func TestExportOpenAPI(t *testing.T) {
 		p.Operations = append(p.Operations,
 			policy.Operation{ID: "home2", API: "site", Method: "PUT", Target: "/", Access: "allow", Auth: "none"},
 			policy.Operation{ID: "site.braces", API: "site", Method: "GET", Target: "/x/{id}", Access: "allow", Auth: "none"},
+			policy.Operation{ID: "site.v2home", API: "site", Method: "GET", Target: "/", Access: "deny", Auth: "none",
+				When: &policy.When{Headers: []policy.HeaderCondition{{Name: "X-Version", Value: "2"}}}},
 			policy.Operation{ID: "site.closed", API: "site", Method: "GET", Target: "/closed", Access: "allow", Auth: "none",
 				Headers: json.RawMessage(`{"type":"object","additionalProperties":false,"properties":{"X-Kept":{"type":"string"}}}`)})
 		doc, report, _ := exported(t, p, ExportOptions{API: "site"}, JSON)
-		if at(t, doc, "paths", "/", "put", "operationId") != "home2" {
+		if at(t, doc, "paths", "/", "put", "operationId") != "home2" || at(t, doc, "paths", "/", "get", "operationId") != "home" {
 			t.Fatal("operation without the API prefix not exported")
 		}
 		if _, present := doc["paths"].(map[string]any)["/x/{id}"]; present {
@@ -147,11 +149,11 @@ func TestExportOpenAPI(t *testing.T) {
 		if at(t, doc, "paths", "/closed", "get", "parameters", 0, "name") != "X-Kept" {
 			t.Fatal("header of a closed header schema not exported")
 		}
-		want := "site.pages target,home2 id,site.braces target"
+		want := "site.pages target,home2 id,site.braces target,site.v2home when"
 		if strings.Join(fields, ",") != want {
 			t.Fatalf("changed %v, want %s", fields, want)
 		}
-		if len(report.Exported) != 6 || report.Operations != 7 {
+		if len(report.Exported) != 6 || report.Operations != 8 {
 			t.Fatalf("report %+v", report)
 		}
 	})

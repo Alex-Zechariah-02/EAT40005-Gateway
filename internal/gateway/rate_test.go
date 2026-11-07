@@ -28,11 +28,11 @@ func TestRateRuleCompilation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("valid rate rule rejected: %v", err)
 	}
-	_, r := g.Match("/orders", "GET")
+	_, r := g.Match("/orders", "GET", compile.Inbound{})
 	if r.Rate() == nil || r.Rate().Count() != 10 || r.Rate().Window() != 60000 {
 		t.Fatalf("compiled rule %+v", r.Rate())
 	}
-	if _, other := g.Match("/orders/1", "GET"); other.Rate() != nil {
+	if _, other := g.Match("/orders/1", "GET", compile.Inbound{}); other.Rate() != nil {
 		t.Fatal("a rate rule applied to an operation that does not declare one")
 	}
 

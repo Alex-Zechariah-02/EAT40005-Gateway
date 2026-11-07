@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { type Policy } from '../src/shared/api'
 import { adminURL } from './env'
 import { dialogButton, moreDetail, record, shot } from './pages'
-import { applyJson, baseline, candidates, capture, currentPolicy, designer, discard, expandAll, formItem, node, page, selected, open, ready, finish } from './designer'
+import { api, applyJson, baseline, candidates, capture, currentPolicy, designer, discard, expandAll, formItem, node, page, selected, stagedDraft, open, ready, finish } from './designer'
 
 // Form, JSON and canvas views of the draft, and the refusals the gateway names.
 // Each file starts its own gateway; designer.ts holds the shared steps.
@@ -127,6 +127,28 @@ test.describe.serial('Policy Designer on the native Gateway', () => {
     await capture('designer-compiler-refusal')
     await discard()
     record('designer-compiler-refusal', { status: 400, reason: 'INVALID_UPSTREAM', candidateCountUnchanged: true })
+  })
+
+  test('an endpoint with host and header conditions is saved, and the Access Checker checks it with them', async () => {
+    const document = structuredClone(baseline)
+    const plain = document.operations.find((operation) => operation.id === 'inventory.categories')!
+    const when = { hosts: ['*.example.com'], headers: [{ name: 'X-Version', value: '2' }] }
+    document.operations.push({ ...plain, id: 'inventory.categories-v2', access: 'deny', when })
+    await applyJson(document)
+    const candidate = await stagedDraft()
+    const stored = await api('GET', `/admin/candidates/${candidate}`)
+    expect(stored.body.document.operations.at(-1).when).toEqual(when)
+    await page.getByRole('link', { name: 'Access Checker', exact: true }).click()
+    // A draft's own endpoints are offered once the draft is chosen.
+    await page.getByLabel('Policy', { exact: true }).selectOption(String(candidate))
+    await page.getByLabel('Endpoint', { exact: true }).selectOption('inventory.categories-v2')
+    await page.getByRole('button', { name: 'Check Access' }).click()
+    const verdict = page.getByRole('region', { name: /^Refused/ })
+    await expect(verdict).toContainText('host example.example.com and header X-Version: 2')
+    await expect(verdict).toContainText('The gateway selected inventory.categories-v2.')
+    await capture('access-checker-conditions')
+    await designer()
+    await discard()
   })
 
   test('losing the staging answer never resends automatically and an identical manual resend creates one candidate', async () => {
