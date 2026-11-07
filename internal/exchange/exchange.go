@@ -18,7 +18,7 @@ const (
 )
 
 // Formats are the source formats a ledger may name.
-var Formats = []string{"openapi"}
+var Formats = []string{"openapi", "kong-deck"}
 
 // Class is how closely the gateway enforces a source setting.
 type Class string
@@ -97,10 +97,13 @@ type Trust struct {
 }
 
 // Issuer is one trusted issuer; Audience is null when the source sets none.
+// PublicKeys holds PEM RSA public keys, in the order of PublicKeyIDs, when
+// the source states them; never a private key.
 type Issuer struct {
 	Issuer       string   `json:"issuer"`
 	Audience     *string  `json:"audience"`
 	PublicKeyIDs []string `json:"public_key_ids"`
+	PublicKeys   []string `json:"public_keys,omitempty"`
 }
 
 // Blocked is one blocked account, written only when asked for.

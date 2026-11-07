@@ -224,6 +224,15 @@ func Write(outPath string, output any, reportPath string, report any) error {
 	return writeNew(files)
 }
 
+// WriteOne writes one new file as 2-space JSON, never over an existing one.
+func WriteOne(path string, value any) error {
+	data, err := indent(value)
+	if err != nil {
+		return err
+	}
+	return writeNew(map[string][]byte{path: data})
+}
+
 // indent is the written form of a JSON output: 2-space indent, final newline.
 func indent(value any) ([]byte, error) {
 	data, err := json.MarshalIndent(value, "", "  ")

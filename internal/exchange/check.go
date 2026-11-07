@@ -3,7 +3,10 @@
 package exchange
 
 import (
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"maps"
@@ -178,6 +181,9 @@ func (l *Ledger) checkRest() error {
 		if !text(issuer.Issuer) || issuer.Audience != nil && !text(*issuer.Audience) || issuer.PublicKeyIDs == nil {
 			return fmt.Errorf("%s: trust.issuers[%d] needs an issuer, a non-empty audience or null, and public_key_ids", Member, i)
 		}
+		if err := checkKeys(issuer); err != nil {
+			return fmt.Errorf("%s: trust.issuers[%d]: %w", Member, i, err)
+		}
 	}
 	for i, b := range l.Blocked {
 		if !text(b.Provider) || !text(b.Subject) {
@@ -185,6 +191,45 @@ func (l *Ledger) checkRest() error {
 		}
 	}
 	return nil
+}
+
+// checkKeys accepts public keys only as PEM RSA public keys, one per key
+// identifier, so a private key can never be carried as trust.
+func checkKeys(issuer Issuer) error {
+	if issuer.PublicKeys == nil {
+		return nil
+	}
+	if len(issuer.PublicKeys) != len(issuer.PublicKeyIDs) {
+		return errors.New("public_keys needs one key per public_key_ids entry")
+	}
+	for _, key := range issuer.PublicKeys {
+		if _, err := RSAPublicKey(key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// RSAPublicKey parses one PEM "PUBLIC KEY" block holding an RSA key and
+// nothing else; private keys and other text are refused.
+func RSAPublicKey(text string) (*rsa.PublicKey, error) {
+	refused := errors.New("public_keys holds only PEM RSA public keys")
+	if len(text) > maxText {
+		return nil, refused
+	}
+	block, rest := pem.Decode([]byte(text))
+	if block == nil || block.Type != "PUBLIC KEY" || len(strings.TrimSpace(string(rest))) != 0 {
+		return nil, refused
+	}
+	key, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, refused
+	}
+	public, isRSA := key.(*rsa.PublicKey)
+	if !isRSA {
+		return nil, refused
+	}
+	return public, nil
 }
 
 func text(value string) bool { return value != "" && len(value) <= maxText }

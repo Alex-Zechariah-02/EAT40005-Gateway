@@ -1,0 +1,164 @@
+_format_version: "3.0"
+services:
+  - name: shop
+    url: http://shop.internal:8080
+    connect_timeout: 5000
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 60
+          limit_by: ip
+          policy: redis
+          redis:
+            host: redis.internal
+            password: CANARY-REDIS-PASSWORD
+    routes:
+      - name: items
+        paths: [/items]
+        methods: [GET]
+        strip_path: false
+      - name: orders
+        paths: [/orders/]
+        methods: [GET, POST]
+        strip_path: false
+        plugins:
+          - name: jwt
+            config:
+              claims_to_verify: [exp]
+          - name: acl
+            config:
+              allow: [CUSTOMER, STAFF]
+          - name: rate-limiting
+            config:
+              minute: 10
+              limit_by: consumer
+              fault_tolerant: false
+          - name: request-size-limiting
+            config:
+              allowed_payload_size: 8
+              size_unit: kilobytes
+          - name: cors
+            config:
+              origins: [https://shop.example]
+      - name: catalog
+        paths: [/catalog]
+        methods: [GET]
+        strip_path: false
+        plugins:
+          - name: jwt
+            config:
+              anonymous: guest
+      - name: staff
+        paths: [/staff]
+        methods: [GET]
+        strip_path: false
+        plugins:
+          - name: jwt
+            config:
+              anonymous: guest
+          - name: acl
+            config:
+              allow: [STAFF]
+      - name: burst
+        paths: [/burst]
+        methods: [GET]
+        strip_path: false
+        plugins:
+          - name: rate-limiting
+            config:
+              second: 2
+              minute: 30
+              limit_by: ip
+      - name: legacy
+        paths: [/legacy]
+        methods: [GET]
+      - name: search
+        paths: ["~/search/[0-9]+$"]
+        methods: [GET]
+        strip_path: false
+      - name: hosted
+        paths: [/hosted]
+        hosts: [api.example.com]
+        strip_path: false
+      - name: keyed
+        paths: [/keyed]
+        methods: [GET]
+        strip_path: false
+        plugins:
+          - name: key-auth
+            config:
+              key_names: [apikey]
+      - name: denied
+        paths: [/denied]
+        methods: [GET]
+        strip_path: false
+        plugins:
+          - name: jwt
+          - name: acl
+            config:
+              deny: [BANNED]
+      - name: monthly
+        paths: [/monthly]
+        methods: [GET]
+        strip_path: false
+        plugins:
+          - name: rate-limiting
+            config:
+              month: 1000
+              limit_by: ip
+      - name: odd
+        paths: [/odd]
+        methods: [GET]
+        strip_path: false
+        flavour: strange
+      - name: session
+        paths: [/session]
+        methods: [GET]
+        strip_path: false
+        plugins:
+          - name: session
+            config:
+              secret: CANARY-SESSION-SECRET
+consumers:
+  - username: shop-frontend
+    jwt_secrets:
+      - key: https://login.example
+        algorithm: RS256
+        secret: CANARY-JWT-SECRET
+        rsa_public_key: |
+          -----BEGIN PUBLIC KEY-----
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnDDNHxK0twf0iOyAf50R
+          IwnbpHhbo5aUSe9nv1zV82I8BDwHaKa3T2tOTkyCh6uqR2NCe4KZmxE4BCR3aX+v
+          P6ObKmU1rgYcpE3nlZcW2U0Nt6H9pXQ2pFG/cjCpf5lp+P8r440oCloKeR2GhLVJ
+          yy3UxG9wEeZkvbVgowhO5U7D8yamP66NS84Ij4uaEQNWTlu5AN+MvmKw63/qrVCK
+          N4mJSukt3tc7YQfhWGt1BMdNKXCUWZTfAo0DYe6AY/1GbEe1Cv2PQH6rWFPOdgaB
+          q5efHn4zYHh0XLQx3MXJs/jwJQX8N6fu/jVwa+I4vQ/6TqhfjxxOLgW/3Ez+O4wb
+          TQIDAQAB
+          -----END PUBLIC KEY-----
+      - key: legacy-hs
+        algorithm: HS256
+        secret: CANARY-HS-SECRET
+    acls:
+      - group: CUSTOMER
+    keyauth_credentials:
+      - key: CANARY-API-KEY
+    basicauth_credentials:
+      - username: shop
+        password: CANARY-BASIC-PASSWORD
+  - username: guest
+    acls:
+      - group: GUEST
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 5
+plugins:
+  - name: prometheus
+certificates:
+  - cert: CANARY-CERT
+    key: |
+      -----BEGIN PRIVATE KEY-----
+      CANARY-PRIVATE-KEY
+      -----END PRIVATE KEY-----
+upstreams:
+  - name: shop.internal

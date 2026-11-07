@@ -1,0 +1,74 @@
+_format_version: "3.0"
+_info:
+  select_tags: [shop]
+services:
+  - name: orders
+    url: http://orders.internal:8081
+    read_timeout: 30000
+    plugins:
+      - name: cors
+        config:
+          origins: ["*"]
+    routes:
+      - name: list
+        paths: [/orders]
+        methods: [GET, POST]
+        strip_path: false
+        plugins:
+          - name: jwt
+            config:
+              claims_to_verify: [exp]
+          - name: acl
+            config:
+              allow: [CUSTOMER]
+          - name: rate-limiting
+            config:
+              minute: 20
+              limit_by: consumer
+              fault_tolerant: false
+      - name: catalog
+        paths: [/catalog/]
+        methods: [GET]
+        strip_path: false
+        preserve_host: true
+        plugins:
+          - name: jwt
+            config:
+              anonymous: guest
+      - name: legacy
+        paths: [/v1/orders]
+        methods: [GET]
+routes:
+  - name: status
+    service:
+      name: orders
+    paths: [/status]
+    methods: [GET]
+    strip_path: false
+plugins:
+  - name: prometheus
+  - name: request-size-limiting
+    route: list
+    config:
+      allowed_payload_size: 4
+      size_unit: kilobytes
+  - name: correlation-id
+    route: status
+consumers:
+  - username: login
+    jwt_secrets:
+      - key: https://login.example
+        algorithm: RS256
+        rsa_public_key: |
+          -----BEGIN PUBLIC KEY-----
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnDDNHxK0twf0iOyAf50R
+          IwnbpHhbo5aUSe9nv1zV82I8BDwHaKa3T2tOTkyCh6uqR2NCe4KZmxE4BCR3aX+v
+          P6ObKmU1rgYcpE3nlZcW2U0Nt6H9pXQ2pFG/cjCpf5lp+P8r440oCloKeR2GhLVJ
+          yy3UxG9wEeZkvbVgowhO5U7D8yamP66NS84Ij4uaEQNWTlu5AN+MvmKw63/qrVCK
+          N4mJSukt3tc7YQfhWGt1BMdNKXCUWZTfAo0DYe6AY/1GbEe1Cv2PQH6rWFPOdgaB
+          q5efHn4zYHh0XLQx3MXJs/jwJQX8N6fu/jVwa+I4vQ/6TqhfjxxOLgW/3Ez+O4wb
+          TQIDAQAB
+          -----END PUBLIC KEY-----
+  - username: guest
+    acls:
+      - group: GUEST

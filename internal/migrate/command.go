@@ -19,7 +19,7 @@ const MaxInputBytes = 8 << 20
 
 // Synopses of the commands.
 const (
-	importUsage = `gateway migrate import --from openapi --in <file.json|.yaml|.yml>
+	importUsage = `gateway migrate import --from openapi|kong-deck --in <file.json|.yaml|.yml>
   --out <new exchange file.json|.yaml|.yml> --report <new file> [--decisions <overlay>]`
 	policyUsage = `gateway migrate policy --exchange <file> --base <policy.json> --api <id> --upstream <id>
   --out <new file> --report <new file> [--decisions <overlay>] [--with-permits]`
@@ -27,6 +27,9 @@ const (
 
 var commands = map[string]openapi.Subcommand{
 	"import": {Usage: importUsage, Required: []string{"from", "in", "out", "report"}, Optional: noDecisions(), Run: runImport},
+	"export": {Usage: exportUsage, Required: []string{"to", "exchange", "out", "report"}, Optional: noDecisions(),
+		Switches: []string{"with-upstream", "with-trust", "with-blocked"}, Run: runExport},
+	"inventory": {Usage: inventoryUsage, Required: []string{"from", "in", "report"}, Run: runInventory},
 	"policy": {Usage: policyUsage, Required: []string{"exchange", "base", "api", "upstream", "out", "report"},
 		Optional: noDecisions(), Switches: []string{"with-permits"}, Run: runPolicy},
 }
@@ -44,8 +47,9 @@ func Handles(name string) bool {
 }
 
 func runImport(values map[string]string, stderr io.Writer) (int, error) {
-	if values["from"] != "openapi" {
-		return openapi.ExitFailed, fmt.Errorf("%w: unknown format %q (supported: openapi)", openapi.ErrUsage, policy.Clip(values["from"]))
+	read, known := readers[values["from"]]
+	if !known {
+		return openapi.ExitFailed, fmt.Errorf("%w: unknown format %q (supported: openapi, kong-deck)", openapi.ErrUsage, policy.Clip(values["from"]))
 	}
 	outFormat, err := openapi.FormatOf(values["out"])
 	if err != nil {
@@ -55,11 +59,18 @@ func runImport(values map[string]string, stderr io.Writer) (int, error) {
 	if err != nil {
 		return openapi.ExitFailed, err
 	}
-	classified, err := openapi.Classify(root, format)
+	source, ledger, err := read(root, data)
 	if err != nil {
 		return openapi.ExitFailed, err
 	}
-	document, ledger, stale, err := decidedImport(root, openapiLedger(root, classified, data), values["decisions"])
+	classified, err := openapi.Classify(source, format)
+	if err != nil {
+		return openapi.ExitFailed, err
+	}
+	if ledger == nil {
+		ledger = openapiLedger(source, classified, data)
+	}
+	document, ledger, stale, err := decidedImport(source, ledger, values["decisions"])
 	if err != nil {
 		return openapi.ExitFailed, err
 	}
@@ -90,6 +101,9 @@ func runPolicy(values map[string]string, stderr io.Writer) (int, error) {
 	}
 	document, ledger, err := exchange.Split(root)
 	if err != nil {
+		return openapi.ExitFailed, err
+	}
+	if err := oneUpstream(ledger); err != nil {
 		return openapi.ExitFailed, err
 	}
 	document, left, err := withoutLooser(document, ledger)

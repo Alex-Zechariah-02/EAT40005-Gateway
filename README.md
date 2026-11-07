@@ -93,10 +93,10 @@ Exit status: `0` the description means exactly what the policy does; `2` both fi
 
 ## Migrate from another gateway
 
-Migration runs in two offline steps with a file to review between them. `gateway migrate import` reads a configuration and writes an **exchange file**: the configuration as an OpenAPI 3.1 description with the gateway extensions above, plus a ledger that classifies every setting it found. `gateway migrate policy` turns an exchange file into a new policy file. Neither command activates anything: read the reports, then stage, trial and confirm the policy like any other change. The supported source format is `openapi`.
+Migration runs in two offline steps with a file to review between them. `gateway migrate import` reads a configuration and writes an **exchange file**: the configuration as an OpenAPI 3.1 description with the gateway extensions above, plus a ledger that classifies every setting it found. `gateway migrate policy` turns an exchange file into a new policy file. Neither command activates anything: read the reports, then stage, trial and confirm the policy like any other change. The supported source formats are `openapi` and `kong-deck` (below).
 
 ```
-gateway migrate import --from openapi --in <file.json|.yaml|.yml>
+gateway migrate import --from openapi|kong-deck --in <file.json|.yaml|.yml>
   --out <new exchange file.json|.yaml|.yml> --report <new file> [--decisions <overlay>]
 gateway migrate policy --exchange <file> --base <policy.json> --api <id> --upstream <id>
   --out <new file> --report <new file> [--decisions <overlay>] [--with-permits]
@@ -104,7 +104,7 @@ gateway migrate policy --exchange <file> --base <policy.json> --api <id> --upstr
 
 Each input is read only from the named path and may be at most 8 MiB, nested at most 16 levels; YAML passes the same gate as the OpenAPI import. Outputs must not exist yet; both are created together or neither is, and the output and the report must be different files.
 
-**The ledger** is the root member `x-apiward-migration`: `version` (`1`); `source` (`format`, `format_version`, `sha256` of the input); `items`, one per setting; `carried`, settings kept as opaque data for the gateway they came from (`vendor`, `scope`, `path`, `value`), never compiled into a policy; `credentials_skipped` (`type`, `count`), credentials counted but never read or copied; and `trust.issuers` (`issuer`, `audience`, `public_key_ids`). Each item has `id` (`<format>:<kind>:<name>`), `facet` (`route`, `access`, `auth`, `roles`, `rate`, `validation`, `size`, `upstream`, `transform`, `failure` or `other`), `class`, `direction`, `source` and `target` (JSON Pointers into the input and the exchange file), `note` and `accepted`. The class is `exact`, `equivalent`, `approximated` or `not_expressible`; an approximation also states whether the gateway is `stricter`, `looser` or differs in `both` directions, and a setting that cannot be expressed has an empty `target`. Unknown members anywhere in the ledger, or another `x-apiward-…` root member, refuse the file.
+**The ledger** is the root member `x-apiward-migration`: `version` (`1`); `source` (`format`, `format_version`, `sha256` of the input); `items`, one per setting; `carried`, settings kept as opaque data for the gateway they came from (`vendor`, `scope`, `path`, `value`), never compiled into a policy; `credentials_skipped` (`type`, `count`), credentials counted but never read or copied; and `trust.issuers` (`issuer`, `audience`, `public_key_ids`, and `public_keys`: the PEM RSA public keys in the order of their identifiers, when the source states them; never a private key). Each item has `id` (`<format>:<kind>:<name>`), `facet` (`route`, `access`, `auth`, `roles`, `rate`, `validation`, `size`, `upstream`, `transform`, `failure` or `other`), `class`, `direction`, `source` and `target` (JSON Pointers into the input and the exchange file), `note` and `accepted`. The class is `exact`, `equivalent`, `approximated` or `not_expressible`; an approximation also states whether the gateway is `stricter`, `looser` or differs in `both` directions, and a setting that cannot be expressed has an empty `target`. Unknown members anywhere in the ledger, or another `x-apiward-…` root member, refuse the file.
 
 **Looser settings are not imported by default.** `migrate policy` leaves out each operation that a looser item points to, reporting `LOOSER_NOT_ACCEPTED` with the item's `id` in `field`. Accepting that item with a decision (below) imports the operation as described. Only a looser approximation can have `accepted` set to `true`.
 
@@ -122,6 +122,32 @@ Each input is read only from the named path and may be at most 8 MiB, nested at 
 Both reports extend the import report with `ledger_summary` (counts of `exact`, `equivalent`, `approximated` by `stricter`, `looser` and `both`, and `not_expressible`), `stale_decisions`, `credentials_skipped` and `carried_count`. Every list is present, possibly empty.
 
 Exit status: `0` every setting is exact or equivalent and nothing was changed, refused, widened, carried, skipped or stale; `2` both files written, but at least one of those happened (read the report); `1` nothing written.
+
+### Migrating from and to Kong
+
+Supported: decK files with `_format_version: "3.0"` (Kong Gateway OSS 3.9.x plugins), JSON or YAML. Other format versions, and files whose `_info.defaults` change every entity's defaults, are refused.
+
+```
+gateway migrate inventory --from kong-deck --in <kong.yaml> --report <new file>
+gateway migrate import --from kong-deck --in <kong.yaml> --out <new exchange file> --report <new file> [--decisions <overlay>]
+gateway migrate export --to kong-deck --exchange <file> --out <new file.json|.yaml|.yml> --report <new file>
+  [--decisions <overlay>] [--with-upstream] [--with-trust] [--with-blocked]
+```
+
+`inventory` counts services, routes and their plugins, consumers, credentials by type, items per facet, and each unsupported item with its code; it writes no setting. `import` turns each route into one operation per path and method:
+
+- A plain Kong path is a prefix: `/a` becomes `/a` and `/a/*`, which refuses `/ab` and `/a/` (stricter); `/a/` becomes `/a/*`. A route without methods takes the seven OpenAPI methods.
+- Kong strips the matched path by default (`strip_path: true`); such routes, and services with a `path`, forward a different path and are refused `PATH_TRANSFORM_UNSUPPORTED`. Regular-expression paths, `hosts`, `headers` and other match members are refused `ROUTE_MATCH_UNSUPPORTED`, as are routes not for both `http` and `https`.
+- `jwt` signs callers in with the trusted issuers: each RS256 credential whose `key` is the issuer becomes a trust entry with its public key (only `algorithm`, `key` and `rsa_public_key` are read). The gateway also requires an audience and reads tokens only from the `Authorization` header (stricter). `key_claim_name` other than `iss`, and files with no RS256 issuer credential, are refused `AUTH_SCHEME_UNSUPPORTED`, as are `key-auth`, `basic-auth`, `hmac-auth`, `ldap-auth`, `oauth2` and other sign-in plugins; such a route is never imported as public.
+- `jwt` with an `anonymous` consumer that callers can reach (no `acl`, or one that admits the anonymous consumer's groups) makes the operation public, as a looser item: it is left out until the item is accepted. Accepting it loses identification there: per-account rate limits count by address and roles do not apply.
+- `acl` `allow` becomes the roles permitted (written into the policy only with `--with-permits`; the groups must be issued as a `roles` claim). `deny`, `allow_when` and `deny_when` are refused `DENY_LIST_UNSUPPORTED`.
+- `rate-limiting` keeps the count and window of `second`, `minute`, `hour` or `day` as a sliding window, `approximated` in both directions with the bounds in the note; with several windows only the shortest is kept (looser, left out until accepted). `month`, `year`, and `limit_by` other than `consumer` (counted by signed-in caller, or by address on public routes) and `ip` are refused `RATE_UNSUPPORTED`. Kong admits requests when its counter store fails (`fault_tolerant`, true by default); the gateway refuses them (stricter).
+- `request-size-limiting` becomes the body limit (at most 1 MiB). Kong forwards any body; the gateway accepts only a JSON object on `PUT`, `POST` and `PATCH` (16384 bytes unless limited) and no body on other methods (stricter).
+- Plugins for one consumer are refused `PER_CONSUMER_UNSUPPORTED`; every other plugin is carried for the way back, not enforced, and also written as Kong's own `x-kong-plugin-<name>` member on each operation it applies to (with `x-kong-route-defaults` at the root), so Kong's OpenAPI tools can read the exchange file. Certificates, upstreams, vaults and the other entities outside the API configuration are listed, never read.
+- Credentials are never read or copied: consumer credential lists, certificates and keys are counted in `credentials_skipped`, and plugin options named as credentials (`password`, `secret`, `token` and the like) or holding a private key are removed from carried values and counted as `plugin_secret_fields`. Consumers are not migrated; only their names, groups and RS256 public keys are kept, to work out access on the way back.
+- `migrate policy` refuses an exchange file whose operations come from more than one Kong service, because one API has one upstream: import a file with one service.
+
+`export` restores every route whose operations are unchanged since the import exactly as it was read, with its plugins, so an unedited round trip returns the same configuration. A changed route, and an operation from another source, is written as one route per operation with an anchored regular-expression path (`~/a$` exact, `~/a/.+` for `/a/*`), `strip_path: false`, and the plugins its rules need: `jwt`, `acl`, `request-termination` (403) when access is denied or no role is permitted, `rate-limiting` as Kong's calendar window of the same count and length with `fault_tolerant: false`, and `request-size-limiting`. Request and header schemas, and windows other than 1 s, 1 min, 1 h and 1 day, are listed in `not_carried`. Without `--with-upstream` each service's host is `upstream.invalid`; with `--with-trust` each trusted issuer is written as a consumer with its RS256 public keys; Kong has no blocked-account list. The report lists `restored` and `generated` routes, `changed`, `not_carried`, `manual_steps` and `stale_decisions`; the exit status is `0` only when every route was restored and nothing is left to do.
 
 ## How it is built
 
@@ -149,7 +175,8 @@ Each package under `internal/` imports only the packages listed before it; a tes
 - `internal/exchange`: the migration exchange file's ledger: its types, strict reading and the rules every ledger must meet.
 - `internal/overlay`: decisions files: a restricted Overlay 1.2.0 profile that may only make operations stricter or accept a looser ledger item, applied in order to a copy of an exchange file.
 - `internal/semantics`: the meaning of settings other gateways use (path matching and rewriting, identity, roles, rate algorithms, failure modes) and how far each is from the gateway's own, with the bounds of each rate algorithm.
-- `internal/migrate`: the offline `gateway migrate` commands, which classify a configuration into an exchange file and turn an exchange file into a candidate policy.
+- `internal/convert/kong`: Kong decK files: which settings the gateway can enforce and how closely, read into an exchange file, and written back as a decK file.
+- `internal/migrate`: the offline `gateway migrate` commands, which classify a configuration into an exchange file, turn an exchange file into a candidate policy or another gateway's file, and count what a file holds.
 - `internal/gateway`: the gateway itself, which uses the packages above.
 
 ## Build and test
