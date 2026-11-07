@@ -1,0 +1,35 @@
+{
+  "openapi": "3.1.0",
+  "info": {"title": "shop", "version": "1"},
+  "servers": [{"url": "http://127.0.0.1:9000"}],
+  "tags": [{"name": "orders"}],
+  "components": {"securitySchemes": {"bearer": {"type": "http", "scheme": "bearer"}}},
+  "security": [{"bearer": ["orders:read"]}],
+  "paths": {
+    "/orders": {
+      "get": {
+        "operationId": "listOrders",
+        "parameters": [{"name": "page", "in": "query", "schema": {"type": "integer"}}],
+        "responses": {"200": {"description": "The orders."}}
+      },
+      "post": {
+        "operationId": "createOrder",
+        "requestBody": {"content": {"application/json": {"schema": {
+          "type": "object", "properties": {"item": {"type": "string"}}, "required": ["item"]}}}},
+        "x-apiward-rate": {"algorithm": "sliding-window", "count": 10, "window_seconds": 60, "key": "subject"}
+      }
+    },
+    "/orders/{id}": {
+      "get": {
+        "operationId": "getOrder",
+        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}]
+      }
+    },
+    "/files/{rest}": {
+      "get": {"operationId": "getFile", "security": [], "x-apiward-target": "/files/*"}
+    },
+    "/orders/{id}/items": {"get": {"operationId": "orderItems"}},
+    "/debug": {"trace": {"operationId": "trace"}},
+    "/health": {"get": {"operationId": "health", "security": []}}
+  }
+}

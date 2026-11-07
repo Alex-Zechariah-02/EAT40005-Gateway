@@ -1,0 +1,18 @@
+openapi: 3.0.3
+info:
+  title: health
+  version: "1"
+paths:
+  /health:
+    get:
+      operationId: health
+      security: []
+  /status:
+    get:
+      operationId: status
+      security: []
+      x-apiward-rate:
+        algorithm: sliding-window
+        count: 5
+        window_seconds: 1
+        key: client_address

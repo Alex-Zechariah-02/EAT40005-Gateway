@@ -104,6 +104,7 @@ func TestImportCommand(t *testing.T) {
 			{"body limit high", "s.json", nil, func(r commandRun) []string { return r.args("--max-body-bytes", "1048577") }, "max-body-bytes"},
 			{"bad base", "s.json", nil, func(r commandRun) []string { os.WriteFile(r.base, []byte("{}"), 0o600); return r.args() }, "base"},
 			{"bad spec", "s.json", []byte("{"), func(r commandRun) []string { return r.args() }, "malformed_json"},
+			{"report is the output", "s.json", nil, func(r commandRun) []string { a := r.args(); a[12] = r.out; return a }, "different files"},
 		}
 		for _, c := range cases {
 			spec := c.spec

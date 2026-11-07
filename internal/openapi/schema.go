@@ -81,7 +81,7 @@ func (s *schemas) convert(node any, pointer, field string, depth int, refs []str
 				return nil, refuse(CodeKeyword, at, "Only true or false is supported for additionalProperties.")
 			}
 		default:
-			return nil, refuse(CodeKeyword, at, "The keyword %q is not supported; dropping it would accept more than the description allows.", clip(keyword))
+			return nil, refuse(CodeKeyword, at, "The keyword %q is not supported; dropping it would accept more than the description allows.", policy.Clip(keyword))
 		}
 		if refused != nil {
 			return nil, refused
@@ -121,7 +121,7 @@ func (s *schemas) reference(object map[string]any, ref any, pointer, field strin
 		case isAnnotation(keyword):
 			s.annotations = append(s.annotations, Removed{Operation: s.operation, Field: pointer + "/" + escape(keyword)})
 		default:
-			return nil, refuse(CodeKeyword, pointer+"/"+escape(keyword), "The keyword %q beside $ref is not supported.", clip(keyword))
+			return nil, refuse(CodeKeyword, pointer+"/"+escape(keyword), "The keyword %q beside $ref is not supported.", policy.Clip(keyword))
 		}
 	}
 	target, refused := resolve(s.root, ref, pointer)
@@ -130,7 +130,7 @@ func (s *schemas) reference(object map[string]any, ref any, pointer, field strin
 	}
 	name := ref.(string)
 	if slices.Contains(refs, name) {
-		return nil, refuse(CodeCycle, pointer, "The schema refers to itself through %s.", clip(name))
+		return nil, refuse(CodeCycle, pointer, "The schema refers to itself through %s.", policy.Clip(name))
 	}
 	return s.convert(target, name, field, depth, append(refs[:len(refs):len(refs)], name))
 }
@@ -144,7 +144,7 @@ func resolve(root map[string]any, ref any, pointer string) (any, *refusal) {
 	}
 	path, internal := strings.CutPrefix(name, "#/")
 	if !internal {
-		return nil, refuse(CodeExternalRef, pointer, "The reference %s points outside this file; nothing is fetched.", clip(name))
+		return nil, refuse(CodeExternalRef, pointer, "The reference %s points outside this file; nothing is fetched.", policy.Clip(name))
 	}
 	var node any = root
 	for _, part := range strings.Split(path, "/") {
@@ -162,7 +162,7 @@ func resolve(root map[string]any, ref any, pointer string) (any, *refusal) {
 			ok = false
 		}
 		if !ok {
-			return nil, refuse(CodeRefInvalid, pointer, "The reference %s does not exist in this file.", clip(name))
+			return nil, refuse(CodeRefInvalid, pointer, "The reference %s does not exist in this file.", policy.Clip(name))
 		}
 	}
 	return node, nil

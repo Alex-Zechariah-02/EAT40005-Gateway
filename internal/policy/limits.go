@@ -47,3 +47,17 @@ func CheckID(id, field string, args ...any) error {
 	}
 	return nil
 }
+
+// Clip shortens untrusted text to 256 bytes, without splitting a UTF-8
+// sequence, before it is echoed in a report or an error.
+func Clip(text string) string {
+	const limit = 256
+	if len(text) <= limit {
+		return text
+	}
+	cut := limit
+	for cut > 0 && text[cut]&0xc0 == 0x80 {
+		cut--
+	}
+	return text[:cut] + "…"
+}

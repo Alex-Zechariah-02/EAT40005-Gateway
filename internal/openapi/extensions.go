@@ -22,12 +22,12 @@ var extensionNames = []string{"x-apiward-target", "x-apiward-access", "x-apiward
 func (m *mapper) extensions(object map[string]any, c *candidate) *refusal {
 	for _, name := range sortedKeys(object) {
 		if strings.HasPrefix(name, "x-apiward-") && !slices.Contains(extensionNames, name) {
-			return refuse(CodeExtension, name, "The member %s is not known.", clip(name))
+			return refuse(CodeExtension, name, "The member %s is not known.", policy.Clip(name))
 		}
 	}
 	if value, present := object["x-apiward-target"]; present {
 		if target, _ := value.(string); target != c.op.Target {
-			return refuse(CodeExtension, "x-apiward-target", "x-apiward-target must be %s for this path.", clip(c.op.Target))
+			return refuse(CodeExtension, "x-apiward-target", "x-apiward-target must be %s for this path.", policy.Clip(c.op.Target))
 		}
 		c.widened = false
 		c.entry.Note = "matches deeper paths too, as x-apiward-target states"

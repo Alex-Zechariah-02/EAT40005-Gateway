@@ -55,7 +55,7 @@ func TestImportYAML(t *testing.T) {
 			{"empty", "", "empty"},
 		}
 		for _, c := range cases {
-			_, err := decodeSpec([]byte(c.spec), YAML)
+			_, err := Decode([]byte(c.spec), YAML, MaxSpecBytes)
 			if err == nil || !strings.Contains(err.Error(), c.want) {
 				t.Errorf("%s: error %v, want %q", c.name, err, c.want)
 			}
@@ -72,7 +72,7 @@ func TestImportYAML(t *testing.T) {
 
 	t.Run("core schema scalars", func(t *testing.T) {
 		spec := "a: yes\nb: 0777\nc: 0o17\nd: 0x1F\ne: 1.50\nf: +3\ng: ~\nh: Null\ni: TRUE\nj: 1_000\nk: .5\nl: '3'\nm: \"null\"\nn: 1e3\no: -0\np:\nq: |\n  text\n"
-		got, err := decodeSpec([]byte(spec), YAML)
+		got, err := Decode([]byte(spec), YAML, MaxSpecBytes)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -88,7 +88,7 @@ func TestImportYAML(t *testing.T) {
 	})
 
 	t.Run("document markers", func(t *testing.T) {
-		got, err := decodeSpec([]byte("---\na: 1\n...\n"), YAML)
+		got, err := Decode([]byte("---\na: 1\n...\n"), YAML, MaxSpecBytes)
 		if err != nil || !reflect.DeepEqual(got, map[string]any{"a": json.Number("1")}) {
 			t.Fatalf("got %#v, %v", got, err)
 		}

@@ -85,8 +85,8 @@ func (m *mapper) notice(object map[string]any, names ...string) {
 }
 
 func (m *mapper) refuse(method, path string, r *refusal) {
-	m.report.Refused = append(m.report.Refused, Refused{Method: method, Path: clip(path), Code: r.code,
-		Message: r.message, Field: clip(r.field), Suggestion: r.suggestion})
+	m.report.Refused = append(m.report.Refused, Refused{Method: method, Path: policy.Clip(path), Code: r.code,
+		Message: r.message, Field: policy.Clip(r.field), Suggestion: r.suggestion})
 }
 
 // operation maps one method of one path item.
@@ -115,7 +115,7 @@ func (m *mapper) operation(method, path string, item map[string]any, itemPointer
 		return nil, refused
 	}
 	c := &candidate{op: policy.Operation{ID: id, API: m.options.API, Method: upper, Target: target, Access: "allow"}, widened: widened}
-	c.entry = Mapped{Method: upper, Path: clip(path), Operation: id, Target: target}
+	c.entry = Mapped{Method: upper, Path: policy.Clip(path), Operation: id, Target: target}
 	if widened {
 		c.entry.Note = "matches " + strings.TrimSuffix(target, "*") + "<anything>, including deeper paths"
 	}

@@ -27,11 +27,11 @@ func exported(t *testing.T, p policy.Policy, options ExportOptions, format Forma
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := encodeDocument(document, format)
+	data, err := Encode(document, format)
 	if err != nil {
 		t.Fatal(err)
 	}
-	value, err := decodeSpec(data, format)
+	value, err := Decode(data, format, MaxSpecBytes)
 	if err != nil {
 		t.Fatalf("the import cannot read the export: %v\n%s", err, data)
 	}

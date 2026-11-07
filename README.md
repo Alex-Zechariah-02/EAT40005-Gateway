@@ -91,6 +91,29 @@ Each operation becomes the path and method of its target, with `operationId` = t
 
 Exit status: `0` the description means exactly what the policy does; `2` both files written, but something differs (read `changed`): a prefix target, which OpenAPI reads as one segment while the gateway also matches deeper paths; an identifier without the `<api>.` prefix, which comes back with it; a target containing `{` or `}`, which is not exported; `1` nothing written. The report lists `exported` (`operation`, `method`, `path`), `changed` (`operation`, `field`, `note`) and `omitted` (what a flag would add).
 
+## Migrate from another gateway
+
+Migration runs in two offline steps with a file to review between them. `gateway migrate import` reads a configuration and writes an **exchange file**: the configuration as an OpenAPI 3.1 description with the gateway extensions above, plus a ledger that classifies every setting it found. `gateway migrate policy` turns an exchange file into a new policy file. Neither command activates anything: read the reports, then stage, trial and confirm the policy like any other change. The supported source format is `openapi`.
+
+```
+gateway migrate import --from openapi --in <file.json|.yaml|.yml>
+  --out <new exchange file.json|.yaml|.yml> --report <new file>
+gateway migrate policy --exchange <file> --base <policy.json> --api <id> --upstream <id>
+  --out <new file> --report <new file> [--with-permits]
+```
+
+Each input is read only from the named path and may be at most 8 MiB, nested at most 16 levels; YAML passes the same gate as the OpenAPI import. Outputs must not exist yet; both are created together or neither is, and the output and the report must be different files.
+
+**The ledger** is the root member `x-apiward-migration`: `version` (`1`); `source` (`format`, `format_version`, `sha256` of the input); `items`, one per setting; `carried`, settings kept as opaque data for the gateway they came from (`vendor`, `scope`, `path`, `value`), never compiled into a policy; `credentials_skipped` (`type`, `count`), credentials counted but never read or copied; and `trust.issuers` (`issuer`, `audience`, `public_key_ids`). Each item has `id` (`<format>:<kind>:<name>`), `facet` (`route`, `access`, `auth`, `roles`, `rate`, `validation`, `size`, `upstream`, `transform`, `failure` or `other`), `class`, `direction`, `source` and `target` (JSON Pointers into the input and the exchange file), `note` and `accepted`. The class is `exact`, `equivalent`, `approximated` or `not_expressible`; an approximation also states whether the gateway is `stricter`, `looser` or differs in `both` directions, and a setting that cannot be expressed has an empty `target`. Unknown members anywhere in the ledger, or another `x-apiward-…` root member, refuse the file.
+
+**Looser settings are not imported by default.** `migrate policy` leaves out each operation that a looser item points to, reporting `LOOSER_NOT_ACCEPTED` with the item's `id` in `field`. Setting that item's `accepted` to `true` in the exchange file imports the operation as described.
+
+**Policy limits.** If the new policy would exceed a limit of the policy document (its size, nesting, or the number of upstreams, APIs, operations, roles or permits), nothing is written and the error starts with `POLICY_LIMIT_EXCEEDED` and names the limit. Import fewer operations, or one API at a time.
+
+Both reports extend the import report with `ledger_summary` (counts of `exact`, `equivalent`, `approximated` by `stricter`, `looser` and `both`, and `not_expressible`), `stale_decisions`, `credentials_skipped` and `carried_count`. Every list is present, possibly empty.
+
+Exit status: `0` every setting is exact or equivalent and nothing was changed, refused, widened, carried or skipped; `2` both files written, but at least one of those happened (read the report); `1` nothing written.
+
 ## How it is built
 
 - The gateway has its own HTTP server and reverse proxy, built on the Go standard library. It serves HTTP/1.0 and HTTP/1.1 in plain text. Each request passes all five controls in one pipeline and then goes only to the API that the policy names, once.
@@ -113,7 +136,10 @@ Each package under `internal/` imports only the packages listed before it; a tes
 - `internal/forward`: sends an admitted request to the one upstream it is bound to, on a new connection each time; a missing or non-loopback binding is sent nowhere.
 - `internal/store`: the one SQLite database (policy versions, draft changes, temporary rules, blocked accounts, administrators, change receipts); the only code that runs SQL, holding the database exclusively.
 - `internal/audit`: the durable security log; an admitted request is acknowledged only after its record is synced to disk, and the writer never deletes a file.
-- `internal/openapi`: the offline OpenAPI import; it turns a description into a candidate policy and checks it with the compiler.
+- `internal/openapi`: the offline OpenAPI import and export; it turns a description into a candidate policy, checks it with the compiler, and writes one API of a policy back as a description.
+- `internal/exchange`: the migration exchange file's ledger: its types, strict reading and the rules every ledger must meet.
+- `internal/semantics`: the meaning of settings other gateways use (path matching and rewriting, identity, roles, rate algorithms, failure modes) and how far each is from the gateway's own, with the bounds of each rate algorithm.
+- `internal/migrate`: the offline `gateway migrate` commands, which classify a configuration into an exchange file and turn an exchange file into a candidate policy.
 - `internal/gateway`: the gateway itself, which uses the packages above.
 
 ## Build and test

@@ -3,7 +3,6 @@
 package openapi
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -31,10 +30,10 @@ type Options struct {
 
 func (o Options) check() error {
 	if policy.CheckID(o.API, "api") != nil {
-		return fmt.Errorf("api %q is not a valid identifier", clip(o.API))
+		return fmt.Errorf("api %q is not a valid identifier", policy.Clip(o.API))
 	}
 	if !slices.ContainsFunc(o.Base.Upstreams, func(u policy.Upstream) bool { return u.ID == o.Upstream }) {
-		return fmt.Errorf("upstream %q is not in the base policy", clip(o.Upstream))
+		return fmt.Errorf("upstream %q is not in the base policy", policy.Clip(o.Upstream))
 	}
 	if o.MaxBodyBytes < 1 || o.MaxBodyBytes > policy.MaxBodyLimit {
 		return fmt.Errorf("max-body-bytes must be 1 to %d", policy.MaxBodyLimit)
@@ -46,10 +45,7 @@ func (o Options) check() error {
 // which the real decoder and compiler have accepted, and the report; or an
 // error, in which case nothing may be written. It has no side effects.
 func Import(spec []byte, format Format, options Options) (policy.Policy, *Report, error) {
-	if err := options.check(); err != nil {
-		return policy.Policy{}, nil, err
-	}
-	value, err := decodeSpec(spec, format)
+	value, err := Decode(spec, format, MaxSpecBytes)
 	if err != nil {
 		return policy.Policy{}, nil, err
 	}
@@ -57,11 +53,53 @@ func Import(spec []byte, format Format, options Options) (policy.Policy, *Report
 	if !ok {
 		return policy.Policy{}, nil, errors.New("the description is not a JSON object")
 	}
+	return ImportDocument(root, format, options)
+}
+
+// ImportDocument is Import for a description already passed through Decode.
+func ImportDocument(root map[string]any, format Format, options Options) (policy.Policy, *Report, error) {
+	if err := options.check(); err != nil {
+		return policy.Policy{}, nil, err
+	}
+	result, report, err := assemble(root, format, options)
+	if err != nil {
+		return policy.Policy{}, nil, err
+	}
+	if err := compiles(result); err != nil {
+		return policy.Policy{}, nil, err
+	}
+	return result, report, nil
+}
+
+// classifyAPI and classifyUpstream stand in for the administrator's choices
+// when a description is classified without a base policy.
+const (
+	classifyAPI      = "x"
+	classifyUpstream = "upstream"
+)
+
+// Classify reports what an import would do with each operation of a
+// description already passed through Decode, without a base policy and
+// without the limits on a whole policy. Operations are named by operationId
+// alone and the report's api is empty.
+func Classify(root map[string]any, format Format) (*Report, error) {
+	options := Options{API: classifyAPI, Upstream: classifyUpstream, MaxBodyBytes: DefaultBodyBytes, WithPermits: true,
+		Base: policy.Policy{Upstreams: []policy.Upstream{{ID: classifyUpstream, Dial: "127.0.0.1:1"}}}}
+	_, report, err := assemble(root, format, options)
+	if err != nil {
+		return nil, err
+	}
+	report.unprefix(classifyAPI + ".")
+	return report, nil
+}
+
+// assemble maps every operation onto the base without the API being
+// replaced and returns the result before the whole-policy checks.
+func assemble(root map[string]any, format Format, options Options) (policy.Policy, *Report, error) {
 	version, _ := root["openapi"].(string)
 	if !supportedVersion.MatchString(version) {
-		return policy.Policy{}, nil, fmt.Errorf("unsupported openapi version %q: 3.0.x or 3.1.x is required", clip(version))
+		return policy.Policy{}, nil, fmt.Errorf("unsupported openapi version %q: 3.0.x or 3.1.x is required", policy.Clip(version))
 	}
-
 	report := newReport(format, options.API)
 	report.SpecVersion = version
 	m := &mapper{root: root, options: options, report: report, ignored: map[string]bool{}}
@@ -77,10 +115,6 @@ func Import(spec []byte, format Format, options Options) (policy.Policy, *Report
 	slices.Sort(report.Ignored)
 	slices.Sort(report.ScopesNotMapped)
 	report.ScopesNotMapped = slices.Compact(report.ScopesNotMapped)
-
-	if err := compiles(result); err != nil {
-		return policy.Policy{}, nil, err
-	}
 	return result, report, nil
 }
 
@@ -138,7 +172,7 @@ func (m *mapper) crossCheck(found []*candidate, kept []policy.Operation) []*cand
 		case ids[c.op.ID] > 1:
 			m.refuse(c.entry.Method, c.entry.Path, refuse(CodeDuplicateID, "", "Another operation has the identifier %s.", c.op.ID))
 		case routes[c.op.Method+" "+c.op.Target] > 1:
-			m.refuse(c.entry.Method, c.entry.Path, refuse(CodeTargetCollision, "", "Another operation maps to %s %s.", c.op.Method, clip(c.op.Target)))
+			m.refuse(c.entry.Method, c.entry.Path, refuse(CodeTargetCollision, "", "Another operation maps to %s %s.", c.op.Method, policy.Clip(c.op.Target)))
 		default:
 			accepted = append(accepted, c)
 		}
@@ -170,16 +204,20 @@ func accept(c *candidate, result *policy.Policy, report *Report) {
 	report.ScopesNotMapped = append(report.ScopesNotMapped, c.scopes...)
 }
 
-// compiles runs the result through what staging runs: strict decoding of
-// its JSON form, then the compiler.
+// compiles runs the result through what staging runs, on the bytes that
+// are written: the size limit, strict decoding, then the compiler.
 func compiles(result policy.Policy) error {
-	document, err := json.Marshal(result)
+	document, err := indent(result)
 	if err != nil {
 		return err
 	}
-	decoded, err := policy.DecodePolicy(document)
-	if err == nil {
-		_, err = compile.Compile(decoded, 0, time.Time{})
+	if len(document) > policy.MaxPolicyBytes {
+		err = policy.Invalid("LIMIT_EXCEEDED", "size")
+	} else {
+		var decoded policy.Policy
+		if decoded, err = policy.DecodePolicy(document); err == nil {
+			_, err = compile.Compile(decoded, 0, time.Time{})
+		}
 	}
 	if err != nil {
 		return fmt.Errorf("the result is not a valid policy: %w", err)

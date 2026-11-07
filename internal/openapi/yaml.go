@@ -45,7 +45,7 @@ func readYAML(data []byte) (any, error) {
 		if errors.Is(err, io.EOF) {
 			return nil, errors.New("the description is empty")
 		}
-		return nil, fmt.Errorf("not valid YAML: %s", clip(err.Error()))
+		return nil, fmt.Errorf("not valid YAML: %s", policy.Clip(err.Error()))
 	}
 	var next yaml.Node
 	err := decoder.Decode(&next)
@@ -53,7 +53,7 @@ func readYAML(data []byte) (any, error) {
 		return nil, fmt.Errorf("line %d: more than one document", firstLine(&next))
 	}
 	if !errors.Is(err, io.EOF) {
-		return nil, fmt.Errorf("not valid YAML: %s", clip(err.Error()))
+		return nil, fmt.Errorf("not valid YAML: %s", policy.Clip(err.Error()))
 	}
 	if len(document.Content) != 1 {
 		return nil, errors.New("the description is empty")
@@ -104,7 +104,7 @@ func convert(node *yaml.Node, depth int) (any, error) {
 			return nil, err
 		}
 		if _, repeated := members[name]; repeated {
-			return nil, fmt.Errorf("line %d: duplicate key %q", node.Content[i].Line, clip(name))
+			return nil, fmt.Errorf("line %d: duplicate key %q", node.Content[i].Line, policy.Clip(name))
 		}
 		if members[name], err = convert(node.Content[i+1], depth+1); err != nil {
 			return nil, err
@@ -179,15 +179,15 @@ func isNumber(text string) bool {
 func integer(digits string, base int) (any, error) {
 	number, ok := new(big.Int).SetString(digits, base)
 	if !ok {
-		return nil, fmt.Errorf("invalid integer %q", clip(digits))
+		return nil, fmt.Errorf("invalid integer %q", policy.Clip(digits))
 	}
 	return json.Number(number.String()), nil
 }
 
-// encodeDocument writes a description as 2-space JSON, or as block YAML
+// Encode writes a description as 2-space JSON, or as block YAML
 // made from that JSON text, so both formats hold the same values and the
 // import reads either back alike.
-func encodeDocument(document map[string]any, format Format) ([]byte, error) {
+func Encode(document map[string]any, format Format) ([]byte, error) {
 	data, err := json.MarshalIndent(document, "", "  ")
 	if err != nil {
 		return nil, err

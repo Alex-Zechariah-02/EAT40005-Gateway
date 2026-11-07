@@ -26,7 +26,7 @@ func (m *mapper) security(object map[string]any, c *candidate) *refusal {
 	list, _ := requirements.([]any)
 	switch {
 	case !stated:
-		c.op.Auth, c.entry.Note = "required", "no security stated; sign-in required by default"
+		c.op.Auth, c.entry.Note = "required", NoteDefaultSignIn
 		return nil
 	case len(list) == 0:
 		c.op.Auth, c.entry.Note = "none", "public: consider a rate limit by client address"
@@ -46,7 +46,7 @@ func (m *mapper) security(object map[string]any, c *candidate) *refusal {
 			scopes, _ := requirement[name].([]any)
 			for _, scope := range scopes {
 				if text, ok := scope.(string); ok {
-					c.scopes = append(c.scopes, clip(text))
+					c.scopes = append(c.scopes, policy.Clip(text))
 				}
 			}
 		}
@@ -60,7 +60,7 @@ func (m *mapper) scheme(defined map[string]any, name string) *refusal {
 	pointer := "#/components/securitySchemes/" + escape(name)
 	raw, present := defined[name]
 	if !present {
-		return refuse(CodeSecurity, "", "The security scheme %q is not defined.", clip(name))
+		return refuse(CodeSecurity, "", "The security scheme %q is not defined.", policy.Clip(name))
 	}
 	node, refused := follow(m.root, raw, pointer)
 	if refused != nil {
@@ -73,7 +73,7 @@ func (m *mapper) scheme(defined map[string]any, name string) *refusal {
 	if bearer || kind == "oauth2" || kind == "openIdConnect" {
 		return nil
 	}
-	return refuse(CodeSecurity, "", "Sign-in by %q cannot be enforced; only bearer tokens are checked.", clip(kind+" "+httpScheme))
+	return refuse(CodeSecurity, "", "Sign-in by %q cannot be enforced; only bearer tokens are checked.", policy.Clip(kind+" "+httpScheme))
 }
 
 // parameters maps header parameters to the header schema and lists the rest.
@@ -115,7 +115,7 @@ func (m *mapper) parameters(item, object map[string]any, itemPointer, pointer st
 		canonical := http.CanonicalHeaderKey(name)
 		ignored := canonical == "Accept" || canonical == "Content-Type" || canonical == "Authorization"
 		if in != "header" || ignored {
-			c.notEnforced = append(c.notEnforced, NotEnforced{Operation: c.op.ID, Parameter: clip(name), In: clip(in)})
+			c.notEnforced = append(c.notEnforced, NotEnforced{Operation: c.op.ID, Parameter: policy.Clip(name), In: policy.Clip(in)})
 			continue
 		}
 		if _, present := p.value["content"]; present {
@@ -170,10 +170,10 @@ func (m *mapper) body(object map[string]any, pointer string, c *candidate, s *sc
 	for _, name := range types {
 		mediaType, _, err := mime.ParseMediaType(name)
 		if err != nil || mediaType != "application/json" && !strings.HasSuffix(mediaType, "+json") {
-			return refuse(CodeMediaType, "", "Only JSON request bodies can be validated; found %q.", clip(name))
+			return refuse(CodeMediaType, "", "Only JSON request bodies can be validated; found %q.", policy.Clip(name))
 		}
 		if mediaType != "application/json" {
-			others = append(others, clip(name))
+			others = append(others, policy.Clip(name))
 		}
 		this, _ := content[name].(map[string]any)
 		if !reflect.DeepEqual(first["schema"], this["schema"]) {

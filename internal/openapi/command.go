@@ -9,8 +9,11 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
+	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/Alex-Zechariah-02/apiward/internal/policy"
 )
@@ -23,16 +26,16 @@ const (
   --out <new file.json|.yaml|.yml> --report <new file> [--with-upstream]`
 )
 
-// command is one subcommand: its flags and what it runs once they parse.
-type command struct {
-	usage    string
-	required []string
-	optional map[string]string // flag → default
-	switches []string
-	run      func(values map[string]string, stderr io.Writer) (int, error)
+// Subcommand is one command: its flags and what it runs once they parse.
+type Subcommand struct {
+	Usage    string
+	Required []string
+	Optional map[string]string // flag → default
+	Switches []string
+	Run      func(values map[string]string, stderr io.Writer) (int, error)
 }
 
-var commands = map[string]command{
+var commands = map[string]Subcommand{
 	"import-openapi": {importUsage, []string{"spec", "api", "upstream", "base", "out", "report"},
 		map[string]string{"max-body-bytes": strconv.Itoa(DefaultBodyBytes)}, []string{"with-permits"}, runImport},
 	"export-openapi": {exportUsage, []string{"policy", "api", "out", "report"}, nil, []string{"with-upstream"}, runExport},
@@ -41,32 +44,46 @@ var commands = map[string]command{
 // Command runs "policy <subcommand>" and returns the exit status. It reads
 // only the files named by flags and creates only the out and report files.
 func Command(args []string, stderr io.Writer) int {
-	var c command
+	return Run(commands, args, stderr)
+}
+
+// Run runs the subcommand of the table that args name and returns the exit
+// status; an unknown one, or a bad command line, prints the usage.
+func Run(table map[string]Subcommand, args []string, stderr io.Writer) int {
+	var c Subcommand
 	known := len(args) > 0
 	if known {
-		c, known = commands[args[0]]
+		c, known = table[args[0]]
 	}
 	if !known {
-		fmt.Fprintln(stderr, "usage: "+importUsage+"\n       "+exportUsage)
+		var usages []string
+		for _, name := range slices.Sorted(maps.Keys(table)) {
+			usages = append(usages, table[name].Usage)
+		}
+		fmt.Fprintln(stderr, "usage: "+strings.Join(usages, "\n       "))
 		return ExitFailed
 	}
 	values, err := c.parse(args[1:])
 	if err != nil {
 		fmt.Fprintln(stderr, "gateway:", err)
-		if errors.Is(err, errUsage) {
-			fmt.Fprintln(stderr, "usage: "+c.usage)
+		if errors.Is(err, ErrUsage) {
+			fmt.Fprintln(stderr, "usage: "+c.Usage)
 		}
 		return ExitFailed
 	}
-	code, err := c.run(values, stderr)
+	code, err := c.Run(values, stderr)
 	if err != nil {
 		fmt.Fprintln(stderr, "gateway:", err)
+		if errors.Is(err, ErrUsage) {
+			fmt.Fprintln(stderr, "usage: "+c.Usage)
+		}
 		return ExitFailed
 	}
 	return code
 }
 
-var errUsage = errors.New("invalid command line")
+// ErrUsage marks an error that the command line itself caused.
+var ErrUsage = errors.New("invalid command line")
 
 // single is a flag value that may be given only once.
 type single struct {
@@ -89,30 +106,30 @@ type toggle struct{ single }
 
 func (f *toggle) IsBoolFlag() bool { return true }
 
-func (c command) parse(args []string) (map[string]string, error) {
-	set := flag.NewFlagSet("policy", flag.ContinueOnError)
+func (c Subcommand) parse(args []string) (map[string]string, error) {
+	set := flag.NewFlagSet("gateway", flag.ContinueOnError)
 	set.SetOutput(io.Discard)
 	values := map[string]string{}
-	for _, name := range c.required {
+	for _, name := range c.Required {
 		set.Var(new(single), name, name)
 	}
-	for name, value := range c.optional {
+	for name, value := range c.Optional {
 		values[name] = value
 		set.Var(new(single), name, name)
 	}
-	for _, name := range c.switches {
+	for _, name := range c.Switches {
 		set.Var(new(toggle), name, name)
 	}
 	if err := set.Parse(args); err != nil {
-		return nil, fmt.Errorf("%w: %v", errUsage, err)
+		return nil, fmt.Errorf("%w: %v", ErrUsage, err)
 	}
 	if set.NArg() != 0 {
-		return nil, errUsage
+		return nil, ErrUsage
 	}
 	set.Visit(func(f *flag.Flag) { values[f.Name] = f.Value.String() })
-	for _, name := range c.required {
+	for _, name := range c.Required {
 		if values[name] == "" {
-			return nil, fmt.Errorf("--%s is required", name)
+			return nil, fmt.Errorf("%w: --%s is required", ErrUsage, name)
 		}
 	}
 	return values, nil
@@ -127,11 +144,11 @@ func runImport(values map[string]string, stderr io.Writer) (int, error) {
 	if err != nil {
 		return ExitFailed, fmt.Errorf("max-body-bytes must be 1 to %d", policy.MaxBodyLimit)
 	}
-	spec, err := readLimited(values["spec"], MaxSpecBytes, "spec")
+	spec, err := ReadLimited(values["spec"], MaxSpecBytes, "spec")
 	if err != nil {
 		return ExitFailed, err
 	}
-	base, err := readPolicy(values["base"], "base")
+	base, err := ReadPolicy(values["base"], "base")
 	if err != nil {
 		return ExitFailed, err
 	}
@@ -140,7 +157,7 @@ func runImport(values map[string]string, stderr io.Writer) (int, error) {
 	if err != nil {
 		return ExitFailed, err
 	}
-	if err := write(values, result, report); err != nil {
+	if err := Write(values["out"], result, values["report"], report); err != nil {
 		return ExitFailed, err
 	}
 	fmt.Fprintf(stderr, "imported %d of %d operations (%d widened, %d refused); see %s\n",
@@ -153,7 +170,7 @@ func runExport(values map[string]string, stderr io.Writer) (int, error) {
 	if err != nil {
 		return ExitFailed, err
 	}
-	source, err := readPolicy(values["policy"], "policy")
+	source, err := ReadPolicy(values["policy"], "policy")
 	if err != nil {
 		return ExitFailed, err
 	}
@@ -161,11 +178,11 @@ func runExport(values map[string]string, stderr io.Writer) (int, error) {
 	if err != nil {
 		return ExitFailed, err
 	}
-	data, err := encodeDocument(document, format)
+	data, err := Encode(document, format)
 	if err != nil {
 		return ExitFailed, err
 	}
-	if err := write(values, json.RawMessage(data), report); err != nil {
+	if err := Write(values["out"], json.RawMessage(data), values["report"], report); err != nil {
 		return ExitFailed, err
 	}
 	fmt.Fprintf(stderr, "exported %d of %d operations (%d changed); see %s\n",
@@ -173,9 +190,9 @@ func runExport(values map[string]string, stderr io.Writer) (int, error) {
 	return report.Exit(), nil
 }
 
-// readPolicy reads and strictly decodes a policy file.
-func readPolicy(path, name string) (policy.Policy, error) {
-	document, err := readLimited(path, policy.MaxPolicyBytes, name)
+// ReadPolicy reads and strictly decodes a policy file.
+func ReadPolicy(path, name string) (policy.Policy, error) {
+	document, err := ReadLimited(path, policy.MaxPolicyBytes, name)
 	if err != nil {
 		return policy.Policy{}, err
 	}
@@ -186,26 +203,35 @@ func readPolicy(path, name string) (policy.Policy, error) {
 	return p, nil
 }
 
-// write encodes the output and the report as 2-space JSON and writes both
+// Write encodes the output and the report as 2-space JSON and writes both
 // new files, or neither. Raw output is written as given.
-func write(values map[string]string, output, report any) error {
+func Write(outPath string, output any, reportPath string, report any) error {
+	if outPath == reportPath {
+		return errors.New("the output and the report must be different files")
+	}
 	files := map[string][]byte{}
-	for name, value := range map[string]any{"out": output, "report": report} {
+	for path, value := range map[string]any{outPath: output, reportPath: report} {
 		if raw, ok := value.(json.RawMessage); ok {
-			files[values[name]] = raw
+			files[path] = raw
 			continue
 		}
-		data, err := json.MarshalIndent(value, "", "  ")
+		data, err := indent(value)
 		if err != nil {
 			return err
 		}
-		files[values[name]] = append(data, '\n')
+		files[path] = data
 	}
 	return writeNew(files)
 }
 
-// readLimited reads at most limit bytes and refuses a longer file.
-func readLimited(path string, limit int64, name string) ([]byte, error) {
+// indent is the written form of a JSON output: 2-space indent, final newline.
+func indent(value any) ([]byte, error) {
+	data, err := json.MarshalIndent(value, "", "  ")
+	return append(data, '\n'), err
+}
+
+// ReadLimited reads at most limit bytes and refuses a longer file.
+func ReadLimited(path string, limit int64, name string) ([]byte, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("%s file: %w", name, err)
@@ -216,10 +242,10 @@ func readLimited(path string, limit int64, name string) ([]byte, error) {
 		return nil, fmt.Errorf("%s file: %w", name, err)
 	}
 	if int64(len(data)) > limit {
-		if name == "spec" {
-			return nil, errors.New("the description is larger than 1 MiB")
+		if limit%(1<<20) == 0 {
+			return nil, fmt.Errorf("the %s file is larger than %d MiB", name, limit>>20)
 		}
-		return nil, fmt.Errorf("%s file is larger than %d bytes", name, limit)
+		return nil, fmt.Errorf("the %s file is larger than %d bytes", name, limit)
 	}
 	return data, nil
 }

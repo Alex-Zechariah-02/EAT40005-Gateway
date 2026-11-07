@@ -2,6 +2,8 @@
 
 package openapi
 
+import "strings"
+
 // Exit statuses of the import command.
 const (
 	ExitComplete = 0 // everything mapped
@@ -46,6 +48,10 @@ type Report struct {
 	RemovedPermits     []Permit      `json:"removed_permits"`
 	Ignored            []string      `json:"ignored"`
 }
+
+// NoteDefaultSignIn notes an operation whose description states no security:
+// the import requires sign-in, which is stricter than the description.
+const NoteDefaultSignIn = "no security stated; sign-in required by default"
 
 // Mapped is an imported operation; Note explains a default it relies on.
 type Mapped struct {
@@ -119,4 +125,31 @@ func (r *Report) Exit() int {
 		return ExitPartial
 	}
 	return ExitComplete
+}
+
+// unprefix removes prefix from every operation name in the report.
+func (r *Report) unprefix(prefix string) {
+	r.API = ""
+	trim := func(name *string) { *name = strings.TrimPrefix(*name, prefix) }
+	for i := range r.Mapped {
+		trim(&r.Mapped[i].Operation)
+	}
+	for i := range r.Widened {
+		trim(&r.Widened[i].Operation)
+	}
+	for i := range r.Assumed {
+		trim(&r.Assumed[i].Operation)
+	}
+	for i := range r.Changed {
+		trim(&r.Changed[i].Operation)
+	}
+	for i := range r.NotEnforced {
+		trim(&r.NotEnforced[i].Operation)
+	}
+	for i := range r.AnnotationsRemoved {
+		trim(&r.AnnotationsRemoved[i].Operation)
+	}
+	for i := range r.NeedsPermissions {
+		trim(&r.NeedsPermissions[i])
+	}
 }

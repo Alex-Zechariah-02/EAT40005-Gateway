@@ -58,7 +58,7 @@ func Export(p policy.Policy, options ExportOptions) (map[string]any, *ExportRepo
 	}
 	index := slices.IndexFunc(p.APIs, func(a policy.API) bool { return a.ID == options.API })
 	if index < 0 {
-		return nil, nil, fmt.Errorf("api %q is not in the policy", clip(options.API))
+		return nil, nil, fmt.Errorf("api %q is not in the policy", policy.Clip(options.API))
 	}
 	report := &ExportReport{API: options.API, Exported: []Exported{}, Changed: []Changed{}, Omitted: []string{}}
 	roles := map[string][]any{}

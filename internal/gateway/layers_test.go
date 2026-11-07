@@ -13,14 +13,17 @@ import (
 
 // layers lists, for each internal package, the internal packages it may import.
 var layers = map[string][]string{
-	"fault":   nil,
-	"policy":  nil,
-	"compile": {"fault", "policy"},
-	"forward": {"compile"},
-	"store":   {"fault", "policy"},
-	"audit":   {"fault"},
-	"openapi": {"policy", "compile"},
-	"gateway": {"fault", "policy", "compile", "forward", "store", "audit"},
+	"fault":     nil,
+	"policy":    nil,
+	"compile":   {"fault", "policy"},
+	"forward":   {"compile"},
+	"store":     {"fault", "policy"},
+	"audit":     {"fault"},
+	"openapi":   {"policy", "compile"},
+	"exchange":  {"policy"},
+	"semantics": {"exchange"},
+	"migrate":   {"policy", "compile", "openapi", "exchange", "semantics"},
+	"gateway":   {"fault", "policy", "compile", "forward", "store", "audit"},
 }
 
 // unlayered packages are not part of the gateway's layering.
